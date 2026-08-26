@@ -65,6 +65,7 @@ QProcessEnvironment sidecarEnvironment()
         QStringLiteral("XDG_CACHE_HOME"),
         QStringLiteral("LANG"),
         QStringLiteral("LC_ALL"),
+        QStringLiteral("THOTHPAD_DATA_DIR"),
         QStringLiteral("THOTHPAD_SIDECAR_TRACE"),
     };
     for (const QString &name : allowed) {
@@ -72,10 +73,15 @@ QProcessEnvironment sidecarEnvironment()
             result.insert(name, system.value(name));
         }
     }
-    // A minimal system PATH keeps the scrub (no user-writable directories)
-    // while letting child processes resolve system DLLs and helpers; a fully
-    // empty PATH breaks venv python launcher DLL resolution.
+    // Keep the sidecar environment scrubbed while still allowing system
+    // helpers and development Python launchers to resolve platform runtimes.
+#ifdef Q_OS_WIN
     result.insert(QStringLiteral("PATH"), QStringLiteral("C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\Wbem"));
+#else
+    if (system.contains(QStringLiteral("PATH"))) {
+        result.insert(QStringLiteral("PATH"), system.value(QStringLiteral("PATH")));
+    }
+#endif
     return result;
 }
 }
@@ -476,14 +482,18 @@ void WriterEngineClient::parseMessages()
             return;
         }
 
-        const qsizetype frameSize = headerEnd + 4
-            + static_cast<qsizetype>(contentLength);
-        if ((m_buffer.size() - m_bufferOffset) < frameSize) {
+        // headerEnd is an absolute index into m_buffer, so calculate an
+        // absolute frame end as well. Treating headerEnd as a relative frame
+        // size causes every frame after the first to advance too far and can
+        // silently strand profile/analysis responses in the buffer.
+        const qsizetype bodyStart = headerEnd + 4;
+        const qsizetype frameEnd = bodyStart + static_cast<qsizetype>(contentLength);
+        if (m_buffer.size() < frameEnd) {
             compactBuffer();
             return;
         }
 
-        const QByteArray body = m_buffer.mid(headerEnd + 4, contentLength);
+        const QByteArray body = m_buffer.mid(bodyStart, contentLength);
         {
             QFile engineLog(QCoreApplication::applicationDirPath() + QStringLiteral("/thothpad-engine.log"));
             if (engineLog.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
@@ -496,7 +506,7 @@ void WriterEngineClient::parseMessages()
                 engineLog.close();
             }
         }
-        m_bufferOffset += frameSize;
+        m_bufferOffset = frameEnd;
         compactBuffer();
         const QPointer<WriterEngineClient> guard(this);
         const quint64 generation = m_processGeneration;
