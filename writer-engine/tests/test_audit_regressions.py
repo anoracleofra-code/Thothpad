@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from backend.analysis_store import AnalysisStore
 from backend.analyzers.concrete_anchor import ConcreteAnchorAnalyzer
 from backend.analyzers.external_tools import ExternalToolsAnalyzer
 from backend.analyzers.rhythm import RhythmAnalyzer
@@ -109,3 +110,51 @@ def test_boolean_json_values_are_not_accepted_as_integers():
     # Preserve the deliberate compatibility with integer-looking strings.
     assert bounded_int("3", "limit", 1, 10) == 3
     assert validate_passes("1") == 1
+
+
+def test_persisted_finding_keeps_structured_fields_and_extra_spans(tmp_path):
+    database = tmp_path / "analysis.sqlite3"
+    diagnostic = {
+        "id": "repeat-1",
+        "analyzer": "repetition",
+        "rule_id": "repeated_phrase",
+        "type": "repeated_phrase",
+        "severity": "context_flag",
+        "level": "context_flag",
+        "start_utf16": 20,
+        "end_utf16": 26,
+        "extra_spans_utf16": [[2, 8], [10, 16]],
+        "excerpt": "echoed",
+        "suggestion": "Vary the repeated phrase.",
+        "explanation": "The phrase recurs nearby.",
+        "confidence": 0.875,
+        "source": "deterministic",
+        "replacements": ["rephrased"],
+        "revision": 7,
+    }
+
+    store = AnalysisStore(database, ttl_seconds=120)
+    created = store.create_snapshot(
+        [diagnostic],
+        document_id="document-1",
+        document_revision=7,
+        text_hash="abc123",
+        initial_page_size=1,
+        persist=True,
+    )
+    analysis_id = created["analysis_id"]
+    store.close()
+
+    reopened = AnalysisStore(database, ttl_seconds=120)
+    restored = reopened.query_findings(analysis_id, limit=10)["diagnostics"][0]
+    reopened.close()
+
+    assert restored["id"] == diagnostic["id"]
+    assert restored["analyzer"] == diagnostic["analyzer"]
+    assert restored["rule_id"] == diagnostic["rule_id"]
+    assert restored["type"] == diagnostic["type"]
+    assert restored["severity"] == diagnostic["severity"]
+    assert (restored["start_utf16"], restored["end_utf16"]) == (20, 26)
+    assert restored["extra_spans_utf16"] == [[2, 8], [10, 16]]
+    assert restored["replacements"] == ["rephrased"]
+    assert restored["revision"] == 7
