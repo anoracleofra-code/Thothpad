@@ -72,6 +72,7 @@ LIVE_ANALYZERS = (
     "cliches",
     "repetition",
     "possible_adverbs",
+    "possible_adjectives",
     "possible_verbs",
 )
 
