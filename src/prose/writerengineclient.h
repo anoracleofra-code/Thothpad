@@ -16,6 +16,7 @@
 
 namespace ghostwriter
 {
+class WriterEngineClientTest;
 class WriterEngineClient : public QObject
 {
     Q_OBJECT
@@ -49,6 +50,8 @@ private slots:
     void processError(QProcess::ProcessError error);
 
 private:
+    friend class WriterEngineClientTest;
+
     bool writeMessage(const QJsonObject &message);
     void parseMessages();
     void compactBuffer();
