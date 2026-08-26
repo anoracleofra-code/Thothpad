@@ -29,6 +29,7 @@ public:
 
     AsyncTextWriter *q_ptr;
     QString fileName;
+    QString lastError;
     AsyncTextWriter::Encoding encoding;
     QFutureWatcher<QString> *writeFutureWatcher = nullptr;
     bool writeInProgress = false;
@@ -77,6 +78,15 @@ void AsyncTextWriter::setFileName(const QString &fileName)
 {
     Q_D(AsyncTextWriter);
 
+    // A QFuture captures the destination by value, while completion handlers
+    // historically consulted d->fileName.  Do not let callers retarget the
+    // writer until the current transaction has fully completed and its signal
+    // has been delivered.
+    if (d->writeFutureWatcher->isRunning()
+            || d->writeFutureWatcher->isStarted()) {
+        waitForFinished();
+    }
+
     d->fileName = QFileInfo(fileName).absoluteFilePath();
 }
 
@@ -101,15 +111,26 @@ bool AsyncTextWriter::writeInProgress() const
     return d->writeInProgress;
 }
 
-void AsyncTextWriter::waitForFinished()
+bool AsyncTextWriter::waitForFinished()
 {
-    Q_D(const AsyncTextWriter);
+    Q_D(AsyncTextWriter);
 
     if (d->writeFutureWatcher->isRunning() || d->writeFutureWatcher->isStarted()) {
         d->writeFutureWatcher->waitForFinished();
     }
 
+    // QFutureWatcher emits finished through the event loop.  Process the
+    // queued completion before reporting status so callers that gate a close,
+    // rename, or retarget operation observe the final transaction result.
     qApp->processEvents();
+    return d->lastError.isEmpty();
+}
+
+QString AsyncTextWriter::lastError() const
+{
+    Q_D(const AsyncTextWriter);
+
+    return d->lastError;
 }
 
 bool AsyncTextWriter::write(const QString &text)
@@ -117,14 +138,16 @@ bool AsyncTextWriter::write(const QString &text)
     Q_D(AsyncTextWriter);
 
     if (d->fileName.isNull() || d->fileName.isEmpty()) {
+        d->lastError = tr("No file path specified");
         return false;
     }
 
     if (d->writeFutureWatcher->isRunning()
             || d->writeFutureWatcher->isStarted()) {
-        d->writeFutureWatcher->waitForFinished();
+        waitForFinished();
     }
 
+    d->lastError.clear();
     d->writeInProgress = true;
 
     QFuture<QString> future =
@@ -137,11 +160,6 @@ bool AsyncTextWriter::write(const QString &text)
         );
 
     d->writeFutureWatcher->setFuture(future);
-
-    if (d->fileName.isNull() || d->fileName.isEmpty()) {
-        return false;
-    }
-
     return true;
 }
 
@@ -166,26 +184,38 @@ QString AsyncTextWriterPrivate::writeToDisk(const QString &text,
     AsyncTextWriter::Encoding encoding)
 {
     QSaveFile file(fileName);
-    file.setDirectWriteFallback(true);
+
+    // Preserve QSaveFile's atomicity guarantee.  Direct-write fallback can
+    // truncate the destination before a failed write is known to the caller,
+    // which is unacceptable for an editor save path.
+    file.setDirectWriteFallback(false);
 
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
         return file.errorString();
     }
 
-    // Write contents to disk.
     QTextStream stream(&file);
-
     stream.setEncoding(encoding);
-
     stream << text;
+    stream.flush();
 
-    if (QFile::NoError != file.error()) {
+    if (stream.status() != QTextStream::Ok || QFile::NoError != file.error()) {
+        const QString error = file.errorString().isEmpty()
+            ? AsyncTextWriter::tr("Failed to write file contents")
+            : file.errorString();
         file.cancelWriting();
-        return file.errorString();
+        return error;
     }
 
-    // Commit changes (and close the file).  All done!
-    file.commit();
+    // QSaveFile::commit() is the durability boundary: only a successful
+    // commit means the replacement reached its destination.  Never translate
+    // a failed commit into writeComplete().
+    if (!file.commit()) {
+        return file.errorString().isEmpty()
+            ? AsyncTextWriter::tr("Failed to commit saved file")
+            : file.errorString();
+    }
+
     return QString();
 }
 
@@ -193,12 +223,11 @@ void AsyncTextWriterPrivate::onWriteCompleted()
 {
     Q_Q(AsyncTextWriter);
 
-    QString err = this->writeFutureWatcher->result();
-
+    this->lastError = this->writeFutureWatcher->result();
     this->writeInProgress = false;
 
-    if (!err.isNull() && !err.isEmpty()) {
-        emit q->writeError(err);
+    if (!this->lastError.isNull() && !this->lastError.isEmpty()) {
+        emit q->writeError(this->lastError);
         return;
     }
 
