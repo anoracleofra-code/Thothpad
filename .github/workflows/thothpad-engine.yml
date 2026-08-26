@@ -25,7 +25,11 @@ jobs:
       - run: uv run ruff check .
 
   typecheck:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: writer-engine
@@ -39,7 +43,16 @@ jobs:
           version: "0.12.3"
           enable-cache: true
       - run: uv sync --locked --extra dev
-      - run: uv run mypy backend
+      # typeshed intentionally omits Windows-only ctypes/subprocess members on
+      # Unix. Check portable modules on Linux, then check the complete backend
+      # on Windows so platform-specific code remains type-checked rather than
+      # being globally silenced with attr-defined ignores.
+      - name: Typecheck portable backend
+        if: runner.os == 'Linux'
+        run: uv run mypy backend --exclude 'backend/(sidecar|process_supervisor|grammar)\.py$'
+      - name: Typecheck complete backend
+        if: runner.os == 'Windows'
+        run: uv run mypy backend
 
   benchmark:
     runs-on: windows-latest
