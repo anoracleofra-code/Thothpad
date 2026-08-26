@@ -5,6 +5,7 @@
  */
 
 #include <QApplication>
+#include <QCryptographicHash>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
@@ -12,7 +13,6 @@
 #include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QMessageBox>
-#include <QPair>
 #include <QStandardPaths>
 #include <QString>
 #include <QTextDocument>
@@ -75,6 +75,18 @@ public:
     bool saveInProgress;
 
     /*
+     * Save transaction state. The document stays dirty until the exact
+     * revision captured here is durably committed. Path-changing operations
+     * can be rolled back after an asynchronous failure, while draft/rename
+     * source files are only removed after success.
+     */
+    int pendingSaveRevision;
+    bool rollbackPathOnFailure;
+    QString rollbackPath;
+    QString cleanupPathAfterSave;
+    bool cleanupBackupAfterSave;
+
+    /*
     * This timer's timeout signal is connected to the autoSaveFile() slot,
     * which saves the document if it can be saved and has been modified.
     */
@@ -88,78 +100,37 @@ public:
     */
     bool documentModifiedNotifVisible;
 
-    /*
-    * Begins asynchronous save operation.  Called by save() and saveAs().
-    */
-    void saveFile();
+    /* Begins an asynchronous save transaction. */
+    bool saveFile();
 
-    /*
-    * Handles the event where a file as been modified externally on disk.
-    */
+    /* Handles the event where a file has been modified externally on disk. */
     void onFileChangedExternally(const QString &path);
 
-    /*
-    * Loads the document with the file contents at the given path.
-    */
+    /* Loads the document with the file contents at the given path. */
     bool loadFile(const Bookmark &location);
 
-    /*
-    * Sets the file path for the document, such that the file will be
-    * monitored for external changes made to it, and the display name
-    * for the document updated.
-    */
+    /* Updates the document/writer destination and file watcher. */
     void setFilePath(const QString &filePath);
 
-    /*
-    * Checks if changes need to be saved before an operation
-    * can continue.  The user will be prompted to save if
-    * necessary, and this method will return true if the
-    * operation can proceed.
-    */
+    /* Checks whether changes must be durably saved before an operation. */
     bool checkSaveChanges();
 
-    /*
-    * Checks if file on the disk is read only.  This method will return
-    * true if save operation can proceed.
-    */
+    /* Confirms whether a protected file should be overwritten. */
     bool checkPermissionsBeforeSave();
 
-    /*
-    * Saves the given text to the given file path, returning a null
-    * string if successful, otherwise an error message.  Note that this
-    * method is intended to be run in a separate thread from the main
-    * Qt event loop, and should thus never interact with any widgets.
-    */
-    QString saveToDisk
-    (
-        const QString &filePath,
-        const QString &text,
-        bool createBackup
-    ) const;
+    /* Returns a collision-resistant backup path for a source document. */
+    QString backupFilePath(const QString &filePath) const;
 
-    /*
-    * Creates a backup file with a ".backup" extension of the file having
-    * the specified path.  Note that this method is intended to be run in
-    * a separate thread from the main Qt event loop, and should thus never
-    * interact with any widgets.
-    */
+    /* Creates a backup of the specified source document. */
     void backupFile(const QString &filePath) const;
 
-    /*
-    * Handles autosave operation upon autosave timer expiration.
-    */
+    /* Handles autosave operation upon autosave timer expiration. */
     void autoSaveFile();
 
-    /*
-    * Returns true if document is named as "untitled" and located in the
-    * configured draft location.
-    */
+    /* Returns true when the current file is an autosaved draft. */
     bool documentIsDraft();
 
-    /*
-    * Creates a draft (named "untitled-##.md") document in the configured
-    * draft location.
-    */
+    /* Creates an autosaved draft for a previously untitled document. */
     void createDraft();
 };
 
@@ -177,11 +148,14 @@ DocumentManager::DocumentManager
     d_ptr(new DocumentManagerPrivate(this))
 {
     Q_D(DocumentManager);
-    
+
     d->editor = editor;
     d->fileHistoryEnabled = true;
     d->createBackupOnSave = true;
     d->saveInProgress = false;
+    d->pendingSaveRevision = -1;
+    d->rollbackPathOnFailure = false;
+    d->cleanupBackupAfterSave = false;
     d->autoSaveEnabled = false;
     d->documentModifiedNotifVisible = false;
 
@@ -198,20 +172,96 @@ DocumentManager::DocumentManager
     d->writer->setEncoding(QStringConverter::Utf8);
 
     connect(d->writer, &AsyncTextWriter::writeComplete, [d]() {
+        const QString savedPath = d->writer->fileName();
         d->saveInProgress = false;
-        d->document->setTimestamp(QDateTime::currentDateTime());
 
-        if (!d->fileWatcher->files().contains(d->writer->fileName())) {
-            d->fileWatcher->addPath(d->writer->fileName());
+        // Only clear the dirty bit when the document is still exactly the
+        // revision that was written. Edits made while the worker was saving
+        // remain dirty and therefore cannot be lost on a subsequent close.
+        if (d->pendingSaveRevision >= 0
+                && d->document->revision() == d->pendingSaveRevision) {
+            d->document->setModified(false);
+            emit d->q_ptr->documentModifiedChanged(false);
+        }
+
+        const QFileInfo savedInfo(savedPath);
+        if (savedInfo.exists()) {
+            d->document->setTimestamp(savedInfo.lastModified());
+            const bool readOnly = !savedInfo.isWritable();
+            d->document->setReadOnly(readOnly);
+            d->editor->setReadOnly(readOnly);
+
+            if (!d->fileWatcher->files().contains(savedPath)) {
+                d->fileWatcher->addPath(savedPath);
+            }
+        }
+
+        // A Save As from an autosaved draft, or a rename implemented as a
+        // safe copy+commit, never removes the source until the destination has
+        // committed successfully.
+        if (!d->cleanupPathAfterSave.isEmpty()
+                && QFileInfo(d->cleanupPathAfterSave).absoluteFilePath()
+                    != QFileInfo(savedPath).absoluteFilePath()) {
+            QFile source(d->cleanupPathAfterSave);
+            if (source.exists() && !source.remove()) {
+                qWarning() << "Saved destination, but could not remove old source:"
+                           << d->cleanupPathAfterSave << source.errorString();
+            }
+            if (d->cleanupBackupAfterSave) {
+                QFile::remove(d->backupFilePath(d->cleanupPathAfterSave));
+                // Clean up backups created by older ThothPad builds as well.
+                QFile::remove(d->cleanupPathAfterSave + QStringLiteral(".backup"));
+            }
+        }
+
+        d->cleanupPathAfterSave.clear();
+        d->cleanupBackupAfterSave = false;
+        d->rollbackPathOnFailure = false;
+        d->rollbackPath.clear();
+        d->pendingSaveRevision = -1;
+
+        // Session history should describe only destinations that really exist
+        // on disk. A failed asynchronous save must never create a phantom
+        // recent-file entry.
+        if (d->restoreSessionEnabled) {
+            Bookmark location(savedPath, d->editor->textCursor().position());
+            if (location.isValid()) {
+                Library().updateLastOpened(location);
+                emit d->q_ptr->sessionHistoryChanged();
+            }
         }
     });
 
     connect(d->writer, &AsyncTextWriter::writeError, [d](const QString &err) {
-        if (!err.isNull() && !err.isEmpty()) {
-            MessageBoxHelper::critical(d->editor, DocumentManager::tr("Error saving %1").arg(d->document->filePath()), err);
+        const QString failedPath = d->writer->fileName();
+        d->saveInProgress = false;
+        d->pendingSaveRevision = -1;
+        d->cleanupPathAfterSave.clear();
+        d->cleanupBackupAfterSave = false;
+
+        // A Save As/rename/draft creation that failed asynchronously must not
+        // strand the document on a destination that was never successfully
+        // created. Restore the previous identity before surfacing the error.
+        if (d->rollbackPathOnFailure) {
+            const QString path = d->rollbackPath;
+            d->rollbackPathOnFailure = false;
+            d->rollbackPath.clear();
+            d->setFilePath(path);
         }
 
-        d->saveInProgress = false;
+        // Failure is never a clean state. This is deliberately explicit even
+        // if QTextDocument already considers itself modified, because autosave
+        // mode suppresses the normal modificationChanged presentation signal.
+        d->document->setModified(true);
+        emit d->q_ptr->documentModifiedChanged(true);
+
+        if (!err.isNull() && !err.isEmpty()) {
+            MessageBoxHelper::critical(
+                d->editor,
+                DocumentManager::tr("Error saving %1").arg(failedPath),
+                err
+            );
+        }
     });
 
     // Set up auto-save timer to save the file once every minute.
@@ -231,7 +281,7 @@ DocumentManager::DocumentManager
             }
 
             if (modified
-                    && d->autoSaveEnabled 
+                    && d->autoSaveEnabled
                     && d->document->isNew()
                     && (!d->document->isEmpty())) {
                 d->createDraft();
@@ -252,51 +302,65 @@ DocumentManager::~DocumentManager()
 MarkdownDocument *DocumentManager::document() const
 {
     Q_D(const DocumentManager);
-    
+
     return d->document;
 }
 
 bool DocumentManager::autoSaveEnabled() const
 {
     Q_D(const DocumentManager);
-    
+
     return d->autoSaveEnabled;
 }
 
 void DocumentManager::setAutoSaveEnabled(bool enabled)
 {
     Q_D(DocumentManager);
-    
+
+    if (d->autoSaveEnabled == enabled) {
+        return;
+    }
+
     d->autoSaveEnabled = enabled;
 
     if (enabled) {
-        if (d->document->isNew()
-            && (!d->document->isEmpty())
-            && d->document->isModified()) {
-            d->createDraft();
+        if (d->document->isModified()) {
+            if (d->document->isNew() && !d->document->isEmpty()) {
+                d->createDraft();
+            } else if (!d->document->isNew() && !d->document->isReadOnly()) {
+                // Enabling autosave on an already-dirty named document should
+                // make good on that promise immediately rather than hiding the
+                // dirty indicator until the next one-minute timer tick.
+                d->autoSaveFile();
+            } else {
+                emit documentModifiedChanged(true);
+            }
+        } else {
+            emit documentModifiedChanged(false);
         }
-
-        emit documentModifiedChanged(false);
-    } else if (d->document->isModified()) {
-        d->document->setModified(false);
+    } else {
+        // Disabling autosave must never clear unsaved work. The historical
+        // implementation called setModified(false) here, which could make a
+        // failed/unsaved document appear safe to close.
+        emit documentModifiedChanged(d->document->isModified());
     }
 }
 
 bool DocumentManager::fileBackupEnabled() const
 {
     Q_D(const DocumentManager);
-    
+
     return d->createBackupOnSave;
 }
 
 void DocumentManager::setFileBackupEnabled(bool enabled)
 {
     Q_D(DocumentManager);
-    
+
     d->createBackupOnSave = enabled;
 }
 
-void DocumentManager::setDraftLocation(const QString &directory) 
+void DocumentManager::setDraftLocation(const QString &directory)
 {
     Q_D(DocumentManager);
 
@@ -329,7 +393,7 @@ void DocumentManager::setBackupLocation(const QString &directory)
 void DocumentManager::setFileHistoryEnabled(bool enabled)
 {
     Q_D(DocumentManager);
-    
+
     d->fileHistoryEnabled = enabled;
 }
 
@@ -343,7 +407,7 @@ void DocumentManager::setRestoreSessionEnabled(bool enabled)
 void DocumentManager::open()
 {
     Q_D(DocumentManager);
-    
+
     if (d->checkSaveChanges()) {
         QString startingDirectory = QString();
 
@@ -354,7 +418,6 @@ void DocumentManager::open()
         QString path = QFileDialog::getOpenFileName(d->editor, tr("Open File"), startingDirectory, DocumentManagerPrivate::FILE_CHOOSER_FILTER);
 
         if (!path.isEmpty()) {
-            // See if cursor position is stored in recent file history.
             Library library;
             Bookmark location = library.lookup(path);
 
@@ -375,19 +438,17 @@ void DocumentManager::openFileAt(const Bookmark &location, bool omitFromHistory)
         if (location.isValid()) {
             if (!location.isReadable()) {
                 MessageBoxHelper::critical(d->editor, tr("Could not open %1").arg(location.filePath()), tr("Permission denied."));
-
                 return;
             }
 
             QString oldFilePath = d->document->filePath();
             int oldCursorPosition = d->editor->textCursor().position();
 
-            close();
+            if (!close()) {
+                return;
+            }
 
             if (!d->loadFile(location)) {
-                // The error dialog should already have been displayed
-                // in loadFile().
-                //
                 return;
             } else if (oldFilePath == d->document->filePath()) {
                 d->editor->navigateDocument(oldCursorPosition);
@@ -405,7 +466,9 @@ void DocumentManager::createUntitled()
 {
     Q_D(DocumentManager);
 
-    close();
+    if (!close()) {
+        return;
+    }
 
     if (d->restoreSessionEnabled) {
         Library().setLastOpened(Library::UNTITLED);
@@ -419,10 +482,13 @@ void DocumentManager::createUntitled()
 void DocumentManager::reload()
 {
     Q_D(DocumentManager);
-    
+
+    if (d->writer->writeInProgress() && !d->writer->waitForFinished()) {
+        return;
+    }
+
     if (!d->document->isNew()) {
         if (d->document->isModified()) {
-            // Prompt user if he wants to save changes.
             int response =
                 MessageBoxHelper::question
                 (
@@ -441,11 +507,9 @@ void DocumentManager::reload()
         QString filePath = d->document->filePath();
         int pos = d->editor->textCursor().position();
 
-        close();
-
         if (d->loadFile(filePath)) {
             QTextCursor cursor = d->editor->textCursor();
-            cursor.setPosition(pos);
+            cursor.setPosition(qMin(pos, d->document->characterCount() - 1));
             d->editor->setTextCursor(cursor);
         }
     }
@@ -454,48 +518,46 @@ void DocumentManager::reload()
 void DocumentManager::rename()
 {
     Q_D(DocumentManager);
-    
+
     if (d->document->isNew()) {
         saveAs();
-    } else {
-        QString filePath = QFileDialog::getSaveFileName(d->editor,
-                                                        tr("Rename File"),
-                                                        QFileInfo(d->document->filePath()).absoluteDir().absolutePath(),
-                                                        DocumentManagerPrivate::FILE_CHOOSER_FILTER);
+        return;
+    }
 
-        if (!filePath.isNull() && !filePath.isEmpty()) {
-            bool success;
-            QFile file(d->document->filePath());
-            QFile destFile(filePath);
+    if (d->writer->writeInProgress()) {
+        d->writer->waitForFinished();
+    }
 
-            if (destFile.exists()) {
-                success = destFile.remove();
+    const QString oldFilePath = d->document->filePath();
+    const QString filePath = QFileDialog::getSaveFileName(
+        d->editor,
+        tr("Rename File"),
+        QFileInfo(oldFilePath).absoluteDir().absolutePath(),
+        DocumentManagerPrivate::FILE_CHOOSER_FILTER
+    );
 
-                if (!success) {
-                    MessageBoxHelper::critical(d->editor, tr("Failed to rename %1").arg(d->document->filePath()), file.errorString());
-                    return;
-                }
-            }
+    if (filePath.isNull() || filePath.isEmpty()) {
+        return;
+    }
 
-            success = file.rename(filePath);
+    if (QFileInfo(filePath).absoluteFilePath() == QFileInfo(oldFilePath).absoluteFilePath()) {
+        return;
+    }
 
-            if (!success) {
-                MessageBoxHelper::critical(d->editor, tr("Failed to rename %1").arg(d->document->filePath()), file.errorString());
-                return;
-            }
+    // Implement rename as destination commit followed by source removal.
+    // This preserves both files if the write fails and also avoids deleting an
+    // existing destination before we know the replacement is safe.
+    d->rollbackPathOnFailure = true;
+    d->rollbackPath = oldFilePath;
+    d->cleanupPathAfterSave = oldFilePath;
+    d->cleanupBackupAfterSave = false;
+    d->setFilePath(filePath);
 
-            d->setFilePath(filePath);
-
-            if (d->restoreSessionEnabled) {
-                Library().updateLastOpened(Bookmark(filePath, d->editor->textCursor().position()));
-
-                if (d->fileHistoryEnabled) {
-                    emit sessionHistoryChanged();
-                }
-            }
-
-            save();
-        }
+    if (!d->saveFile()) {
+        d->setFilePath(oldFilePath);
+        d->rollbackPathOnFailure = false;
+        d->rollbackPath.clear();
+        d->cleanupPathAfterSave.clear();
     }
 }
 
@@ -505,113 +567,108 @@ bool DocumentManager::saveFile()
 
     if (d->documentIsDraft()) {
         return saveAs();
-    } else {
-        return save();
     }
+    return save();
 }
 
 bool DocumentManager::save()
 {
     Q_D(DocumentManager);
-    
+
     if (d->document->isNew() || !d->checkPermissionsBeforeSave()) {
         return saveAs();
-    } else {
-        d->saveFile();
-        return true;
     }
+
+    d->rollbackPathOnFailure = false;
+    d->rollbackPath.clear();
+    d->cleanupPathAfterSave.clear();
+    d->cleanupBackupAfterSave = false;
+    return d->saveFile();
 }
 
 bool DocumentManager::saveAs()
 {
     Q_D(DocumentManager);
-    
-    QString startingDirectory = QString();
 
+    if (d->writer->writeInProgress()) {
+        d->writer->waitForFinished();
+    }
+
+    QString startingDirectory = QString();
     if (!d->document->isNew()) {
         startingDirectory = QFileInfo(d->document->filePath()).dir().path();
     }
 
-    QString filePath = QFileDialog::getSaveFileName(d->editor, tr("Save File"), startingDirectory, DocumentManagerPrivate::FILE_CHOOSER_FILTER);
+    const QString filePath = QFileDialog::getSaveFileName(
+        d->editor,
+        tr("Save File"),
+        startingDirectory,
+        DocumentManagerPrivate::FILE_CHOOSER_FILTER
+    );
 
-    if (!filePath.isNull() && !filePath.isEmpty()) {
-        if (d->documentIsDraft()) {
-            QFile draftFile(d->document->filePath());
-            draftFile.remove();
-
-            QString backupFilePath = d->document->filePath() + ".backup";
-            QFile backupFile(backupFilePath);
-
-            if (backupFile.exists()) {
-                backupFile.remove();
-            }
-        }
-
-        d->setFilePath(filePath);
-        d->saveFile();
-
-        if (d->restoreSessionEnabled) {
-            Library().updateLastOpened(Bookmark(filePath, d->editor->textCursor().position()));
-
-            emit sessionHistoryChanged();
-        }
-
-        return true;
+    if (filePath.isNull() || filePath.isEmpty()) {
+        return false;
     }
 
-    return false;
+    const QString previousPath = d->document->filePath();
+    const bool wasDraft = d->documentIsDraft();
+
+    d->rollbackPathOnFailure = true;
+    d->rollbackPath = previousPath;
+    d->cleanupPathAfterSave = wasDraft ? previousPath : QString();
+    d->cleanupBackupAfterSave = wasDraft;
+    d->setFilePath(filePath);
+
+    if (!d->saveFile()) {
+        d->setFilePath(previousPath);
+        d->rollbackPathOnFailure = false;
+        d->rollbackPath.clear();
+        d->cleanupPathAfterSave.clear();
+        d->cleanupBackupAfterSave = false;
+        return false;
+    }
+
+    return true;
 }
 
 bool DocumentManager::close()
 {
     Q_D(DocumentManager);
-    
-    if (d->checkSaveChanges()) {
-        if (d->writer->writeInProgress()) {
-            d->writer->waitForFinished();
-        }
 
-        if (d->restoreSessionEnabled && !d->document->isNew()) {
-            Bookmark location(d->document->filePath(), d->editor->textCursor().position());
-            Library().updateLastOpened(location);
-            emit sessionHistoryChanged();
-        }
-
-        // Set up a new, untitled document.  Note that the document
-        // needs to be wiped clean before emitting the documentClosed()
-        // signal, because slots accepting this signal may check the
-        // new (replacement) document's status.
-        //
-        // NOTE: Must set editor's text cursor to the beginning
-        // of the document before clearing the document/editor
-        // of text to prevent a crash in Qt 5.10 on opening or
-        // reloading a file if a file has already been previously
-        // opened in the editor.
-        //
-        QTextCursor cursor(d->document);
-        cursor.setPosition(0);
-        d->editor->setTextCursor(cursor);
-
-        d->document->clear();
-        d->document->clearUndoRedoStacks();
-
-        d->editor->setReadOnly(false);
-        d->document->setReadOnly(false);
-        d->setFilePath(QString());
-        d->document->setModified(false);
-
-        emit documentClosed();
-
-        return true;
+    if (!d->checkSaveChanges()) {
+        return false;
     }
 
-    return false;
+    if (d->writer->writeInProgress() && !d->writer->waitForFinished()) {
+        return false;
+    }
+
+    if (d->restoreSessionEnabled && !d->document->isNew()) {
+        Bookmark location(d->document->filePath(), d->editor->textCursor().position());
+        Library().updateLastOpened(location);
+        emit sessionHistoryChanged();
+    }
+
+    QTextCursor cursor(d->document);
+    cursor.setPosition(0);
+    d->editor->setTextCursor(cursor);
+
+    d->document->clear();
+    d->document->clearUndoRedoStacks();
+
+    d->editor->setReadOnly(false);
+    d->document->setReadOnly(false);
+    d->setFilePath(QString());
+    d->document->setModified(false);
+
+    emit documentClosed();
+    return true;
 }
 
 void DocumentManager::exportFile()
 {
     Q_D(DocumentManager);
-    
+
     ExportDialog exportDialog(d->document);
 
     connect(&exportDialog, SIGNAL(exportStarted(QString)), this, SIGNAL(operationStarted(QString)));
@@ -628,30 +685,24 @@ void DocumentManagerPrivate::onFileChangedExternally(const QString &path)
 
     if (!fileInfo.exists()) {
         emit q->documentModifiedChanged(true);
-
-        // Make sure autosave knows the document is modified so it can
-        // save it.
-        //
         document->setModified(true);
     } else {
         if (fileInfo.isWritable() && document->isReadOnly()) {
             document->setReadOnly(false);
+            editor->setReadOnly(false);
 
             if (autoSaveEnabled) {
                 emit q->documentModifiedChanged(false);
             }
         } else if (!fileInfo.isWritable() && !document->isReadOnly()) {
             document->setReadOnly(true);
+            editor->setReadOnly(true);
 
             if (document->isModified()) {
                 emit q->documentModifiedChanged(true);
             }
         }
 
-        // Need to guard against the QFileSystemWatcher from signalling a
-        // file change when we're the one who changed the file by saving.
-        // Thus, check the saveInProgress flag before prompting.
-        //
         if
         (
             !saveInProgress &&
@@ -679,40 +730,42 @@ void DocumentManagerPrivate::onFileChangedExternally(const QString &path)
     }
 }
 
-void DocumentManagerPrivate::saveFile()
+bool DocumentManagerPrivate::saveFile()
 {
-    Q_Q(DocumentManager);
-
-    if (restoreSessionEnabled) {
-        Bookmark location(document->filePath(), editor->textCursor().position());
-
-        if (location.isValid()) {
-            Library().updateLastOpened(location);
-            emit q->sessionHistoryChanged();
-        }
+    // Serialize writer transactions before reusing the single watcher. This
+    // also guarantees that path/revision bookkeeping from the prior save has
+    // been finalized before a new transaction is captured.
+    if (writer->writeInProgress()) {
+        writer->waitForFinished();
     }
 
-    document->setModified(false);
-    emit q->documentModifiedChanged(false);
-    document->setTimestamp(QDateTime::currentDateTime());
+    const QString text = document->toPlainText();
+    pendingSaveRevision = document->revision();
     saveInProgress = true;
 
-    // If backup is enabled, back up the file first.
     if (createBackupOnSave) {
         backupFile(writer->fileName());
     }
 
-    bool status = writer->write(document->toPlainText());
-
-    if (!status) {
+    if (!writer->write(text)) {
+        const QString error = writer->lastError().isEmpty()
+            ? DocumentManager::tr("No file path specified")
+            : writer->lastError();
+        saveInProgress = false;
+        pendingSaveRevision = -1;
+        cleanupPathAfterSave.clear();
+        cleanupBackupAfterSave = false;
+        document->setModified(true);
+        emit q_ptr->documentModifiedChanged(true);
         MessageBoxHelper::critical(
             editor,
             DocumentManager::tr("Error saving %1").arg(writer->fileName()),
-            DocumentManager::tr("No file path specified")
+            error
         );
-
-        saveInProgress = false;
+        return false;
     }
+
+    return true;
 }
 
 bool DocumentManagerPrivate::loadFile(const Bookmark &location)
@@ -723,16 +776,9 @@ bool DocumentManagerPrivate::loadFile(const Bookmark &location)
 
     if (!inputFile.open(QIODevice::ReadOnly)) {
         MessageBoxHelper::critical(editor, DocumentManager::tr("Could not read %1").arg(location.filePath()), inputFile.errorString());
-
         return false;
     }
 
-    // NOTE: Must set editor's text cursor to the beginning
-    // of the document before clearing the document/editor
-    // of text to prevent a crash in Qt 5.10 on opening or
-    // reloading a file if a file has already been previously
-    // opened in the editor.
-    //
     QTextCursor cursor(document);
     cursor.setPosition(0);
     editor->setTextCursor(cursor);
@@ -745,10 +791,6 @@ bool DocumentManagerPrivate::loadFile(const Bookmark &location)
     emit q->operationStarted(DocumentManager::tr("opening %1").arg(location.filePath()));
     QTextStream inStream(&inputFile);
 
-    // Markdown files need to be in UTF-8 format, so assume that is
-    // what the user is opening by default.  Enable autodetection
-    // of of UTF-16 or UTF-32 BOM in case the file isn't UTF-8 encoded.
-    //
     inStream.setEncoding(QStringConverter::Utf8);
     inStream.setAutoDetectUnicode(true);
 
@@ -756,8 +798,10 @@ bool DocumentManagerPrivate::loadFile(const Bookmark &location)
 
     if (QFile::NoError != inputFile.error()) {
         MessageBoxHelper::critical(editor, DocumentManager::tr("Could not read %1").arg(location.filePath()), inputFile.errorString());
-
         inputFile.close();
+        document->setUndoRedoEnabled(true);
+        QApplication::restoreOverrideCursor();
+        emit q->operationFinished();
         return false;
     }
 
@@ -778,10 +822,14 @@ bool DocumentManagerPrivate::loadFile(const Bookmark &location)
     document->setTimestamp(QFileInfo(location.filePath()).lastModified());
 
     for (QString watchedFile : fileWatcher->files()) {
-        fileWatcher->removePath(watchedFile);
+        if (watchedFile != location.filePath()) {
+            fileWatcher->removePath(watchedFile);
+        }
     }
 
-    fileWatcher->addPath(location.filePath());
+    if (!fileWatcher->files().contains(location.filePath())) {
+        fileWatcher->addPath(location.filePath());
+    }
     emit q->operationFinished();
     emit q->documentModifiedChanged(false);
     QApplication::restoreOverrideCursor();
@@ -807,12 +855,19 @@ void DocumentManagerPrivate::setFilePath(const QString &filePath)
         QFileInfo fileInfo(filePath);
 
         if (fileInfo.exists()) {
-            document->setReadOnly(!fileInfo.isWritable());
+            const bool readOnly = !fileInfo.isWritable();
+            document->setReadOnly(readOnly);
+            editor->setReadOnly(readOnly);
+            if (!fileWatcher->files().contains(filePath)) {
+                fileWatcher->addPath(filePath);
+            }
         } else {
             document->setReadOnly(false);
+            editor->setReadOnly(false);
         }
     } else {
         document->setReadOnly(false);
+        editor->setReadOnly(false);
     }
 
     emit q->documentDisplayNameChanged(document->displayName());
@@ -822,128 +877,139 @@ bool DocumentManagerPrivate::checkSaveChanges()
 {
     Q_Q(DocumentManager);
 
-    if (document->isModified()) {
-        if (autoSaveEnabled && !document->isNew() && !document->isReadOnly()) {
-            return q->save();
-        } else {
-            // Prompt user if he wants to save changes.
-            QString text;
-
-            if (document->isNew()) {
-                text = DocumentManager::tr("File has been modified.");
-            } else {
-                text = (DocumentManager::tr("%1 has been modified.")
-                        .arg(document->displayName()));
-            }
-
-            int response =
-                MessageBoxHelper::question
-                (
-                    editor,
-                    text,
-                    DocumentManager::tr("Would you like to save your changes?"),
-                    QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel,
-                    QMessageBox::Save
-                );
-
-            switch (response) {
-            case QMessageBox::Save:
-                if (document->isNew()) {
-                    return q->saveAs();
-                } else {
-                    return q->save();
-                }
-                break;
-            case QMessageBox::Cancel:
-                return false;
-            default:
-                break;
-            }
-        }
+    // A destructive operation must observe the result of any save already in
+    // flight. If it failed, abort this operation; the error handler restores
+    // the dirty state and any path rollback before control returns here.
+    if (writer->writeInProgress() && !writer->waitForFinished()) {
+        return false;
     }
 
-    return true;
+    if (!document->isModified()) {
+        return true;
+    }
+
+    auto saveAndConfirm = [this, q]() -> bool {
+        const bool started = document->isNew() ? q->saveAs() : q->save();
+        if (!started) {
+            return false;
+        }
+        if (writer->writeInProgress() && !writer->waitForFinished()) {
+            return false;
+        }
+        return writer->lastError().isEmpty() && !document->isModified();
+    };
+
+    if (autoSaveEnabled && !document->isNew() && !document->isReadOnly()) {
+        return saveAndConfirm();
+    }
+
+    QString text;
+    if (document->isNew()) {
+        text = DocumentManager::tr("File has been modified.");
+    } else {
+        text = DocumentManager::tr("%1 has been modified.")
+            .arg(document->displayName());
+    }
+
+    int response =
+        MessageBoxHelper::question
+        (
+            editor,
+            text,
+            DocumentManager::tr("Would you like to save your changes?"),
+            QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel,
+            QMessageBox::Save
+        );
+
+    switch (response) {
+    case QMessageBox::Save:
+        return saveAndConfirm();
+    case QMessageBox::Cancel:
+        return false;
+    default:
+        return true;
+    }
 }
 
 bool DocumentManagerPrivate::checkPermissionsBeforeSave()
 {
-    if (document->isReadOnly()) {
-        int response =
-            MessageBoxHelper::question
-            (
-                editor,
-                DocumentManager::tr("%1 is read only.").arg(document->filePath()),
-                DocumentManager::tr("Overwrite protected file?"),
-                QMessageBox::Yes | QMessageBox::No,
-                QMessageBox::Yes
-            );
-
-        if (QMessageBox::No == response) {
-            return false;
-        } else {
-            QFile file(document->filePath());
-            fileWatcher->removePath(document->filePath());
-
-            if (!file.remove()) {
-                if (file.setPermissions(QFile::WriteUser | QFile::ReadUser) && file.remove()) {
-                    document->setReadOnly(false);
-                    return true;
-                } else {
-                    MessageBoxHelper::critical
-                    (
-                        editor,
-                        DocumentManager::tr("Overwrite failed."),
-                        DocumentManager::tr("Please save file to another location.")
-                    );
-
-                    fileWatcher->addPath(document->filePath());
-                    return false;
-                }
-            } else {
-                document->setReadOnly(false);
-            }
-        }
+    if (!document->isReadOnly()) {
+        return true;
     }
 
-    return true;
+    int response =
+        MessageBoxHelper::question
+        (
+            editor,
+            DocumentManager::tr("%1 is read only.").arg(document->filePath()),
+            DocumentManager::tr("Overwrite protected file?"),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::Yes
+        );
+
+    // Never delete the protected original as a precondition for saving. The
+    // atomic writer gets one chance to replace it safely; if the filesystem
+    // refuses, the original remains intact and writeError keeps the editor
+    // dirty. Choosing No falls back to Save As via DocumentManager::save().
+    return QMessageBox::Yes == response;
+}
+
+QString DocumentManagerPrivate::backupFilePath(const QString &filePath) const
+{
+    QFileInfo fileInfo(filePath);
+    QString identity = fileInfo.canonicalFilePath();
+    if (identity.isEmpty()) {
+        identity = QDir::cleanPath(fileInfo.absoluteFilePath());
+    }
+#ifdef Q_OS_WIN32
+    identity = identity.toCaseFolded();
+#endif
+    const QByteArray digest = QCryptographicHash::hash(
+        identity.toUtf8(), QCryptographicHash::Sha256
+    ).toHex().left(12);
+
+    return backupLocation
+        + QDir::separator()
+        + fileInfo.fileName()
+        + QStringLiteral("--")
+        + QString::fromLatin1(digest)
+        + QStringLiteral(".backup");
 }
 
 void DocumentManagerPrivate::backupFile(const QString &filePath) const
 {
-    QFile f(filePath);
-    QFileInfo fileInfo(f.fileName());
-    QString fileName(fileInfo.fileName());
-
-    QString backupFilePath = backupLocation + QDir::separator() + fileName + ".backup";
+    QFile source(filePath);
+    if (!source.exists()) {
+        return;
+    }
 
     QDir backupDir(backupLocation);
-
-    if (!backupDir.exists()) {
-        if (!backupDir.mkpath(backupLocation)) {
-            MessageBoxHelper::critical(editor,
-                                       DocumentManager::tr("File backup failed"),
-                                       DocumentManager::tr("Error creating backup location: %1").arg(backupLocation));
-            return;
-        }
+    if (!backupDir.exists() && !backupDir.mkpath(backupLocation)) {
+        MessageBoxHelper::critical(
+            editor,
+            DocumentManager::tr("File backup failed"),
+            DocumentManager::tr("Error creating backup location: %1").arg(backupLocation)
+        );
+        return;
     }
 
-    QFile backupFile(backupFilePath);
-
-    if (backupFile.exists()) {
-        if (!backupFile.remove()) {
-            MessageBoxHelper::critical(editor, DocumentManager::tr("File backup failed: Could not replace %1").arg(backupFilePath), backupFile.errorString());
-            return;
-        }
+    const QString targetPath = backupFilePath(filePath);
+    QFile target(targetPath);
+    if (target.exists() && !target.remove()) {
+        MessageBoxHelper::critical(
+            editor,
+            DocumentManager::tr("File backup failed: Could not replace %1").arg(targetPath),
+            target.errorString()
+        );
+        return;
     }
 
-    QFile file(filePath);
-
-    if (file.exists()) {
-        if (!file.copy(backupFilePath)) {
-            MessageBoxHelper::critical(editor,
-                                       DocumentManager::tr("File backup failed: Could not copy %1 to %2").arg(filePath).arg(backupFilePath),
-                                       file.errorString());
-        }
+    if (!source.copy(targetPath)) {
+        MessageBoxHelper::critical(
+            editor,
+            DocumentManager::tr("File backup failed: Could not copy %1 to %2").arg(filePath).arg(targetPath),
+            source.errorString()
+        );
     }
 }
 
@@ -970,19 +1036,24 @@ bool DocumentManagerPrivate::documentIsDraft()
 
 void DocumentManagerPrivate::createDraft()
 {
-    if (document->isNew()) {
-        int i = 1;
-        QString draftPath;
-
-        // Make sure draft file name is unique.
-        do {
-            draftPath = draftLocation + "/" + draftName + "-" + QString::number(i) + ".md";
-            i++;
-        } while (QFileInfo(draftPath).exists());
-
-        setFilePath(draftPath);
-        saveFile();
+    if (!document->isNew()) {
+        return;
     }
+
+    int i = 1;
+    QString draftPath;
+    do {
+        draftPath = draftLocation + QDir::separator()
+            + draftName + "-" + QString::number(i) + ".md";
+        i++;
+    } while (QFileInfo(draftPath).exists());
+
+    rollbackPathOnFailure = true;
+    rollbackPath = QString();
+    cleanupPathAfterSave.clear();
+    cleanupBackupAfterSave = false;
+    setFilePath(draftPath);
+    saveFile();
 }
 
 }
