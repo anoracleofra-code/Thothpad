@@ -947,9 +947,35 @@ class AnalysisStore:
 
     @staticmethod
     def _diagnostic_from_row(row: sqlite3.Row) -> dict[str, Any]:
-        legacy = json.loads(row["payload_json"])
-        if legacy:
-            return legacy
+        # payload_json served two different purposes across schema versions:
+        # old caches stored the *entire* diagnostic there, while current rows
+        # store only supplemental metadata such as repetition-related spans.
+        # Truthiness cannot distinguish those formats: an extras-only payload
+        # is truthy and used to replace the canonical finding entirely.
+        try:
+            payload = json.loads(row["payload_json"])
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+
+        # Preserve compatibility with pre-structured cache rows. A historical
+        # full diagnostic has its own range and identifying fields; a modern
+        # supplemental payload deliberately does not.
+        if (
+            "start_utf16" in payload
+            and "end_utf16" in payload
+            and ("analyzer" in payload or "type" in payload or "rule_id" in payload)
+        ):
+            return payload
+
+        try:
+            replacements = json.loads(row["replacements_json"])
+        except (TypeError, ValueError, json.JSONDecodeError):
+            replacements = []
+        if not isinstance(replacements, list):
+            replacements = []
+
         value: dict[str, Any] = {
             "id": row["diagnostic_id"],
             "analyzer": row["analyzer"],
@@ -964,9 +990,26 @@ class AnalysisStore:
             "explanation": row["explanation"],
             "confidence": float(row["confidence"]),
             "source": row["source"],
-            "replacements": json.loads(row["replacements_json"]),
+            "replacements": replacements,
             "revision": row["revision"],
         }
+
+        raw_extra = payload.get("extra_spans_utf16", [])
+        extra_spans: list[list[int]] = []
+        if isinstance(raw_extra, list):
+            for span in raw_extra:
+                if (
+                    isinstance(span, list)
+                    and len(span) == 2
+                    and all(
+                        isinstance(item, int) and not isinstance(item, bool)
+                        for item in span
+                    )
+                    and 0 <= span[0] < span[1]
+                ):
+                    extra_spans.append([span[0], span[1]])
+        if extra_spans:
+            value["extra_spans_utf16"] = extra_spans
         return value
 
     def dispose_analysis(self, analysis_id: Any) -> bool:
