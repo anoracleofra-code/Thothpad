@@ -1,0 +1,30 @@
+Files: sc-apps-thothpad.svg
+       16-apps-thothpad.png
+       22-apps-thothpad.png
+       32-apps-thothpad.png
+       64-apps-thothpad.png
+       128-apps-thothpad.png
+       256-apps-thothpad.png
+       512-apps-thothpad.png
+       1024-apps-thothpad.png
+Copyright: 2026 ThothPad contributors
+License: GPL-3.0-or-later
+
+Files: sc-apps-ghostwriter.svg
+       16-apps-ghostwriter.png
+       22-apps-ghostwriter.png
+       32-apps-ghostwriter.png
+       64-apps-ghostwriter.png
+       128-apps-ghostwriter.png
+       256-apps-ghostwriter.png
+Author: Megan Conkle
+License: CC BY-SA 4.0
+  Creative Commons Attribution 4.0 Share-Alike License
+
+  This work is licensed under the Creative Commons Attribution-Share Alike 4.0
+  International License. To view a copy of this license, visit
+  <http://creativecommons.org/licenses/by-sa/4.0/> or send a letter to Creative
+  Commons, PO Box 1866, Mountain View, CA 94042, USA.
+
+  When attributing the artwork, using "Megan Conkle" is enough. Please link to
+  http://github.com/wereturtle/ghostwriter where available.

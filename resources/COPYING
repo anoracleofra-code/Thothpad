@@ -1,0 +1,16 @@
+Files: windows/thothpad.ico, mac/thothpad.icns
+Copyright: 2026 ThothPad contributors
+License: GPL-3.0-or-later
+
+Files: linux/icons/*, windows/ghostwriter.ico, mac/ghostwriter.icns
+Author: wereturtle
+License: CC BY-SA 4.0
+  Creative Commons Attribution 4.0 Share-Alike License
+
+  This work is licenced under the Creative Commons Attribution-Share Alike 4.0
+  International License. To view a copy of this licence, visit
+  <http://creativecommons.org/licenses/by-sa/4.0/> or send a letter to Creative
+  Commons, PO Box 1866, Mountain View, CA 94042, USA.
+
+  When attributing the artwork, using "Megan Conkle" is enough. Please link to
+  http://github.com/wereturtle/ghostwriter where available.

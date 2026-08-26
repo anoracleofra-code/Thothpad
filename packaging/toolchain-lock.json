@@ -1,0 +1,112 @@
+{
+  "schema_version": 2,
+  "python": {
+    "version": "3.11.9",
+    "uv_version": "0.12.3",
+    "runtime_sha256": {
+      "windows": "5f7b89a612c9b8af1d6456cdfcd1dbe5ca630849e79aebced9bee9a6694952ec"
+    }
+  },
+  "rust": {"toolchain": "1.95.0"},
+  "craft": {
+    "core_commit": "a7c3f639b3a84d2033c76857ad151e34df6133c9",
+    "blueprints_commit": "11733951cb1c163d4bf338f7b0ecce184c98664d"
+  },
+  "windows": {
+    "cmake": {
+      "version": "4.3.2",
+      "sha256": "68e7f0485e20b4ace2d2423b169911502564a86079b83ed09c2fd92450bab810"
+    },
+    "ninja": {
+      "version": "1.13.0.git.kitware.jobserver-pipe-1",
+      "sha256": "cb4590bad18f01607e819908d536fba71afbe36eb0f1d5a13c60d88d635ca959"
+    },
+    "compiler": {
+      "id": "MSVC",
+      "version": "19.44.35225.0",
+      "toolset": "v143",
+      "directory_version": "14.44.35207",
+      "sha256": "824f0234b667847befd7e3ff258822bfe557b540959ff042caaec6844b709a11"
+    },
+    "qt": {
+      "version": "6.11.1",
+      "source_commit": "bfde7b892add48396756dc44a3e3fa03d98c5710",
+      "files": {
+        "bin/qtpaths6.exe": "4509973a4278a6061c08fe2417750cb36b5d64ff3e3da2be3485457fee77f736",
+        "bin/Qt6Core.dll": "e993effa0d613a752848027562ccbe70e970d2eaff74aa9dfdbae73bdb939840",
+        "bin/windeployqt.exe": "8b9292262e67a694ba0811c64a204ef132b0ccf89b1ee4910cee5bf9495896d3",
+        "lib/cmake/Qt6Core/Qt6CoreConfigVersionImpl.cmake": "ddb4c3f2ee1c8d355daba786eb8ea82f01ab879caed8f5cddf1355bb46f780ae"
+      }
+    },
+    "kf": {
+      "version": "6.28.0",
+      "source_commit": "d53d3c756db6832893b6af6eeef6cc10982cc9d6",
+      "files": {
+        "lib/cmake/KF6CoreAddons/KF6CoreAddonsConfigVersion.cmake": "de61b71e4ea945a9f6e1624ec1af7d8127bd96616a07ad5dd2a9127d3c69783a"
+      }
+    },
+    "nsis": {
+      "version": "3.09",
+      "files": {
+        "dev-utils/bin/makensis.exe": "6501109df3ed602e634fb79a059f13da5ba5043dbd7a5540d89f1f0e71e2f48b"
+      }
+    }
+  },
+  "linux": {
+    "cmake": {"version": "4.3.2"},
+    "ninja": {"version": "1.13.0.git.kitware.jobserver-pipe-1"},
+    "compiler": {"id": "GNU", "version": "14.2.0"},
+    "qt": {
+      "version": "6.10.0",
+      "source_commit": "077347cc6d198053fb61cc0841c5c0c60a7deeb1",
+      "files": {
+        "lib/cmake/Qt6Core/Qt6CoreConfigVersionImpl.cmake": "629f42d3763123230aaf259487daa3dc94821a1e9327239912f79bdfd9f9c4cd"
+      }
+    },
+    "kf": {
+      "version": "6.10.0",
+      "source_commit": "c569f974dab24b4784ad186a3db4b76b2fa36612",
+      "files": {
+        "lib/cmake/KF6CoreAddons/KF6CoreAddonsConfigVersion.cmake": "629f42d3763123230aaf259487daa3dc94821a1e9327239912f79bdfd9f9c4cd"
+      }
+    },
+    "linuxdeploy": {
+      "tag": "1-alpha-20251107-1",
+      "commit": "cc7b86472c3caa3fd729b9dc502fd2aa78394257",
+      "url": "https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage",
+      "sha256": "c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d"
+    },
+    "linuxdeploy_qt": {
+      "tag": "1-alpha-20250213-1",
+      "commit": "ce5291e25979d7d6417551d787f308b88c1b8d76",
+      "url": "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-qt-x86_64.AppImage",
+      "sha256": "15106be885c1c48a021198e7e1e9a48ce9d02a86dd0a1848f00bdbf3c1c92724"
+    },
+    "flatpak": {
+      "runtime": "org.kde.Platform",
+      "runtime_version": "6.10",
+      "runtime_commit_x86_64": "49bc183da466bec44bab4f6f641cab401584d1ee30872b428f46c3b8066527d3"
+    }
+  },
+  "macos": {
+    "cmake": {"version": "4.3.2"},
+    "ninja": {"version": "1.13.0.git.kitware.jobserver-pipe-1"},
+    "compiler": {"id": "AppleClang", "version": "17.0.0"},
+    "qt": {
+      "version": "6.11.1",
+      "source_commit": "bfde7b892add48396756dc44a3e3fa03d98c5710",
+      "files": {
+        "lib/cmake/Qt6Core/Qt6CoreConfigVersionImpl.cmake": "ddb4c3f2ee1c8d355daba786eb8ea82f01ab879caed8f5cddf1355bb46f780ae"
+      }
+    },
+    "kf": {
+      "version": "6.28.0",
+      "source_commit": "d53d3c756db6832893b6af6eeef6cc10982cc9d6",
+      "files": {
+        "lib/cmake/KF6CoreAddons/KF6CoreAddonsConfigVersion.cmake": "de61b71e4ea945a9f6e1624ec1af7d8127bd96616a07ad5dd2a9127d3c69783a"
+      }
+    },
+    "xcode_version": "16.4",
+    "xcode_build": "16F6"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "name": "fiction-gritty",
+  "register_target": "restrained adult literary/noir fiction, physical and unsentimental",
+  "default_mode": "rewrite",
+  "reader_profile": "An adult fiction reader who dislikes YA-style overexplaining and stock emotional gestures.",
+  "scene_anchor": "A close third or first-person scene where objects and action carry the emotion.",
+  "preserve": ["plot facts", "POV", "speaker intent", "sequence of events"],
+  "prefer": ["specific action", "physical objects", "plain verbs", "embodied scene"],
+  "avoid": ["YA overexplaining", "cinematic fog", "body cliches", "abstract reveal endings"],
+  "hard_bans": [],
+  "soft_flags": ["breath caught", "heart pounded", "air was thick", "words hung in the air"],
+  "filter_words": {
+    "enabled": true,
+    "ignore_dialogue": true,
+    "severity": "taste_flag",
+    "custom_severity": "hard_fail",
+    "categories": {
+      "perception": ["saw", "heard", "felt", "noticed", "watched"],
+      "cognitive": ["realized", "knew", "thought", "wondered", "remembered", "decided"],
+      "distancing": ["could see", "could hear", "began to", "started to"],
+      "hedges": ["just", "really", "quite", "rather", "somewhat", "perhaps"],
+      "vague_modifiers": ["very", "somehow", "almost", "slightly", "a little", "a bit"]
+    },
+    "custom": []
+  },
+  "possible_adverbs": {"enabled": true, "ignore_dialogue": true, "confirm_pos": false, "exceptions": []},
+  "possible_adjectives": {"enabled": false, "ignore_dialogue": false, "exceptions": []},
+  "possible_verbs": {"enabled": false, "ignore_dialogue": false, "exceptions": []},
+  "cliches": {"ignore_dialogue": true},
+  "cliche_categories": {
+    "general": true,
+    "genre": true,
+    "self_help": true,
+    "corporate": false,
+    "wordiness": true,
+    "redundancy": true
+  },
+  "external_tools": {"proselint": false},
+  "manuscript": {"use_spacy": false},
+  "analyzer_weights": {
+    "binary_contrast": 1.2,
+    "negative_listing": 1.2,
+    "body_cliches": 1.0,
+    "metaphor_density": 0.8,
+    "cinematic_fog": 1.2,
+    "filter_words": 1.0,
+    "stylometry": 0.45,
+    "cliches": 0.9
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thothpad.org/schemas/benchmark-result-v1.json",
+  "title": "ThothPad benchmark result",
+  "type": "object",
+  "required": ["schema_version", "run_id", "created_utc", "suite", "platform", "hardware", "build", "target", "workload", "metrics"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "created_utc": {"type": "string", "format": "date-time"},
+    "suite": {"enum": ["smoke", "certification"]},
+    "platform": {"enum": ["windows", "macos", "linux"]},
+    "hardware": {
+      "type": "object",
+      "required": ["logical_cpus", "memory_bytes", "machine", "processor"],
+      "properties": {
+        "logical_cpus": {"type": "integer", "minimum": 1},
+        "memory_bytes": {"type": "integer", "minimum": 1},
+        "machine": {"type": "string"},
+        "processor": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "build": {
+      "type": "object",
+      "required": ["git_commit", "dirty", "source_sha256"],
+      "properties": {
+        "git_commit": {"type": "string"},
+        "dirty": {"type": "boolean"},
+        "source_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "target": {
+      "type": "object",
+      "required": ["id", "attested"],
+      "properties": {
+        "id": {"const": "2vcpu-8gb-integrated-ssd"},
+        "attested": {"type": "boolean"}
+      }
+    },
+    "workload": {
+      "type": "object",
+      "required": ["id", "corpus", "word_count", "corpus_sha256"],
+      "properties": {
+        "id": {"type": "string"},
+        "corpus": {"enum": ["clean", "representative", "dialogue", "unicode", "dense", "global"]},
+        "word_count": {"type": "integer", "minimum": 0},
+        "corpus_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["metric", "unit", "status", "collector", "samples"],
+        "properties": {
+          "metric": {"type": "string", "minLength": 1},
+          "unit": {"type": "string", "minLength": 1},
+          "status": {"enum": ["measured", "unavailable", "error"]},
+          "collector": {"type": "string", "minLength": 1},
+          "trial_kind": {"enum": ["warm", "cold", "single"]},
+          "samples": {"type": "array", "items": {"type": "number"}},
+          "notes": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "automatic_failures": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false
+}

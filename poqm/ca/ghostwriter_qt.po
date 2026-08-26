@@ -1,0 +1,1901 @@
+# Translation of ghostwriter_qt.po to Catalan
+# Copyright (C) 2022-2026 This_file_is_part_of_KDE
+# This file is distributed under the license LGPL version 2.1 or
+# version 3 or later versions approved by the membership of KDE e.V.
+#
+# SPDX-FileCopyrightText: 2022, 2023, 2024, 2026 Josep M. Ferrer <txemaq@gmail.com>
+# SPDX-FileCopyrightText: 2022 Antoni Bella Pérez <antonibella5@yahoo.com>
+msgid ""
+msgstr ""
+"Project-Id-Version: ghostwriter\n"
+"PO-Revision-Date: 2026-03-05 11:08+0100\n"
+"Last-Translator: Josep M. Ferrer <txemaq@gmail.com>\n"
+"Language-Team: Catalan <kde-i18n-ca@kde.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Lokalize 25.12.2\n"
+"X-Qt-Contexts: true\n"
+
+#: src/appactions.cpp:74
+msgctxt "ghostwriter::AppActions|"
+msgid "Reopen Last Closed File"
+msgstr "Torna a obrir el darrer fitxer tancat"
+
+#: src/appactions.cpp:74
+msgctxt "ghostwriter::AppActions|"
+msgid "Ctrl+Shift+T"
+msgstr "Ctrl+Maj+T"
+
+#: src/appactions.cpp:87
+msgctxt "ghostwriter::AppActions|"
+msgid "Clear List"
+msgstr "Neteja la llista"
+
+#: src/appactions.cpp:91
+msgctxt "ghostwriter::AppActions|"
+msgid "Reload from Disk..."
+msgstr "Torna a carregar des del disc..."
+
+#: src/appactions.cpp:92
+msgctxt "ghostwriter::AppActions|"
+msgid "Export"
+msgstr "Exporta"
+
+#: src/appactions.cpp:92
+msgctxt "ghostwriter::AppActions|"
+msgid "CTRL+E"
+msgstr "Ctrl+E"
+
+#: src/appactions.cpp:102
+msgctxt "ghostwriter::AppActions|"
+msgid "Copy &HTML"
+msgstr "Copia l'&HTML"
+
+#: src/appactions.cpp:102
+msgctxt "ghostwriter::AppActions|"
+msgid "SHIFT+CTRL+C"
+msgstr "Maj+Ctrl+C"
+
+#: src/appactions.cpp:105
+msgctxt "ghostwriter::AppActions|"
+msgid "&Insert Image..."
+msgstr "&Insereix una imatge..."
+
+#: src/appactions.cpp:114
+msgctxt "ghostwriter::AppActions|"
+msgid "Strong"
+msgstr "Fort"
+
+#: src/appactions.cpp:115
+msgctxt "ghostwriter::AppActions|"
+msgid "Emphasis"
+msgstr "Èmfasi"
+
+#: src/appactions.cpp:116
+msgctxt "ghostwriter::AppActions|"
+msgid "Strikethrough"
+msgstr "Barrat"
+
+#: src/appactions.cpp:116
+msgctxt "ghostwriter::AppActions|"
+msgid "CTRL+K"
+msgstr "Ctrl+K"
+
+#: src/appactions.cpp:117
+msgctxt "ghostwriter::AppActions|"
+msgid "HTML Comment"
+msgstr "Comentari HTML"
+
+#: src/appactions.cpp:117
+msgctxt "ghostwriter::AppActions|"
+msgid "CTRL+/"
+msgstr "Ctrl+/"
+
+#: src/appactions.cpp:118
+msgctxt "ghostwriter::AppActions|"
+msgid "Indent"
+msgstr "Sagna"
+
+#: src/appactions.cpp:118
+msgctxt "ghostwriter::AppActions|"
+msgid "Tab"
+msgstr "Tabulació"
+
+#: src/appactions.cpp:119
+msgctxt "ghostwriter::AppActions|"
+msgid "Unindent"
+msgstr "Sense sagnar"
+
+# skip-rule: kct-tab
+#: src/appactions.cpp:119
+msgctxt "ghostwriter::AppActions|"
+msgid "SHIFT+Tab"
+msgstr "Maj+Tab"
+
+#: src/appactions.cpp:120
+msgctxt "ghostwriter::AppActions|"
+msgid "&Code Fences"
+msgstr "Tanques de &codi"
+
+#: src/appactions.cpp:120
+msgctxt "ghostwriter::AppActions|"
+msgid "CTRL+G"
+msgstr "Ctrl+G"
+
+#: src/appactions.cpp:122
+msgctxt "ghostwriter::AppActions|"
+msgid "Block Quote"
+msgstr "Cita de bloc"
+
+#: src/appactions.cpp:122
+msgctxt "ghostwriter::AppActions|"
+msgid "CTRL+SHIFT+."
+msgstr "Ctrl+Maj+."
+
+#: src/appactions.cpp:123
+msgctxt "ghostwriter::AppActions|"
+msgid "Formats the current line or selected lines as a block quote."
+msgstr ""
+"Dona format a la línia actual o les línies seleccionades com una cita de "
+"bloc."
+
+#: src/appactions.cpp:125
+msgctxt "ghostwriter::AppActions|"
+msgid ""
+"Formats the current line or selected lines as a block quote, or if already a "
+"block quote, as a nested block quote."
+msgstr ""
+"Dona format a la línia actual o les línies seleccionades com una cita de "
+"bloc, o si ja és una cita de bloc, com una cita de bloc imbricada."
+
+#: src/appactions.cpp:128
+msgctxt "ghostwriter::AppActions|"
+msgid "Strip Block Quote"
+msgstr "Elimina la cita de bloc"
+
+#: src/appactions.cpp:128
+msgctxt "ghostwriter::AppActions|"
+msgid "CTRL+SHIFT+,"
+msgstr "Ctrl+Maj+,"
+
+#: src/appactions.cpp:129
+msgctxt "ghostwriter::AppActions|"
+msgid "Strips the current line or selected lines of block quote formatting."
+msgstr ""
+"Elimina la línia actual o les línies seleccionades del format de cita de "
+"bloc."
+
+#: src/appactions.cpp:131
+msgctxt "ghostwriter::AppActions|"
+msgid ""
+"Strips the current line or selected lines of block quote formatting. If the "
+"block is nested, only the outermost layer of block quote formatting will be "
+"stripped."
+msgstr ""
+"Elimina la línia actual o les línies seleccionades del format de cita de "
+"bloc. Si el bloc està imbricat, només s'eliminarà la capa més externa del "
+"format de cita de bloc."
+
+#: src/appactions.cpp:135
+msgctxt "ghostwriter::AppActions|"
+msgid "* Bullet List"
+msgstr "* Llista de pics"
+
+#: src/appactions.cpp:135
+msgctxt "ghostwriter::AppActions|"
+msgid "CTRL+8"
+msgstr "Ctrl+8"
+
+#: src/appactions.cpp:137
+msgctxt "ghostwriter::AppActions|"
+msgid ""
+"Formats the current line or selected lines as a bullet point list with an "
+"asterisk (*)."
+msgstr ""
+"Dona format a la línia actual o les línies seleccionades com una llista de "
+"pics amb un asterisc (*)."
+
+#: src/appactions.cpp:140
+msgctxt "ghostwriter::AppActions|"
+msgid "- Bullet List"
+msgstr "- Llista de pics"
+
+#: src/appactions.cpp:140
+msgctxt "ghostwriter::AppActions|"
+msgid "CTRL+-"
+msgstr "Ctrl+-"
+
+#: src/appactions.cpp:142
+msgctxt "ghostwriter::AppActions|"
+msgid ""
+"Formats the current line or selected lines as a bullet point list with a "
+"minus sign (-)."
+msgstr ""
+"Dona format a la línia actual o les línies seleccionades com una llista de "
+"pics amb un signe menys (-)."
+
+#: src/appactions.cpp:145
+msgctxt "ghostwriter::AppActions|"
+msgid "+ Bullet List"
+msgstr "+ Llista de pics"
+
+#: src/appactions.cpp:145
+msgctxt "ghostwriter::AppActions|"
+msgid "CTRL++"
+msgstr "Ctrl++"
+
+#: src/appactions.cpp:147
+msgctxt "ghostwriter::AppActions|"
+msgid ""
+"Formats the current line or selected lines as a bullet point list with a "
+"plus sign (+)."
+msgstr ""
+"Dona format a la línia actual o les línies seleccionades com una llista de "
+"pics amb un signe més (+)."
+
+#: src/appactions.cpp:150
+msgctxt "ghostwriter::AppActions|"
+msgid "1. Numbered List"
+msgstr "1. Llista numerada"
+
+#: src/appactions.cpp:150
+msgctxt "ghostwriter::AppActions|"
+msgid "CTRL+1"
+msgstr "Ctrl+1"
+
+#: src/appactions.cpp:152 src/appactions.cpp:165
+msgctxt "ghostwriter::AppActions|"
+msgid "Formats the current line or selected lines as a numbered list."
+msgstr ""
+"Dona format a la línia actual o les línies seleccionades com una llista "
+"numerada."
+
+#: src/appactions.cpp:155
+msgctxt "ghostwriter::AppActions|"
+msgid ""
+"<p>Formats the current line or selected lines as a numbered list.</"
+"p><p>Example:</p><p>1. item one<br/>2. item two<br/>3. item three<br/></p>"
+msgstr ""
+"<p>Dona format a la línia actual o les línies seleccionades com una llista "
+"numerada.</p><p>Exemple:</p><p>1. element u<br/>2. element dos<br/>3. "
+"element tres<br/></p>"
+
+#: src/appactions.cpp:163
+msgctxt "ghostwriter::AppActions|"
+msgid "1) Numbered List"
+msgstr "1) Llista numerada"
+
+#: src/appactions.cpp:163
+msgctxt "ghostwriter::AppActions|"
+msgid "CTRL+0"
+msgstr "Ctrl+0"
+
+#: src/appactions.cpp:168
+msgctxt "ghostwriter::AppActions|"
+msgid ""
+"<p>Formats the current line or selected lines as a numbered list.</"
+"p><p>Example:</p><p>1) item one<br/>2) item two<br/>3) item three<br/></"
+"p><p>Note that this numbering format is not supported by all Markdown "
+"processors and is not part of CommonMark.</p>"
+msgstr ""
+"<p>Dona format a la línia actual o les línies seleccionades com una llista "
+"numerada.</p><p>Exemple:</p><p>1) element u<br/>2) element dos<br/>3) "
+"element tres<br/></p><p>Tingueu en compte que aquest format de numeració no "
+"està implementat en tots els processadors de Markdown i no forma part del "
+"CommonMark.</p>"
+
+#: src/appactions.cpp:178
+msgctxt "ghostwriter::AppActions|"
+msgid "Task List"
+msgstr "Llista de tasques"
+
+#: src/appactions.cpp:178
+msgctxt "ghostwriter::AppActions|"
+msgid "CTRL+T"
+msgstr "Ctrl+T"
+
+#: src/appactions.cpp:179
+msgctxt "ghostwriter::AppActions|"
+msgid "Formats the current line or selected lines as a task list."
+msgstr ""
+"Dona format a la línia actual o les línies seleccionades com una llista de "
+"tasques."
+
+#: src/appactions.cpp:181
+msgctxt "ghostwriter::AppActions|"
+msgid ""
+"<p>Formats the current line or selected lines as a task list.</p><p>Example:"
+"</p><p>- [ ] item one<br/>- [ ] item two<br/>- [ ] item three<br/></"
+"p><p>Note that task lists are not supported by all Markdown processors and "
+"are not part of CommonMark.</p>"
+msgstr ""
+"<p>Dona format a la línia actual o les línies seleccionades com una llista "
+"de tasques.</p><p>Exemple:</p><p>[ ] element u<br/>[ ] element dos<br/>[ ] "
+"element tres<br/></p><p>Tingueu en compte que les llistes de tasques no "
+"estan implementades en tots els processadors de Markdown i no formen part "
+"del CommonMark.</p>"
+
+#: src/appactions.cpp:191
+msgctxt "ghostwriter::AppActions|"
+msgid "Toggle Task(s) Complete"
+msgstr "Commuta la/es tasca/ques completada/es"
+
+#: src/appactions.cpp:191
+msgctxt "ghostwriter::AppActions|"
+msgid "CTRL+D"
+msgstr "Ctrl+D"
+
+#: src/appactions.cpp:193
+msgctxt "ghostwriter::AppActions|"
+msgid ""
+"Toggle the current task item or selected task items as complete or "
+"incomplete."
+msgstr ""
+"Commuta l'element de tasca actual o els elements de tasca seleccionats com a "
+"complets o incomplets."
+
+#: src/appactions.cpp:196
+msgctxt "ghostwriter::AppActions|"
+msgid ""
+"<p>Toggle the state of the current task item or selected task items from a "
+"task list as complete or incomplete.</p><p>Applying this action to an "
+"incomplete task item in a task list will result in placing an 'x' between "
+"its brackets, like so:</p><p>- [x] item one<br/></p><p>Likewise, applying "
+"this action to an completed task item in a task list will result in removing "
+"its 'x' between its brackets, like so:</p><p>- [ ] item one<br/></p><p>Note "
+"that task lists are not supported by all Markdown processors and are not "
+"part of CommonMark.</p>"
+msgstr ""
+"<p>Commuta l'element de tasca actual o els elements de tasca seleccionats "
+"com a complets o incomplets.</p><p>Aplicar aquesta acció a un element de "
+"tasca incomplet en una llista de tasques donarà com a resultat col·locar una "
+"«x» entre els seus parèntesis, així:</p><p>- [x] element u<br/></p><p>De la "
+"mateixa manera, aplicar aquesta acció a un element de tasca completat en una "
+"llista de tasques resultarà en eliminar la seva «x» entre els seus "
+"parèntesis, així:</p><p>- [ ] element u<br/></p><p>Tingueu present que les "
+"llistes de tasques no són compatibles amb tots els processadors de Markdown "
+"i no formen part del CommonMark.</p>"
+
+#: src/appactions.cpp:216
+msgctxt "ghostwriter::AppActions|"
+msgid "Distraction-Free Mode"
+msgstr "Mode lliure de distracció"
+
+#: src/appactions.cpp:216
+msgctxt "ghostwriter::AppActions|"
+msgid "SHIFT+F11"
+msgstr "Maj+F11"
+
+#: src/appactions.cpp:218
+msgctxt "ghostwriter::AppActions|"
+msgid "Live Preview"
+msgstr "Vista prèvia en directe"
+
+#: src/appactions.cpp:218
+msgctxt "ghostwriter::AppActions|"
+msgid "CTRL+P"
+msgstr "Ctrl+P"
+
+#: src/appactions.cpp:220
+msgctxt "ghostwriter::AppActions|"
+msgid "Hemingway Mode"
+msgstr "Mode Hemingway"
+
+#: src/appactions.cpp:220
+msgctxt "ghostwriter::AppActions|"
+msgid "SHIFT+Backspace"
+msgstr "Maj+Retrocés"
+
+#: src/appactions.cpp:221
+msgctxt "ghostwriter::AppActions|"
+msgid "Toggles Hemingway mode."
+msgstr "Commuta el mode Hemingway."
+
+#: src/appactions.cpp:223
+msgctxt "ghostwriter::AppActions|"
+msgid ""
+"Hemingway mode disables the backspace and delete keys to help you resist the "
+"temptation to edit your document as you write."
+msgstr ""
+"El mode Hemingway desactiva les tecles de retrocés i suprimir per a ajudar-"
+"vos a resistir la temptació d'editar el document mentre l'escriviu."
+
+#: src/appactions.cpp:226
+msgctxt "ghostwriter::AppActions|"
+msgid "Dark Mode"
+msgstr "Mode fosc"
+
+#: src/appactions.cpp:227
+msgctxt "ghostwriter::AppActions|"
+msgid "Enables/disables the current theme's dark color scheme."
+msgstr "Activa/desactiva l'esquema de color fosc del tema actual."
+
+#: src/appactions.cpp:229
+msgctxt "ghostwriter::AppActions|"
+msgid ""
+"<p>Enables/disables the current theme's dark color scheme.</p><p>If the "
+"current theme does not support a dark color scheme, then this option will "
+"have no effect.</p>"
+msgstr ""
+"<p>Activa/desactiva l'esquema de color fosc del tema actual.</p><p>Si el "
+"tema actual no admet un esquema de color fosc, aquesta opció no tindrà cap "
+"efecte.</p>"
+
+#: src/appactions.cpp:233
+msgctxt "ghostwriter::AppActions|"
+msgid "Show Sidebar"
+msgstr "Mostra la barra lateral"
+
+#: src/appactions.cpp:233
+msgctxt "ghostwriter::AppActions|"
+msgid "CTRL+Space"
+msgstr "Ctrl+Espai"
+
+#: src/appactions.cpp:235
+msgctxt "ghostwriter::AppActions|"
+msgid "Outline"
+msgstr "Esquema"
+
+#: src/appactions.cpp:235
+msgctxt "ghostwriter::AppActions|"
+msgid "CTRL+J"
+msgstr "Ctrl+J"
+
+#: src/appactions.cpp:236
+msgctxt "ghostwriter::AppActions|"
+msgid "Shows the document outline."
+msgstr "Mostra l'esquema del document."
+
+#: src/appactions.cpp:238
+msgctxt "ghostwriter::AppActions|"
+msgid ""
+"<p>Shows the document outline.</p><p>Use the mouse plus left click on a "
+"heading in the document, or else the up and down arrows on the keyboard plus "
+"the ENTER key, to jump to different locations within the current document.</"
+"p>"
+msgstr ""
+"<p>Mostra l'esquema del document.</p><p>Utilitzeu el ratolí i el clic "
+"esquerre del ratolí sobre una capçalera del document, o bé les fletxes amunt "
+"i avall del teclat i la tecla Retorn, per a saltar a ubicacions diferents "
+"dins del document actual.</p>"
+
+#: src/appactions.cpp:243
+msgctxt "ghostwriter::AppActions|"
+msgid "Session Statistics"
+msgstr "Estadístiques de la sessió"
+
+#: src/appactions.cpp:245
+msgctxt "ghostwriter::AppActions|"
+msgid "Document Statistics"
+msgstr "Estadístiques del document"
+
+#: src/appactions.cpp:247
+msgctxt "ghostwriter::AppActions|"
+msgid "Cheat Sheet"
+msgstr "Full de trucs"
+
+#: src/appactions.cpp:248
+msgctxt "ghostwriter::AppActions|"
+msgid "Shows a quick reference guide for Markdown in the sidebar."
+msgstr "Mostra una guia de referència ràpida del Markdown en la barra lateral."
+
+#: src/appactions.cpp:255
+msgctxt "ghostwriter::AppActions|"
+msgid "Theme..."
+msgstr "Tema..."
+
+#: src/appactions.cpp:256
+msgctxt "ghostwriter::AppActions|"
+msgid "Font..."
+msgstr "Lletra..."
+
+#: src/appactions.cpp:258
+msgctxt "ghostwriter::AppActions|"
+msgid "Preview Options..."
+msgstr "Opcions de la vista prèvia..."
+
+#: src/appmain.cpp:92
+msgctxt "main|"
+msgid "ghostwriter"
+msgstr "ghostwriter"
+
+#: src/appmain.cpp:96
+msgctxt "main|"
+msgid "A markdown editor"
+msgstr "Un editor de Markdown"
+
+#: src/appmain.cpp:103
+msgctxt "main|"
+msgid "FocusWriter developer, whose Qt code mentored me"
+msgstr ""
+"El desenvolupador del FocusWriter, el codi Qt del qual m'ha fet de mentor"
+
+#: src/appmain.cpp:108
+msgctxt "main|"
+msgid "ReText developer, whose algorithms helped immensely"
+msgstr ""
+"El desenvolupador del ReText, els algorismes del qual m'han ajudat "
+"immensament"
+
+#: src/appmain.cpp:113
+msgctxt "main|"
+msgid ""
+"StretchPlayer developer, whose application showed me how to make frameless "
+"windows in Qt"
+msgstr ""
+"El desenvolupador del StretchPlayer, l'aplicació del qual m'ha ensenyat com "
+"fer finestres sense marc en les Qt"
+
+#: src/appmain.cpp:118
+msgctxt "main|"
+msgid "UberWriter (now Apostrophe) developer, for providing inspiration"
+msgstr ""
+"El desenvolupador de l'UberWriter (ara Apostrophe), per proporcionar-me "
+"inspiració"
+
+#: src/appmain.cpp:122
+msgctxt "main|"
+msgid "Other Contributors"
+msgstr "Altres col·laboradors"
+
+#: src/appmain.cpp:123
+msgctxt "main|"
+msgid ""
+"Everyone who provided translations, documentation, bug fixes, or new "
+"features over the years"
+msgstr ""
+"Tothom que ha proporcionat les traduccions, documentació, correccions "
+"d'errors o característiques noves durant anys"
+
+#: src/appmain.cpp:128
+msgctxt "main|"
+msgid "An extended version of the C reference implementation of CommonMark"
+msgstr ""
+"Una versió ampliada de la implementació de referència del C de CommonMark"
+
+#: src/appmain.cpp:132
+msgctxt "main|"
+msgid "A JavaScript library for building user interfaces"
+msgstr "Una biblioteca JavaScript per a construir interfícies d'usuari"
+
+#: src/appmain.cpp:134
+msgctxt "main|"
+msgid "A JavaScript display engine for mathematics"
+msgstr "Un motor de visualització JavaScript per a matemàtiques"
+
+#: src/appmain.cpp:139
+#, qt-format
+msgctxt "main|"
+msgid "Copyright 2014-%1 The ghostwriter team"
+msgstr "Copyright 2014-%1 The ghostwriter team"
+
+#: src/appmain.cpp:157
+msgctxt "main|"
+msgid "Welcome to ghostwriter!"
+msgstr "Us donem la benvinguda al «ghostwriter»"
+
+#: src/appmain.cpp:160
+msgctxt "main|"
+msgid "(Optional) File to open."
+msgstr "(Opcional) Fitxer a obrir."
+
+#: src/appmain.cpp:163
+msgctxt "main|"
+msgid "Disables GPU acceleration."
+msgstr "Desactiva l'acceleració de la GPU."
+
+#: src/documentmanager.cpp:56
+msgctxt "ghostwriter::DocumentManager|"
+msgid "untitled"
+msgstr "sense títol"
+
+#: src/documentmanager.cpp:168
+msgctxt "ghostwriter::DocumentManager|"
+msgid "Markdown"
+msgstr "Markdown"
+
+#: src/documentmanager.cpp:169
+msgctxt "ghostwriter::DocumentManager|"
+msgid "Text"
+msgstr "Text"
+
+#: src/documentmanager.cpp:170
+msgctxt "ghostwriter::DocumentManager|"
+msgid "All"
+msgstr "Tot"
+
+#: src/documentmanager.cpp:215 src/documentmanager.cpp:710
+#, qt-format
+msgctxt "ghostwriter::DocumentManager|"
+msgid "Error saving %1"
+msgstr "Error en desar %1"
+
+#: src/documentmanager.cpp:354
+msgctxt "ghostwriter::DocumentManager|"
+msgid "Open File"
+msgstr "Obre un fitxer"
+
+#: src/documentmanager.cpp:377
+#, qt-format
+msgctxt "ghostwriter::DocumentManager|"
+msgid "Could not open %1"
+msgstr "No s'ha pogut obrir %1"
+
+#: src/documentmanager.cpp:377
+msgctxt "ghostwriter::DocumentManager|"
+msgid "Permission denied."
+msgstr "S'ha denegat el permís."
+
+#: src/documentmanager.cpp:430
+msgctxt "ghostwriter::DocumentManager|"
+msgid "The document has been modified."
+msgstr "S'ha modificat el document."
+
+#: src/documentmanager.cpp:431
+msgctxt "ghostwriter::DocumentManager|"
+msgid "Discard changes?"
+msgstr "Descarto els canvis?"
+
+#: src/documentmanager.cpp:462
+msgctxt "ghostwriter::DocumentManager|"
+msgid "Rename File"
+msgstr "Reanomena el fitxer"
+
+#: src/documentmanager.cpp:475 src/documentmanager.cpp:483
+#, qt-format
+msgctxt "ghostwriter::DocumentManager|"
+msgid "Failed to rename %1"
+msgstr "Ha fallat en reanomenar %1"
+
+#: src/documentmanager.cpp:535
+msgctxt "ghostwriter::DocumentManager|"
+msgid "Save File"
+msgstr "Desa el fitxer"
+
+#: src/documentmanager.cpp:667
+msgctxt "ghostwriter::DocumentManager|"
+msgid "The document has been modified by another program."
+msgstr "Un altre programa ha modificat el document."
+
+#: src/documentmanager.cpp:668
+msgctxt "ghostwriter::DocumentManager|"
+msgid "Would you like to reload the document?"
+msgstr "Voleu tornar a carregar el document?"
+
+#: src/documentmanager.cpp:711
+msgctxt "ghostwriter::DocumentManager|"
+msgid "No file path specified"
+msgstr "No s'ha especificat cap camí al fitxer"
+
+#: src/documentmanager.cpp:725 src/documentmanager.cpp:758
+#, qt-format
+msgctxt "ghostwriter::DocumentManager|"
+msgid "Could not read %1"
+msgstr "No s'ha pogut llegir %1"
+
+#: src/documentmanager.cpp:745
+#, qt-format
+msgctxt "ghostwriter::DocumentManager|"
+msgid "opening %1"
+msgstr "s'està obrint %1"
+
+#: src/documentmanager.cpp:833
+msgctxt "ghostwriter::DocumentManager|"
+msgid "File has been modified."
+msgstr "S'ha modificat el fitxer."
+
+#: src/documentmanager.cpp:835
+#, qt-format
+msgctxt "ghostwriter::DocumentManager|"
+msgid "%1 has been modified."
+msgstr "S'ha modificat %1."
+
+#: src/documentmanager.cpp:844
+msgctxt "ghostwriter::DocumentManager|"
+msgid "Would you like to save your changes?"
+msgstr "Voleu desar els canvis?"
+
+#: src/documentmanager.cpp:875
+#, qt-format
+msgctxt "ghostwriter::DocumentManager|"
+msgid "%1 is read only."
+msgstr "%1 només és de lectura."
+
+#: src/documentmanager.cpp:876
+msgctxt "ghostwriter::DocumentManager|"
+msgid "Overwrite protected file?"
+msgstr "Sobreescric el fitxer protegit?"
+
+#: src/documentmanager.cpp:895
+msgctxt "ghostwriter::DocumentManager|"
+msgid "Overwrite failed."
+msgstr "Ha fallat la sobreescriptura."
+
+#: src/documentmanager.cpp:896
+msgctxt "ghostwriter::DocumentManager|"
+msgid "Please save file to another location."
+msgstr "Deseu el fitxer a una altra ubicació."
+
+#: src/documentmanager.cpp:924
+msgctxt "ghostwriter::DocumentManager|"
+msgid "File backup failed"
+msgstr "Ha fallat la còpia de seguretat del fitxer"
+
+#: src/documentmanager.cpp:925
+msgctxt "ghostwriter::DocumentManager|"
+msgid "Error creating backup location: %d"
+msgstr "Error en crear la ubicació de la còpia de seguretat: %d"
+
+#: src/documentmanager.cpp:934
+#, qt-format
+msgctxt "ghostwriter::DocumentManager|"
+msgid "File backup failed: Could not replace %1"
+msgstr ""
+"Ha fallat la còpia de seguretat del fitxer: no s'ha pogut substituir %1"
+
+#: src/documentmanager.cpp:944
+#, qt-format
+msgctxt "ghostwriter::DocumentManager|"
+msgid "File backup failed: Could not copy %1 to %2"
+msgstr ""
+"Ha fallat la còpia de seguretat del fitxer: no s'ha pogut copiar %1 a %2"
+
+#: src/editor/markdowndocument.cpp:92 src/editor/markdowndocument.cpp:168
+msgctxt "ghostwriter::MarkdownDocument|"
+msgid "untitled"
+msgstr "sense títol"
+
+#: src/editor/markdowneditor.cpp:916
+msgctxt "ghostwriter::MarkdownEditor|"
+msgid "Save Image"
+msgstr "Desa la imatge"
+
+#: src/editor/markdowneditor.cpp:1535
+msgctxt "ghostwriter::MarkdownEditor|"
+msgid "Insert Image"
+msgstr "Insereix una imatge"
+
+#: src/editor/markdowneditor.cpp:2456
+#, qt-format
+msgctxt "ghostwriter::MarkdownEditor|"
+msgid "Images (%1)"
+msgstr "Imatges (%1)"
+
+#: src/export/cmarkgfmexporter.cpp:50
+#, qt-format
+msgctxt "QObject|"
+msgid "%1 format is unsupported by the cmark-gfm processor."
+msgstr "El format %1 no està suportat pel processador «cmark-gfm»."
+
+#: src/export/cmarkgfmexporter.cpp:58
+msgctxt "QObject|"
+msgid "Export failed"
+msgstr "L'exportació ha fallat"
+
+#: src/export/commandlineexporter.cpp:147
+msgctxt "QObject|"
+msgid "Export failed: "
+msgstr "L'exportació ha fallat: "
+
+#: src/export/commandlineexporter.cpp:167
+#, qt-format
+msgctxt "QObject|"
+msgid "%1 format is not supported by this processor."
+msgstr "El format %1 no està suportat per aquest processador."
+
+#: src/export/commandlineexporter.cpp:191
+msgctxt "QObject|"
+msgid "Failed to execute command: "
+msgstr "Ha fallat en executar l'ordre: "
+
+#: src/export/exportdialog.cpp:46 src/export/exportdialog.cpp:105
+msgctxt "ghostwriter::ExportDialog|"
+msgid "Export"
+msgstr "Exportació"
+
+#: src/export/exportdialog.cpp:85
+msgctxt "ghostwriter::ExportDialog|"
+msgid "Smart Typography"
+msgstr "Tipografia intel·ligent"
+
+#: src/export/exportdialog.cpp:89
+msgctxt "ghostwriter::ExportDialog|"
+msgid "Open on Export"
+msgstr "Obre en exportar"
+
+#: src/export/exportdialog.cpp:92
+msgctxt "ghostwriter::ExportDialog|"
+msgid "Export Options"
+msgstr "Opcions d'exportació"
+
+#: src/export/exportdialog.cpp:94
+msgctxt "ghostwriter::ExportDialog|"
+msgid "Markdown Converter"
+msgstr "Convertidor del Markdown"
+
+#: src/export/exportdialog.cpp:95
+msgctxt "ghostwriter::ExportDialog|"
+msgid "File Format"
+msgstr "Format del fitxer"
+
+#: src/export/exportdialog.cpp:113
+msgctxt "ghostwriter::ExportDialog|"
+msgid "Command line options:"
+msgstr "Opcions de la línia d'ordres:"
+
+#: src/export/exportdialog.cpp:184
+#, qt-format
+msgctxt "ghostwriter::ExportDialog|"
+msgid "exporting to %1"
+msgstr "s'està exportant a %1"
+
+#: src/export/exportdialog.cpp:201
+msgctxt "ghostwriter::ExportDialog|"
+msgid "Export failed."
+msgstr "L'exportació ha fallat."
+
+#: src/export/exporter.cpp:69
+msgctxt "QObject|"
+msgid "Export to HTML is not supported with this processor."
+msgstr "L'exportació a HTML no és compatible amb aquest processador."
+
+#: src/findreplace.cpp:95
+msgctxt "ghostwriter::FindReplace|"
+msgid "Match case"
+msgstr "Coincidència de majúscules"
+
+#: src/findreplace.cpp:100
+msgctxt "ghostwriter::FindReplace|"
+msgid "Whole word"
+msgstr "Paraula sencera"
+
+#: src/findreplace.cpp:106
+msgctxt "ghostwriter::FindReplace|"
+msgid "Regular expression"
+msgstr "Expressió regular"
+
+#: src/findreplace.cpp:111
+msgctxt "ghostwriter::FindReplace|"
+msgid "Highlight matches"
+msgstr "Ressalta les coincidències"
+
+#: src/findreplace.cpp:118
+msgctxt "ghostwriter::FindReplace|"
+msgid "Find Prev"
+msgstr "Cerca l'anterior"
+
+#: src/findreplace.cpp:119
+msgctxt "ghostwriter::FindReplace|"
+msgid "Find previous"
+msgstr "Cerca l'anterior"
+
+#: src/findreplace.cpp:123
+msgctxt "ghostwriter::FindReplace|"
+msgid "Find Next"
+msgstr "Cerca la següent"
+
+#: src/findreplace.cpp:124
+msgctxt "ghostwriter::FindReplace|"
+msgid "Find next"
+msgstr "Cerca la següent"
+
+#: src/findreplace.cpp:129
+msgctxt "ghostwriter::FindReplace|"
+msgid "Replace"
+msgstr "Substitueix"
+
+#: src/findreplace.cpp:133
+msgctxt "ghostwriter::FindReplace|"
+msgid "Replace All"
+msgstr "Substitueix-ho tot"
+
+#: src/findreplace.cpp:146 src/findreplace.cpp:147
+msgctxt "ghostwriter::FindReplace|"
+msgid "Close"
+msgstr "Tanca"
+
+#: src/findreplace.cpp:161
+msgctxt "ghostwriter::FindReplace|"
+msgid "Find:"
+msgstr "Cerca:"
+
+#: src/findreplace.cpp:167
+msgctxt "ghostwriter::FindReplace|"
+msgid "Replace with:"
+msgstr "Substitueix per:"
+
+#: src/findreplace.cpp:441
+msgctxt "ghostwriter::FindReplace|"
+msgid "%Ln replacement(s)"
+msgid_plural "%Ln replacement(s)"
+msgstr[0] "%Ln reemplaçament"
+msgstr[1] "%Ln reemplaçaments"
+
+#: src/findreplace.cpp:491
+msgctxt "ghostwriter::FindReplace|"
+msgid "Search wrapped"
+msgstr "La cerca continua des del començament"
+
+#: src/findreplace.cpp:498
+msgctxt "ghostwriter::FindReplace|"
+msgid "No results"
+msgstr "Sense resultats"
+
+#: src/findreplace.cpp:540
+#, qt-format
+msgctxt "ghostwriter::FindReplace|"
+msgid "%1 matches"
+msgstr "%1 coincidències"
+
+#: src/mainwindow.cpp:101
+#, qt-format
+msgctxt "ghostwriter::MainWindow|"
+msgid "Could not create file: %1"
+msgstr "No s'ha pogut crear el fitxer: %1"
+
+#: src/mainwindow.cpp:1016
+msgctxt "ghostwriter::MainWindow|"
+msgid "&File"
+msgstr "&Fitxer"
+
+#: src/mainwindow.cpp:1046
+msgctxt "ghostwriter::MainWindow|"
+msgid "&Edit"
+msgstr "&Edita"
+
+#: src/mainwindow.cpp:1095
+msgctxt "ghostwriter::MainWindow|"
+msgid "&View"
+msgstr "&Visualitza"
+
+#: src/mainwindow.cpp:1113
+msgctxt "ghostwriter::MainWindow|"
+msgid "&Settings"
+msgstr "&Configuració"
+
+#: src/mainwindow.cpp:1122
+msgctxt "ghostwriter::MainWindow|"
+msgid "&Help"
+msgstr "&Ajuda"
+
+#: src/mainwindow.cpp:1272
+msgctxt "ghostwriter::MainWindow|"
+msgid "# Heading 1"
+msgstr "# Encapçalament 1"
+
+#: src/mainwindow.cpp:1273
+msgctxt "ghostwriter::MainWindow|"
+msgid "## Heading 2"
+msgstr "## Encapçalament 2"
+
+#: src/mainwindow.cpp:1274
+msgctxt "ghostwriter::MainWindow|"
+msgid "### Heading 3"
+msgstr "### Encapçalament 3"
+
+#: src/mainwindow.cpp:1275
+msgctxt "ghostwriter::MainWindow|"
+msgid "#### Heading 4"
+msgstr "#### Encapçalament 4"
+
+#: src/mainwindow.cpp:1276
+msgctxt "ghostwriter::MainWindow|"
+msgid "##### Heading 5"
+msgstr "##### Encapçalament 5"
+
+#: src/mainwindow.cpp:1277
+msgctxt "ghostwriter::MainWindow|"
+msgid "###### Heading 6"
+msgstr "###### Encapçalament 6"
+
+#: src/mainwindow.cpp:1278
+msgctxt "ghostwriter::MainWindow|"
+msgid "*Emphasis* _Emphasis_"
+msgstr "*Èmfasi* _Èmfasi_"
+
+#: src/mainwindow.cpp:1279
+msgctxt "ghostwriter::MainWindow|"
+msgid "**Strong** __Strong__"
+msgstr "**Destacat** __Destacat__"
+
+#: src/mainwindow.cpp:1280
+msgctxt "ghostwriter::MainWindow|"
+msgid "1. Numbered List"
+msgstr "1. Llista numerada"
+
+#: src/mainwindow.cpp:1281
+msgctxt "ghostwriter::MainWindow|"
+msgid "* Bullet List"
+msgstr "* Llista de pics"
+
+#: src/mainwindow.cpp:1282
+msgctxt "ghostwriter::MainWindow|"
+msgid "+ Bullet List"
+msgstr "+ Llista de pics"
+
+#: src/mainwindow.cpp:1283
+msgctxt "ghostwriter::MainWindow|"
+msgid "- Bullet List"
+msgstr "- Llista de pics"
+
+#: src/mainwindow.cpp:1284
+msgctxt "ghostwriter::MainWindow|"
+msgid "> Block Quote"
+msgstr "> Cita de bloc"
+
+# skip-rule: t-acc_obe
+#: src/mainwindow.cpp:1285
+msgctxt "ghostwriter::MainWindow|"
+msgid "`Code Span`"
+msgstr "`Secció de codi`"
+
+# skip-rule: t-acc_obe
+#: src/mainwindow.cpp:1286
+msgctxt "ghostwriter::MainWindow|"
+msgid "``` Code Block"
+msgstr "``` Bloc de codi"
+
+#: src/mainwindow.cpp:1287
+msgctxt "ghostwriter::MainWindow|"
+msgid "[Link](http://url.com \"Title\")"
+msgstr "[Enllaç](http://url.com \"Títol\")"
+
+#: src/mainwindow.cpp:1288
+msgctxt "ghostwriter::MainWindow|"
+msgid "[Reference Link][ID]"
+msgstr "[Enllaç de referència][ID]"
+
+#: src/mainwindow.cpp:1289
+msgctxt "ghostwriter::MainWindow|"
+msgid "[ID]: http://url.com \"Reference Definition\""
+msgstr "[ID]: http://url.com \"Definició de la referència\""
+
+#: src/mainwindow.cpp:1290
+msgctxt "ghostwriter::MainWindow|"
+msgid "![Image](./image.jpg \"Title\")"
+msgstr "![Imatge](./image.jpg \"Títol\")"
+
+#: src/mainwindow.cpp:1291
+msgctxt "ghostwriter::MainWindow|"
+msgid "--- *** ___ Horizontal Rule"
+msgstr "--- *** ___ Regle horitzontal"
+
+#: src/mainwindow.cpp:1342
+msgctxt "ghostwriter::MainWindow|"
+msgid "Folder View"
+msgstr "Vista de carpeta"
+
+#: src/mainwindow.cpp:1343
+msgctxt "ghostwriter::MainWindow|"
+msgid "Outline"
+msgstr "Esquema"
+
+#: src/mainwindow.cpp:1344
+msgctxt "ghostwriter::MainWindow|"
+msgid "Session Statistics"
+msgstr "Estadístiques de la sessió"
+
+#: src/mainwindow.cpp:1345
+msgctxt "ghostwriter::MainWindow|"
+msgid "Document Statistics"
+msgstr "Estadístiques del document"
+
+#: src/mainwindow.cpp:1346
+msgctxt "ghostwriter::MainWindow|"
+msgid "Cheat Sheet"
+msgstr "Full de trucs"
+
+#: src/mainwindow.cpp:1356
+msgctxt "ghostwriter::MainWindow|"
+msgid "Settings"
+msgstr "Configuració"
+
+#: src/preview/htmlpreview.cpp:162
+msgctxt "ghostwriter::HtmlPreview|"
+msgid "Error loading resources/preview.html"
+msgstr "Error en carregar «resources/preview.html»"
+
+#: src/settings/localedialog.cpp:36
+msgctxt "ghostwriter::LocaleDialog|"
+msgid "Set Application Language"
+msgstr "Estableix l'idioma de l'aplicació"
+
+#: src/settings/localedialog.cpp:56
+msgctxt "ghostwriter::LocaleDialog|"
+msgid "No translations are available!"
+msgstr "No hi ha cap traducció disponible!"
+
+#: src/settings/localedialog.cpp:57
+msgctxt "ghostwriter::LocaleDialog|"
+msgid "Please reinstall this application for more language options."
+msgstr "Reinstal·leu aquesta aplicació per a més opcions d'idioma."
+
+#: src/settings/localedialog.cpp:131
+msgctxt "ghostwriter::LocaleDialog|"
+msgid "Sorry!"
+msgstr "Ho lamento!"
+
+#: src/settings/localedialog.cpp:132
+msgctxt "ghostwriter::LocaleDialog|"
+msgid "Could not load translation."
+msgstr "No s'ha pogut carregar la traducció."
+
+#: src/settings/localedialog.cpp:138
+msgctxt "ghostwriter::LocaleDialog|"
+msgid "Please restart the application for changes to take effect."
+msgstr "Reinicieu l'aplicació perquè els canvis tinguin efecte."
+
+#: src/settings/preferencesdialog.cpp:74
+msgctxt "ghostwriter::PreferencesDialog|"
+msgid "Spell Check"
+msgstr "Verificació de l'ortografia"
+
+#: src/settings/preferencesdialog.cpp:89
+msgctxt "ghostwriter::PreferencesDialog|"
+msgid "Matched Characters"
+msgstr "Caràcters coincidents"
+
+#: src/settings/preferencesdialog.cpp:178
+msgctxt "ghostwriter::PreferencesDialog|"
+msgid "Rounded"
+msgstr "Arrodonit"
+
+#: src/settings/preferencesdialog.cpp:179
+msgctxt "ghostwriter::PreferencesDialog|"
+msgid "Square"
+msgstr "Quadrat"
+
+#: src/settings/preferencesdialog.cpp:204
+msgctxt "ghostwriter::PreferencesDialogPrivate|"
+msgid "Select Backup Directory"
+msgstr "Selecció del directori de còpies de seguretat"
+
+#: src/settings/preferencesdialog.cpp:235
+msgctxt "ghostwriter::PreferencesDialog|"
+msgid "Sentence"
+msgstr "Frase"
+
+#: src/settings/preferencesdialog.cpp:236
+msgctxt "ghostwriter::PreferencesDialog|"
+msgid "Current Line"
+msgstr "Línia actual"
+
+#: src/settings/preferencesdialog.cpp:237
+msgctxt "ghostwriter::PreferencesDialog|"
+msgid "Three Lines"
+msgstr "Tres línies"
+
+#: src/settings/preferencesdialog.cpp:238
+msgctxt "ghostwriter::PreferencesDialog|"
+msgid "Paragraph"
+msgstr "Paràgraf"
+
+#: src/settings/preferencesdialog.cpp:239
+msgctxt "ghostwriter::PreferencesDialog|"
+msgid "Typewriter"
+msgstr "Màquina d'escriure"
+
+#: src/settings/preferencesdialog.cpp:247
+msgctxt "ghostwriter::PreferencesDialog|"
+msgid "Narrow"
+msgstr "Estret"
+
+#: src/settings/preferencesdialog.cpp:248
+msgctxt "ghostwriter::PreferencesDialog|"
+msgid "Medium"
+msgstr "Mitjà"
+
+#: src/settings/preferencesdialog.cpp:249
+msgctxt "ghostwriter::PreferencesDialog|"
+msgid "Wide"
+msgstr "Ample"
+
+#: src/settings/preferencesdialog.cpp:250
+msgctxt "ghostwriter::PreferencesDialog|"
+msgid "Full"
+msgstr "Complet"
+
+#: src/settings/preferencesdialog.cpp:257
+msgctxt "ghostwriter::PreferencesDialog|"
+msgid "Plain"
+msgstr "Normal"
+
+#: src/settings/preferencesdialog.cpp:258
+#: src/settings/preferencesdialog.cpp:265
+msgctxt "ghostwriter::PreferencesDialog|"
+msgid "Italic"
+msgstr "Cursiva"
+
+#: src/settings/preferencesdialog.cpp:266
+msgctxt "ghostwriter::PreferencesDialog|"
+msgid "Underline"
+msgstr "Subratllat"
+
+#: src/settings/preferencesdialog.ui:14
+msgctxt "PreferencesDialog|"
+msgid "Preferences"
+msgstr "Preferències"
+
+#: src/settings/preferencesdialog.ui:24
+msgctxt "PreferencesDialog|"
+msgid "General"
+msgstr "General"
+
+#: src/settings/preferencesdialog.ui:30
+msgctxt "PreferencesDialog|"
+msgid "Display"
+msgstr "Visualització"
+
+#: src/settings/preferencesdialog.ui:36
+msgctxt "PreferencesDialog|"
+msgid "&Show current time in full screen mode"
+msgstr "Mo&stra l'hora actual en el mode de pantalla completa"
+
+#: src/settings/preferencesdialog.ui:43
+msgctxt "PreferencesDialog|"
+msgid "&Hide menu bar in full screen mode"
+msgstr "&Oculta la barra de menús en el mode de pantalla completa"
+
+#: src/settings/preferencesdialog.ui:50
+msgctxt "PreferencesDialog|"
+msgid "Show &Unbreakable Space"
+msgstr "Mostra els espais &no separables"
+
+#: src/settings/preferencesdialog.ui:59
+msgctxt "PreferencesDialog|"
+msgid "Interface style"
+msgstr "Estil de la interfície"
+
+#: src/settings/preferencesdialog.ui:90
+msgctxt "PreferencesDialog|"
+msgid "File Saving"
+msgstr "Desament de fitxers"
+
+#: src/settings/preferencesdialog.ui:96
+msgctxt "PreferencesDialog|"
+msgid "&Auto save"
+msgstr "Desament &automàtic"
+
+#: src/settings/preferencesdialog.ui:103
+msgctxt "PreferencesDialog|"
+msgid "&Backup file on save"
+msgstr "Fitxer de &còpia de seguretat en desar"
+
+#: src/settings/preferencesdialog.ui:110
+msgctxt "PreferencesDialog|"
+msgid "&View untitled drafts…"
+msgstr "&Visualitza els esborranys sense títol…"
+
+#: src/settings/preferencesdialog.ui:117
+msgctxt "PreferencesDialog|"
+msgid "&"
+msgstr "&"
+
+#: src/settings/preferencesdialog.ui:124
+msgctxt "PreferencesDialog|"
+msgid "&Select Backup Folder Location…"
+msgstr "&Selecció de la ubicació de la carpeta de còpies de seguretat…"
+
+#: src/settings/preferencesdialog.ui:147
+msgctxt "PreferencesDialog|"
+msgid "Session"
+msgstr "Sessió"
+
+#: src/settings/preferencesdialog.ui:153
+msgctxt "PreferencesDialog|"
+msgid "&Remember recent files"
+msgstr "&Recorda els fitxers recents"
+
+#: src/settings/preferencesdialog.ui:160
+msgctxt "PreferencesDialog|"
+msgid "&Open last file on startup"
+msgstr "&Obre l'últim fitxer en iniciar"
+
+#: src/settings/preferencesdialog.ui:183
+msgctxt "PreferencesDialog|"
+msgid "Sidebar"
+msgstr "Barra lateral"
+
+#: src/settings/preferencesdialog.ui:189
+msgctxt "PreferencesDialog|"
+msgid "&Show all files in folder view"
+msgstr "Mostra tots els fitxers a la vista de carpeta"
+
+#: src/settings/preferencesdialog.ui:213
+msgctxt "PreferencesDialog|"
+msgid "Editor"
+msgstr "Editor"
+
+#: src/settings/preferencesdialog.ui:219
+msgctxt "PreferencesDialog|"
+msgid "Tabulation"
+msgstr "Tabulació"
+
+#: src/settings/preferencesdialog.ui:225
+msgctxt "PreferencesDialog|"
+msgid "&Insert spaces for tabs"
+msgstr "&Insereix espais en lloc de tabulacions"
+
+#: src/settings/preferencesdialog.ui:234
+msgctxt "PreferencesDialog|"
+msgid "Tabulation width"
+msgstr "Amplada de la tabulació"
+
+#: src/settings/preferencesdialog.ui:272
+msgctxt "PreferencesDialog|"
+msgid "Styling"
+msgstr "Estil"
+
+#: src/settings/preferencesdialog.ui:280
+msgctxt "PreferencesDialog|"
+msgid "Focus mode"
+msgstr "Mode del focus"
+
+#: src/settings/preferencesdialog.ui:293
+msgctxt "PreferencesDialog|"
+msgid "Editor width"
+msgstr "Amplada de l'editor"
+
+#: src/settings/preferencesdialog.ui:306
+msgctxt "PreferencesDialog|"
+msgid "Blockquote style"
+msgstr "Estil de cita de bloc"
+
+#: src/settings/preferencesdialog.ui:319
+msgctxt "PreferencesDialog|"
+msgid "Emphasis style"
+msgstr "Estil d'èmfasi"
+
+#: src/settings/preferencesdialog.ui:334
+msgctxt "PreferencesDialog|"
+msgid "&Use large headings"
+msgstr "&Usa encapçalaments grans"
+
+#: src/settings/preferencesdialog.ui:357
+msgctxt "PreferencesDialog|"
+msgid "Typing"
+msgstr "Mecanografia"
+
+#: src/settings/preferencesdialog.ui:363
+msgctxt "PreferencesDialog|"
+msgid "C&ycle bullet point markers"
+msgstr "Circula entre els marcadors de pics"
+
+#: src/settings/preferencesdialog.ui:370
+msgctxt "PreferencesDialog|"
+msgid "&Automatically match characters"
+msgstr "Coincideix &automàticament els caràcters"
+
+#: src/settings/preferencesdialog.ui:377
+msgctxt "PreferencesDialog|"
+msgid "Customize &matched characters…"
+msgstr "Personalitza els caràcters &coincidents…"
+
+#: src/settings/previewoptionsdialog.cpp:51
+msgctxt "ghostwriter::PreviewOptionsDialog|"
+msgid "Preview Options"
+msgstr "Opcions de la vista prèvia"
+
+#: src/settings/previewoptionsdialog.cpp:91
+msgctxt "ghostwriter::PreviewOptionsDialog|"
+msgid "Markdown Flavor"
+msgstr "Variant del Markdown"
+
+#: src/settings/previewoptionsdialog.cpp:99
+#: src/settings/previewoptionsdialog.cpp:125
+msgctxt "ghostwriter::PreviewOptionsDialog|"
+msgid "Choose..."
+msgstr "Trieu..."
+
+#: src/settings/previewoptionsdialog.cpp:117
+msgctxt "ghostwriter::PreviewOptionsDialog|"
+msgid "Text Font:"
+msgstr "Lletra del text:"
+
+#: src/settings/previewoptionsdialog.cpp:143
+msgctxt "ghostwriter::PreviewOptionsDialog|"
+msgid "Code Font:"
+msgstr "Lletra del codi:"
+
+#: src/settings/previewoptionsdialog.cpp:151
+msgctxt "ghostwriter::PreviewOptionsDialog|"
+msgid "Command line options:"
+msgstr "Opcions de la línia d'ordres:"
+
+#: src/settings/previewoptionsdialog.cpp:177
+#, qt-format
+msgctxt "ghostwriter::PreviewOptionsDialog|"
+msgid "%1 %2pt"
+msgstr "%1 %2pt"
+
+#: src/settings/simplefontdialog.cpp:61
+msgctxt "ghostwriter::SimpleFontDialog|"
+msgid "Family"
+msgstr "Família"
+
+#: src/settings/simplefontdialog.cpp:108
+msgctxt "ghostwriter::SimpleFontDialog|"
+msgid "Size"
+msgstr "Mida"
+
+#: src/settings/simplefontdialog.cpp:111
+msgctxt "ghostwriter::SimpleFontDialog|"
+msgid "AaBbCcXxYyZz"
+msgstr "AaBbCcXxYyZz"
+
+#: src/settings/simplefontdialog.cpp:115
+msgctxt "ghostwriter::SimpleFontDialog|"
+msgid "Preview"
+msgstr "Vista prèvia"
+
+#: src/settings/simplefontdialog.cpp:118
+msgctxt "ghostwriter::SimpleFontDialog|"
+msgid "Show only monospaced fonts"
+msgstr "Mostra només les lletres monoespai"
+
+#: src/spelling/spellcheckdecorator.cpp:244
+msgctxt "ghostwriter::SpellCheckDecorator|"
+msgid "Check spelling..."
+msgstr "Verifica l'ortografia..."
+
+#: src/spelling/spellcheckdecorator.cpp:272
+msgctxt "ghostwriter::SpellCheckDecorator|"
+msgid "Spelling"
+msgstr "Ortografia"
+
+#: src/spelling/spellcheckdecorator.cpp:297
+msgctxt "ghostwriter::SpellCheckDecorator|"
+msgid "Add word to dictionary"
+msgstr "Afegeix una paraula al diccionari"
+
+#: src/spelling/spellcheckdecorator.cpp:337
+msgctxt "ghostwriter::SpellCheckDecorator|"
+msgid "No spelling suggestions found"
+msgstr "No s'ha trobat cap suggeriment ortogràfic"
+
+#: src/spelling/spellcheckdialog.cpp:53
+msgctxt "ghostwriter::SpellCheckDialog|"
+msgid "Spell Check"
+msgstr "Verificació de l'ortografia"
+
+#: src/spelling/spellcheckdialog.cpp:152
+msgctxt "ghostwriter::SpellCheckDialog|"
+msgid "Spell check is complete!"
+msgstr "La verificació ortogràfica ha finalitzat!"
+
+#: src/statistics/abstractstatisticswidget.cpp:17
+msgctxt "ghostwriter::AbstractStatisticsWidget|"
+msgid "&lt; 1m"
+msgstr "&lt; 1m"
+
+#: src/statistics/abstractstatisticswidget.cpp:18
+msgctxt "ghostwriter::AbstractStatisticsWidget|"
+msgid "&lt; 1"
+msgstr "&lt; 1"
+
+#: src/statistics/abstractstatisticswidget.cpp:19
+msgctxt "ghostwriter::AbstractStatisticsWidget|"
+msgid "250 words per page"
+msgstr "250 paraules per pàgina"
+
+#: src/statistics/abstractstatisticswidget.cpp:41
+msgctxt "ghostwriter::AbstractStatisticsWidget|"
+msgid "<b>%L1%</b>"
+msgstr "<b>%L1%</b>"
+
+#: src/statistics/abstractstatisticswidget.cpp:53
+#, qt-format
+msgctxt "ghostwriter::AbstractStatisticsWidget|"
+msgid "%1h %2m"
+msgstr "%1h %2m"
+
+#: src/statistics/abstractstatisticswidget.cpp:55
+#, qt-format
+msgctxt "ghostwriter::AbstractStatisticsWidget|"
+msgid "%1m"
+msgstr "%1m"
+
+#: src/statistics/documentstatisticswidget.cpp:19
+msgctxt "ghostwriter::DocumentStatisticsWidget|"
+msgid "Very Easy"
+msgstr "Molt fàcil"
+
+#: src/statistics/documentstatisticswidget.cpp:20
+msgctxt "ghostwriter::DocumentStatisticsWidget|"
+msgid "Easy"
+msgstr "Fàcil"
+
+#: src/statistics/documentstatisticswidget.cpp:21
+msgctxt "ghostwriter::DocumentStatisticsWidget|"
+msgid "Standard"
+msgstr "Estàndard"
+
+#: src/statistics/documentstatisticswidget.cpp:22
+msgctxt "ghostwriter::DocumentStatisticsWidget|"
+msgid "Difficult"
+msgstr "Difícil"
+
+#: src/statistics/documentstatisticswidget.cpp:23
+msgctxt "ghostwriter::DocumentStatisticsWidget|"
+msgid "Very Difficult"
+msgstr "Molt difícil"
+
+#: src/statistics/documentstatisticswidget.cpp:60
+msgctxt "ghostwriter::DocumentStatisticsWidget|"
+msgid "Words:"
+msgstr "Paraules:"
+
+#: src/statistics/documentstatisticswidget.cpp:61
+msgctxt "ghostwriter::DocumentStatisticsWidget|"
+msgid "Characters:"
+msgstr "Caràcters:"
+
+#: src/statistics/documentstatisticswidget.cpp:62
+msgctxt "ghostwriter::DocumentStatisticsWidget|"
+msgid "Sentences:"
+msgstr "Frases:"
+
+#: src/statistics/documentstatisticswidget.cpp:63
+msgctxt "ghostwriter::DocumentStatisticsWidget|"
+msgid "Paragraphs:"
+msgstr "Paràgrafs:"
+
+#: src/statistics/documentstatisticswidget.cpp:64
+msgctxt "ghostwriter::DocumentStatisticsWidget|"
+msgid "Pages:"
+msgstr "Pàgines:"
+
+#: src/statistics/documentstatisticswidget.cpp:65
+msgctxt "ghostwriter::DocumentStatisticsWidget|"
+msgid "Complex Words:"
+msgstr "Paraules complexes:"
+
+#: src/statistics/documentstatisticswidget.cpp:65
+msgctxt "ghostwriter::DocumentStatisticsWidget|"
+msgid "0%"
+msgstr "0%"
+
+#: src/statistics/documentstatisticswidget.cpp:66
+msgctxt "ghostwriter::DocumentStatisticsWidget|"
+msgid "Reading Time:"
+msgstr "Temps de lectura:"
+
+#: src/statistics/documentstatisticswidget.cpp:67
+msgctxt "ghostwriter::DocumentStatisticsWidget|"
+msgid "Reading Ease:"
+msgstr "Facilitat de lectura:"
+
+#: src/statistics/documentstatisticswidget.cpp:67
+msgctxt "ghostwriter::DocumentStatisticsWidget|"
+msgid "LIX Reading Ease"
+msgstr "Facilitat de lectura LIX"
+
+#: src/statistics/documentstatisticswidget.cpp:68
+msgctxt "ghostwriter::DocumentStatisticsWidget|"
+msgid "Grade Level:"
+msgstr "Nivell de qualificació:"
+
+#: src/statistics/documentstatisticswidget.cpp:68
+msgctxt "ghostwriter::DocumentStatisticsWidget|"
+msgid "Coleman-Liau Readability Index (CLI)"
+msgstr "Índex de facilitat de lectura de Coleman-Liau (CLI)"
+
+#: src/statistics/documentstatisticswidget.cpp:149
+msgctxt "ghostwriter::DocumentStatisticsWidget|"
+msgid "Kindergarten"
+msgstr "Llar d'infants"
+
+#: src/statistics/documentstatisticswidget.cpp:152
+msgctxt "ghostwriter::DocumentStatisticsWidget|"
+msgid "Rocket Science"
+msgstr "Ciència aeroespacial"
+
+#: src/statistics/documentstatisticswidget.cpp:154
+msgctxt "ghostwriter::DocumentStatisticsWidget|"
+msgid "College"
+msgstr "Universitat"
+
+#: src/statistics/sessionstatisticswidget.cpp:37
+msgctxt "ghostwriter::SessionStatisticsWidget|"
+msgid "Words Written:"
+msgstr "Paraules escrites:"
+
+#: src/statistics/sessionstatisticswidget.cpp:38
+msgctxt "ghostwriter::SessionStatisticsWidget|"
+msgid "Pages Written:"
+msgstr "Pàgines escrites:"
+
+#: src/statistics/sessionstatisticswidget.cpp:39
+msgctxt "ghostwriter::SessionStatisticsWidget|"
+msgid "Average WPM:"
+msgstr "PPM mitjà:"
+
+#: src/statistics/sessionstatisticswidget.cpp:40
+msgctxt "ghostwriter::SessionStatisticsWidget|"
+msgid "Total Time:"
+msgstr "Temps total:"
+
+#: src/statistics/sessionstatisticswidget.cpp:41
+msgctxt "ghostwriter::SessionStatisticsWidget|"
+msgid "Idle Time:"
+msgstr "Temps d'inactivitat:"
+
+#: src/statistics/sessionstatisticswidget.cpp:41
+msgctxt "ghostwriter::SessionStatisticsWidget|"
+msgid "100%"
+msgstr "100%"
+
+#: src/statistics/statisticsindicator.cpp:15
+msgctxt "ghostwriter::StatisticsIndicator|"
+msgid "%Ln word(s)"
+msgid_plural "%Ln word(s)"
+msgstr[0] "%Ln paraula"
+msgstr[1] "%Ln paraules"
+
+#: src/statistics/statisticsindicator.cpp:19
+msgctxt "ghostwriter::StatisticsIndicator|"
+msgid "%Ln character(s)"
+msgid_plural "%Ln character(s)"
+msgstr[0] "%Ln caràcter"
+msgstr[1] "%Ln caràcters"
+
+#: src/statistics/statisticsindicator.cpp:23
+msgctxt "ghostwriter::StatisticsIndicator|"
+msgid "%Ln sentence(s)"
+msgid_plural "%Ln sentence(s)"
+msgstr[0] "%Ln frase"
+msgstr[1] "%Ln frases"
+
+#: src/statistics/statisticsindicator.cpp:27
+msgctxt "ghostwriter::StatisticsIndicator|"
+msgid "%Ln paragraph(s)"
+msgid_plural "%Ln paragraph(s)"
+msgstr[0] "%Ln paràgraf"
+msgstr[1] "%Ln paràgrafs"
+
+#: src/statistics/statisticsindicator.cpp:31
+msgctxt "ghostwriter::StatisticsIndicator|"
+msgid "%Ln page(s)"
+msgid_plural "%Ln page(s)"
+msgstr[0] "%Ln pàgina"
+msgstr[1] "%Ln pàgines"
+
+#: src/statistics/statisticsindicator.cpp:35
+msgctxt "ghostwriter::StatisticsIndicator|"
+msgid "%Ln word(s) added"
+msgid_plural "%Ln word(s) added"
+msgstr[0] "S'ha afegit %Ln paraula"
+msgstr[1] "S'han afegit %Ln paraules"
+
+#: src/statistics/statisticsindicator.cpp:37
+#, qt-format
+msgctxt "ghostwriter::StatisticsIndicator|"
+msgid "%1 wpm"
+msgstr "%1 ppm"
+
+#: src/statistics/statisticsindicator.cpp:38
+#, qt-format
+msgctxt "ghostwriter::StatisticsIndicator|"
+msgid "%1:%2 read time"
+msgstr "%1:%2 temps de lectura"
+
+#: src/statistics/statisticsindicator.cpp:41
+#, qt-format
+msgctxt "ghostwriter::StatisticsIndicator|"
+msgid "%1:%2 write time"
+msgstr "%1:%2 temps d'escriptura"
+
+#: src/theme/themeeditordialog.cpp:81
+msgctxt "ghostwriter::ThemeEditorDialog|"
+msgid "Edit Theme"
+msgstr "Edita el tema"
+
+#: src/theme/themeeditordialog.cpp:84
+msgctxt "ghostwriter::ThemeEditorDialog|"
+msgid "Theme Name"
+msgstr "Nom del tema"
+
+#: src/theme/themeeditordialog.cpp:168
+msgctxt "ghostwriter::ThemeEditorDialog|"
+msgid "Element"
+msgstr "Element"
+
+#: src/theme/themeeditordialog.cpp:169
+msgctxt "ghostwriter::ThemeEditorDialog|"
+msgid "Light Mode"
+msgstr "Mode clar"
+
+#: src/theme/themeeditordialog.cpp:170
+msgctxt "ghostwriter::ThemeEditorDialog|"
+msgid "Dark Mode"
+msgstr "Mode fosc"
+
+#: src/theme/themeeditordialog.cpp:172
+msgctxt "ghostwriter::ThemeEditorDialog|"
+msgid "Foreground"
+msgstr "Primer pla"
+
+#: src/theme/themeeditordialog.cpp:173
+msgctxt "ghostwriter::ThemeEditorDialog|"
+msgid "Background"
+msgstr "Fons"
+
+#: src/theme/themeeditordialog.cpp:174
+msgctxt "ghostwriter::ThemeEditorDialog|"
+msgid "Selection"
+msgstr "Selecció"
+
+#: src/theme/themeeditordialog.cpp:175
+msgctxt "ghostwriter::ThemeEditorDialog|"
+msgid "Cursor"
+msgstr "Cursor"
+
+#: src/theme/themeeditordialog.cpp:176
+msgctxt "ghostwriter::ThemeEditorDialog|"
+msgid "Markup"
+msgstr "Marcatge"
+
+#: src/theme/themeeditordialog.cpp:177
+msgctxt "ghostwriter::ThemeEditorDialog|"
+msgid "Accent"
+msgstr "Accent"
+
+#: src/theme/themeeditordialog.cpp:178
+msgctxt "ghostwriter::ThemeEditorDialog|"
+msgid "Heading"
+msgstr "Encapçalament"
+
+#: src/theme/themeeditordialog.cpp:179
+msgctxt "ghostwriter::ThemeEditorDialog|"
+msgid "Emphasis"
+msgstr "Èmfasi"
+
+#: src/theme/themeeditordialog.cpp:180
+msgctxt "ghostwriter::ThemeEditorDialog|"
+msgid "Block Text"
+msgstr "Text del bloc"
+
+#: src/theme/themeeditordialog.cpp:181
+msgctxt "ghostwriter::ThemeEditorDialog|"
+msgid "Link"
+msgstr "Enllaç"
+
+#: src/theme/themeeditordialog.cpp:182
+msgctxt "ghostwriter::ThemeEditorDialog|"
+msgid "Error"
+msgstr "Error"
+
+#: src/theme/themeeditordialog.cpp:215
+msgctxt "ghostwriter::ThemeEditorDialog|"
+msgid "Unable to save theme."
+msgstr "No s'ha pogut desar el tema."
+
+#: src/theme/themerepository.cpp:138
+#, qt-format
+msgctxt "ghostwriter::ThemeRepository|"
+msgid "The specified theme does not exist in the file system: %1"
+msgstr "El tema especificat no existeix al sistema de fitxers: %1"
+
+#: src/theme/themerepository.cpp:146
+#, qt-format
+msgctxt "ghostwriter::ThemeRepository|"
+msgid "Could not open theme file for reading: %1"
+msgstr "No s'ha pogut obrir el fitxer de tema per a lectura: %1"
+
+#: src/theme/themerepository.cpp:156
+#, qt-format
+msgctxt "ghostwriter::ThemeRepository|"
+msgid "Invalid theme format: %1"
+msgstr "Format del tema no vàlid: %1"
+
+#: src/theme/themerepository.cpp:175 src/theme/themerepository.cpp:184
+#, qt-format
+msgctxt "ghostwriter::ThemeRepository|"
+msgid "Invalid or missing value(s) in %1"
+msgstr "Valors que manquen o no vàlids a %1"
+
+#: src/theme/themerepository.cpp:192
+msgctxt "ghostwriter::ThemeRepository|"
+msgid ""
+"The specified theme is not available.  Try restarting the application.  If "
+"problem persists, please file a bug report."
+msgstr ""
+"El tema especificat no està disponible. Intenteu reiniciar l'aplicació. Si "
+"el problema persisteix, ompliu un informe d'error."
+
+#: src/theme/themerepository.cpp:208
+#, qt-format
+msgctxt "ghostwriter::ThemeRepository|"
+msgid ""
+"Could not delete theme at %1. Please try setting the file permissions to be "
+"writeable."
+msgstr ""
+"No s'ha pogut suprimir el tema a %1. Proveu d'establir els permisos del "
+"fitxer per a fer que s'hi pugui escriure."
+
+#: src/theme/themerepository.cpp:228
+#, qt-format
+msgctxt "ghostwriter::ThemeRepository|"
+msgid "'%1' already exists.  Please choose another name."
+msgstr "«%1» ja existeix. Trieu un altre nom."
+
+#: src/theme/themerepository.cpp:237
+#, qt-format
+msgctxt "ghostwriter::ThemeRepository|"
+msgid "'%1' theme already exists.  Please choose another name."
+msgstr "El tema «%1» ja existeix. Trieu un altre nom."
+
+#: src/theme/themerepository.cpp:244
+msgctxt "ghostwriter::ThemeRepository|"
+msgid "Failed to rename theme.  Please check file permissions."
+msgstr ""
+"No s'ha pogut canviar el nom del tema. Comproveu els permisos del fitxer."
+
+#: src/theme/themerepository.cpp:282
+msgctxt "ghostwriter::ThemeRepository|"
+msgid ""
+"Theme could not be saved to disk.  Please check file permissions or try "
+"renaming the theme."
+msgstr ""
+"No s'ha pogut desar el tema al disc. Comproveu els permisos del fitxer o "
+"proveu de canviar el nom del tema."
+
+#: src/theme/themerepository.cpp:312
+msgctxt "ghostwriter::ThemeRepository|"
+msgid "Untitled 1"
+msgstr "Sense títol 1"
+
+#: src/theme/themerepository.cpp:322
+#, qt-format
+msgctxt "ghostwriter::ThemeRepository|"
+msgid "Untitled %1"
+msgstr "Sense títol %1"
+
+#: src/theme/themeselectiondialog.cpp:91
+msgctxt "ghostwriter::ThemeSelectionDialog|"
+msgid "Themes"
+msgstr "Temes"
+
+#: src/theme/themeselectiondialog.cpp:132
+msgctxt "ghostwriter::ThemeSelectionDialog|"
+msgid "Preview in dark mode"
+msgstr "Vista prèvia en mode fosc"
+
+#: src/theme/themeselectiondialog.cpp:138
+msgctxt "ghostwriter::ThemeSelectionDialog|"
+msgid "Edit..."
+msgstr "Edita..."
+
+#: src/theme/themeselectiondialog.cpp:375
+msgctxt "ghostwriter::ThemeSelectionDialog|"
+msgid "Cannot delete theme."
+msgstr "No s'ha pogut suprimir el tema."
+
+#: src/theme/themeselectiondialog.cpp:376
+msgctxt "ghostwriter::ThemeSelectionDialog|"
+msgid "Sorry, this is a built-in theme that cannot be deleted."
+msgstr "Aquest és un tema integrat que no es pot suprimir."
+
+#: src/theme/themeselectiondialog.cpp:386
+#, qt-format
+msgctxt "ghostwriter::ThemeSelectionDialog|"
+msgid "Are you sure you want to permanently delete the '%1' theme?"
+msgstr "Esteu segur que voleu suprimir permanentment el tema «%1»?"
+
+#: src/theme/themeselectiondialog.cpp:401
+msgctxt "ghostwriter::ThemeSelectionDialog|"
+msgid "Failed to delete theme."
+msgstr "Ha fallat en suprimir el tema."
+
+#: src/theme/themeselectiondialog.cpp:428
+msgctxt "ghostwriter::ThemeSelectionDialog|"
+msgid "Cannot edit theme."
+msgstr "No s'ha pogut editar el tema."
+
+#: src/theme/themeselectiondialog.cpp:429
+msgctxt "ghostwriter::ThemeSelectionDialog|"
+msgid "Sorry, this is a built-in theme that cannot be edited."
+msgstr "Aquest és un tema integrat que no es pot editar."

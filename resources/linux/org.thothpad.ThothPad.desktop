@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=ThothPad
+GenericName=Prose-aware Writing Studio
+Comment=See what your prose is doing
+Icon=thothpad
+TryExec=thothpad
+Exec=thothpad %f
+Terminal=false
+MimeType=text/plain;text/markdown;text/x-markdown;
+Categories=Qt;Office;WordProcessor;
+Keywords=Markdown;editor;writing;revision;prose;style;grammar;analysis;

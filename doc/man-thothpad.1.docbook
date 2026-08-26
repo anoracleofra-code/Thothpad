@@ -1,0 +1,58 @@
+<?xml version="1.0" ?>
+<!DOCTYPE refentry PUBLIC "-//KDE//DTD DocBook XML V4.5-Based Variant V1.1//EN" "dtd/kdedbx45.dtd" [
+<!ENTITY % English "INCLUDE">
+]>
+<!--
+SPDX-FileCopyrightText: 2022 Megan Conkle <megan.conkle@kdemail.net>
+SPDX-FileCopyrightText: 2026 ThothPad contributors
+SPDX-License-Identifier: CC-BY-SA-4.0
+-->
+<refentry lang="&language;">
+<refentryinfo>
+<title>ThothPad User's Manual</title>
+<author><firstname>Megan</firstname><surname>Conkle</surname>
+<contrib>Original Ghostwriter man page.</contrib>
+<email>megan.conkle@kdemail.net</email></author>
+<date>2026-08-10</date>
+<releaseinfo>0.1.1</releaseinfo>
+<productname>ThothPad</productname>
+</refentryinfo>
+<refmeta>
+<refentrytitle><command>thothpad</command></refentrytitle>
+<manvolnum>1</manvolnum>
+</refmeta>
+<refnamediv>
+<refname>thothpad</refname>
+<refpurpose>Markdown editor with optional prose-awareness analysis</refpurpose>
+</refnamediv>
+<refsynopsisdiv id="synopsis">
+<cmdsynopsis>
+  <command>thothpad</command>
+  <arg choice="opt"><replaceable>FILE</replaceable></arg>
+</cmdsynopsis>
+</refsynopsisdiv>
+<refsect1 id="description">
+<title>Description</title>
+<para>
+  <command>thothpad</command> is a Qt Markdown editor derived from
+  Ghostwriter. It adds optional local prose lenses, manuscript reports, profile
+  controls, and explicitly invoked AI-assisted review operations.
+</para>
+<para>
+  Deterministic analysis runs locally and does not require an API key. AI
+  operations disclose their provider and transmission scope before prose is sent.
+</para>
+</refsect1>
+<refsect1 id="options"><title>Options</title>
+<variablelist>
+  <varlistentry>
+  <term><option>--disable-gpu</option></term>
+  <listitem><para>Disable GPU acceleration.</para></listitem>
+  </varlistentry>
+</variablelist>
+</refsect1>
+<refsect1 id="copyright"><title>Copyright</title>
+<para>Copyright &copy; 2022 Megan Conkle and ThothPad contributors</para>
+<para>License: GNU General Public License version 3 or later.</para>
+</refsect1>
+</refentry>

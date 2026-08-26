@@ -1,0 +1,94 @@
+# SPDX-FileCopyrightText: 2014-2024 Megan Conkle <megan.conkle@kdemail.net>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# RC py files
+icons_rc.py
+resources_rc.py
+
+# general
+build/
+/build*/
+*.rej
+*.orig
+*.out
+CMakeLists.txt.user*
+/.clang-format
+/.idea
+
+# kate
+*~
+*-swp
+
+# kdevelop
+*.kdev4
+
+# from kdiff3
+*.BACKUP.*
+*.BASE.*
+*.LOCAL.*
+*.REMOTE.*
+
+# from dolphin
+.directory
+
+# LSP Server data
+/.clangd
+/.cmake/
+/.cache/
+/compile_commands.json
+/cmake-build*
+.vscode/
+.flatpak/
+.flatpak-builder/
+/_build/
+
+# Qt-es
+/.qmake.cache
+/.qmake.stash
+*.pro.user
+*.pro.user.*
+*.qbs.user
+*.qbs.user.*
+*.moc
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+Makefile*
+*-build-*
+/.qtc_clangd/
+/.qtc_clangd/*
+*.idx
+
+# QtCreator
+*.autosave
+
+# QtCtreator Qml
+*.qmlproject.user
+*.qmlproject.user.*
+
+*.qm
+
+# Mac finder stub
+.DS_Store
+
+# ThothPad Engine generated files
+writer-engine/.pytest_cache/
+writer-engine/.venv/
+**/__pycache__/
+**/*.pyc
+writer-engine/frontend/node_modules/
+writer-engine/frontend/dist/
+writer-engine/dist/
+writer-engine/build/
+writer-engine/harper-bridge/target/
+quality-gates/artifacts/
+/release/
+
+# Local artifacts and tooling workspaces (never commit)
+/benchmark-results/
+/graphify-out/
+/settings/
+/.pytest_cache/
+/prose-test*.txt
+*.corrupt.bak

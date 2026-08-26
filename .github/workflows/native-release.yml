@@ -1,0 +1,366 @@
+name: native-release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+jobs:
+  validate-wiring:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Validate release wiring
+        run: |
+          python3 -m unittest discover -s packaging/tests -p 'test_*.py'
+          python3 -m py_compile packaging/tests/verify_unix_package.py
+          bash -n packaging/linux/package-appimage.sh
+          bash -n packaging/linux/package-flatpak.sh
+          bash -n packaging/macos/package-dmg.sh
+
+  windows-candidate:
+    needs: validate-wiring
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [Core, Full]
+        candidate: [a, b]
+    name: Windows ${{ matrix.variant }} candidate ${{ matrix.candidate }}
+    runs-on: [self-hosted, thothpad, windows, "repro-${{ matrix.candidate }}"]
+    defaults:
+      run:
+        working-directory: source-${{ matrix.candidate }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: source-${{ matrix.candidate }}
+          clean: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11.9"
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: "0.12.3"
+          enable-cache: true
+      - name: Provision locked build tools
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cmake==4.3.2 ninja==1.13.0
+          rustup toolchain install 1.95.0 --profile minimal
+      - name: Freeze engine
+        shell: pwsh
+        working-directory: source-${{ matrix.candidate }}/writer-engine
+        run: |
+          uv sync --locked --extra dev --extra desktop
+          if ("${{ matrix.candidate }}" -eq "a") { uv run python -m pytest -q tests }
+          cargo clean --manifest-path harper-bridge/Cargo.toml
+          uv run python -m backend.build_sidecar
+      - name: Build native candidate
+        shell: pwsh
+        run: |
+          $slug = "${{ matrix.variant }}".ToLowerInvariant()
+          $build = "build-windows-$slug-candidate-${{ matrix.candidate }}"
+          cmake -S . -B $build -G Ninja -DCMAKE_BUILD_TYPE=Release -DTHOTHPAD_PACKAGE_VARIANT=${{ matrix.variant }} -DTHOTHPAD_BUNDLE_ENGINE=OFF
+          python packaging/verify_toolchain.py --lock packaging/toolchain-lock.json windows --craft-root C:\CraftRoot --build-dir $build --python (Get-Command python.exe).Source --cmake (Get-Command cmake.exe).Source --ninja (Get-Command ninja.exe).Source
+          cmake --build $build --config Release
+          if ("${{ matrix.candidate }}" -eq "a") {
+            $env:QT_QPA_PLATFORM = "offscreen"
+            $env:QT_PLUGIN_PATH = "C:\CraftRoot\plugins"
+            $env:QT_QPA_PLATFORM_PLUGIN_PATH = "C:\CraftRoot\plugins\platforms"
+            ctest --test-dir $build -C Release --output-on-failure
+          }
+      - name: Stage reproducibility candidate
+        shell: pwsh
+        run: |
+          $slug = "${{ matrix.variant }}".ToLowerInvariant()
+          $build = "build-windows-$slug-candidate-${{ matrix.candidate }}"
+          $output = "release/reproducibility/windows-$slug-${{ matrix.candidate }}"
+          ./packaging/windows/package.ps1 -BuildDirectory $build -OutputDirectory $output -PackageVariant ${{ matrix.variant }} -SkipBuild -StageOnly
+          python packaging/reproducibility.py snapshot --root "$output/stage/bin" --output "$output/tree.normalized.json" --candidate "${{ matrix.candidate }}" --builder-id "${{ runner.name }}" --runner-pool "repro-${{ matrix.candidate }}" --source-commit "${{ github.sha }}" --toolchain-lock packaging/toolchain-lock.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: thothpad-repro-windows-${{ matrix.variant }}-${{ matrix.candidate }}
+          path: source-${{ matrix.candidate }}/release/reproducibility/windows-*
+          if-no-files-found: error
+      - name: Package and run Windows acceptance
+        if: matrix.candidate == 'a'
+        shell: pwsh
+        run: |
+          $slug = "${{ matrix.variant }}".ToLowerInvariant()
+          $build = "build-windows-$slug-candidate-a"
+          $output = "release/windows/$slug"
+          ./packaging/windows/package.ps1 -BuildDirectory $build -OutputDirectory $output -PackageVariant ${{ matrix.variant }} -SkipBuild -PublicRelease
+          ./packaging/windows/verify-package.ps1 -ArtifactsDir "$output/artifacts" -WorkDir "$output/acceptance" -EvidencePath "$output/artifacts/acceptance-$slug.json" -PackageVariant ${{ matrix.variant }} -LaunchTrials 100
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: matrix.candidate == 'a'
+        with:
+          name: thothpad-release-windows-${{ matrix.variant }}
+          path: source-a/release/windows/*/artifacts
+          if-no-files-found: error
+
+  linux-candidate:
+    needs: validate-wiring
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [Core, Full]
+        candidate: [a, b]
+    name: Linux ${{ matrix.variant }} candidate ${{ matrix.candidate }}
+    runs-on: [self-hosted, thothpad, linux, "repro-${{ matrix.candidate }}"]
+    defaults:
+      run:
+        working-directory: source-${{ matrix.candidate }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: source-${{ matrix.candidate }}
+          clean: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11.9"
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: "0.12.3"
+          enable-cache: true
+      - name: Provision locked build tools
+        run: |
+          python3 -m pip install --disable-pip-version-check cmake==4.3.2 ninja==1.13.0
+          rustup toolchain install 1.95.0 --profile minimal
+          tools="$RUNNER_TEMP/thothpad-tools-${{ matrix.candidate }}"
+          mkdir -p "$tools"
+          linuxdeploy_url="$(python3 packaging/verify_toolchain.py --lock packaging/toolchain-lock.json value linux.linuxdeploy.url)"
+          linuxdeploy_qt_url="$(python3 packaging/verify_toolchain.py --lock packaging/toolchain-lock.json value linux.linuxdeploy_qt.url)"
+          curl --fail --location --silent --show-error "$linuxdeploy_url" -o "$tools/linuxdeploy-x86_64.AppImage"
+          curl --fail --location --silent --show-error "$linuxdeploy_qt_url" -o "$tools/linuxdeploy-plugin-qt-x86_64.AppImage"
+          chmod 0755 "$tools"/*.AppImage
+          python3 packaging/verify_toolchain.py --lock packaging/toolchain-lock.json asset --key linux.linuxdeploy --path "$tools/linuxdeploy-x86_64.AppImage"
+          python3 packaging/verify_toolchain.py --lock packaging/toolchain-lock.json asset --key linux.linuxdeploy_qt --path "$tools/linuxdeploy-plugin-qt-x86_64.AppImage"
+          echo "LINUXDEPLOY=$tools/linuxdeploy-x86_64.AppImage" >> "$GITHUB_ENV"
+          echo "LINUXDEPLOY_QT=$tools/linuxdeploy-plugin-qt-x86_64.AppImage" >> "$GITHUB_ENV"
+      - name: Freeze engine
+        working-directory: source-${{ matrix.candidate }}/writer-engine
+        run: |
+          uv sync --locked --extra dev --extra desktop
+          if [[ "${{ matrix.candidate }}" == "a" ]]; then uv run python -m pytest -q tests; fi
+          cargo clean --manifest-path harper-bridge/Cargo.toml
+          uv run python -m backend.build_sidecar
+      - name: Build native candidate
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          slug="$(printf '%s' "${{ matrix.variant }}" | tr '[:upper:]' '[:lower:]')"
+          build="build-linux-$slug-candidate-${{ matrix.candidate }}"
+          cmake -S . -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release -DTHOTHPAD_PACKAGE_VARIANT=${{ matrix.variant }} -DTHOTHPAD_BUNDLE_ENGINE=OFF
+          python3 packaging/verify_toolchain.py --lock packaging/toolchain-lock.json linux --build-dir "$build" --python "$(command -v python3)" --cmake "$(command -v cmake)" --ninja "$(command -v ninja)" --qtpaths "$(command -v qtpaths6)"
+          cmake --build "$build"
+          if [[ "${{ matrix.candidate }}" == "a" ]]; then ctest --test-dir "$build" --output-on-failure; fi
+      - name: Stage reproducibility candidate
+        env:
+          PACKAGE_VARIANT: ${{ matrix.variant }}
+          STAGE_ONLY: "1"
+        run: |
+          slug="$(printf '%s' "${{ matrix.variant }}" | tr '[:upper:]' '[:lower:]')"
+          output="$PWD/release/reproducibility/linux-$slug-${{ matrix.candidate }}"
+          BUILD_DIR="$PWD/build-linux-$slug-candidate-${{ matrix.candidate }}" OUTPUT_DIR="$output/appimage" bash packaging/linux/package-appimage.sh
+          OUTPUT_DIR="$output/flatpak" bash packaging/linux/package-flatpak.sh
+          python3 packaging/reproducibility.py snapshot --root "$output/appimage/ThothPad.AppDir/usr" --output "$output/appimage.normalized.json" --candidate "${{ matrix.candidate }}" --builder-id "${{ runner.name }}" --runner-pool "repro-${{ matrix.candidate }}" --source-commit "${{ github.sha }}" --toolchain-lock packaging/toolchain-lock.json
+          python3 packaging/reproducibility.py snapshot --root "$output/flatpak/flatpak-build/files" --output "$output/flatpak.normalized.json" --candidate "${{ matrix.candidate }}" --builder-id "${{ runner.name }}" --runner-pool "repro-${{ matrix.candidate }}" --source-commit "${{ github.sha }}" --toolchain-lock packaging/toolchain-lock.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: thothpad-repro-linux-${{ matrix.variant }}-${{ matrix.candidate }}
+          path: source-${{ matrix.candidate }}/release/reproducibility/linux-*
+          if-no-files-found: error
+      - name: Package and run Linux acceptance
+        if: matrix.candidate == 'a'
+        env:
+          PACKAGE_VARIANT: ${{ matrix.variant }}
+          PUBLIC_RELEASE: "1"
+        run: |
+          slug="$(printf '%s' "${{ matrix.variant }}" | tr '[:upper:]' '[:lower:]')"
+          export BUILD_DIR="$PWD/build-linux-$slug-candidate-a"
+          export OUTPUT_DIR="$PWD/release/linux/$slug"
+          bash packaging/linux/package-appimage.sh
+          bash packaging/linux/package-flatpak.sh
+          appimage="$(find "$OUTPUT_DIR" -maxdepth 1 -name 'ThothPad-*-${{ matrix.variant }}-x86_64.AppImage' -print -quit)"
+          flatpak="$(find "$OUTPUT_DIR" -maxdepth 1 -name 'ThothPad-*-${{ matrix.variant }}.flatpak' -print -quit)"
+          test -n "$appimage" && test -n "$flatpak"
+          python3 packaging/verify_toolchain.py --lock packaging/toolchain-lock.json linux --build-dir "$PWD/build-linux-$slug-candidate-a" --python "$(command -v python3)" --cmake "$(command -v cmake)" --ninja "$(command -v ninja)" --qtpaths "$(command -v qtpaths6)" --flatpak "$(command -v flatpak)"
+          python3 packaging/tests/verify_unix_package.py --format appimage --artifact "$appimage" --variant ${{ matrix.variant }} --launch-trials 100 --evidence "$OUTPUT_DIR/acceptance-$slug-appimage.json"
+          python3 packaging/tests/verify_unix_package.py --format flatpak --artifact "$flatpak" --variant ${{ matrix.variant }} --launch-trials 1 --evidence "$OUTPUT_DIR/acceptance-$slug-flatpak-smoke.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: matrix.candidate == 'a'
+        with:
+          name: thothpad-release-linux-${{ matrix.variant }}
+          path: source-a/release/linux/*
+          if-no-files-found: error
+
+  macos-candidate:
+    needs: validate-wiring
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [Core, Full]
+        candidate: [a, b]
+    name: macOS ${{ matrix.variant }} candidate ${{ matrix.candidate }}
+    runs-on: [self-hosted, thothpad, macos, "repro-${{ matrix.candidate }}"]
+    defaults:
+      run:
+        working-directory: source-${{ matrix.candidate }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: source-${{ matrix.candidate }}
+          clean: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11.9"
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: "0.12.3"
+          enable-cache: true
+      - name: Provision locked build tools
+        run: |
+          python3 -m pip install --disable-pip-version-check cmake==4.3.2 ninja==1.13.0
+          rustup toolchain install 1.95.0 --profile minimal
+      - name: Freeze engine
+        working-directory: source-${{ matrix.candidate }}/writer-engine
+        run: |
+          uv sync --locked --extra dev --extra desktop
+          if [[ "${{ matrix.candidate }}" == "a" ]]; then uv run python -m pytest -q tests; fi
+          cargo clean --manifest-path harper-bridge/Cargo.toml
+          uv run python -m backend.build_sidecar
+      - name: Build native candidate
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          slug="$(printf '%s' "${{ matrix.variant }}" | tr '[:upper:]' '[:lower:]')"
+          build="build-macos-$slug-candidate-${{ matrix.candidate }}"
+          cmake -S . -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release -DTHOTHPAD_PACKAGE_VARIANT=${{ matrix.variant }} -DTHOTHPAD_BUNDLE_ENGINE=OFF
+          python3 packaging/verify_toolchain.py --lock packaging/toolchain-lock.json macos --build-dir "$build" --python "$(command -v python3)" --cmake "$(command -v cmake)" --ninja "$(command -v ninja)" --qtpaths "$(command -v qtpaths6)" --macdeployqt "$(command -v macdeployqt)" --xcodebuild "$(command -v xcodebuild)"
+          cmake --build "$build"
+          if [[ "${{ matrix.candidate }}" == "a" ]]; then ctest --test-dir "$build" --output-on-failure; fi
+      - name: Stage reproducibility candidate
+        env:
+          PACKAGE_VARIANT: ${{ matrix.variant }}
+          STAGE_ONLY: "1"
+        run: |
+          slug="$(printf '%s' "${{ matrix.variant }}" | tr '[:upper:]' '[:lower:]')"
+          output="$PWD/release/reproducibility/macos-$slug-${{ matrix.candidate }}"
+          BUILD_DIR="$PWD/build-macos-$slug-candidate-${{ matrix.candidate }}" OUTPUT_DIR="$output" bash packaging/macos/package-dmg.sh
+          python3 packaging/reproducibility.py snapshot --root "$output/stage" --output "$output/tree.normalized.json" --candidate "${{ matrix.candidate }}" --builder-id "${{ runner.name }}" --runner-pool "repro-${{ matrix.candidate }}" --source-commit "${{ github.sha }}" --toolchain-lock packaging/toolchain-lock.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: thothpad-repro-macos-${{ matrix.variant }}-${{ matrix.candidate }}
+          path: source-${{ matrix.candidate }}/release/reproducibility/macos-*
+          if-no-files-found: error
+      - name: Package and run macOS acceptance
+        if: matrix.candidate == 'a'
+        env:
+          CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
+          APPLE_NOTARY_PROFILE: ${{ secrets.APPLE_NOTARY_PROFILE }}
+          PACKAGE_VARIANT: ${{ matrix.variant }}
+          PUBLIC_RELEASE: "1"
+        run: |
+          slug="$(printf '%s' "${{ matrix.variant }}" | tr '[:upper:]' '[:lower:]')"
+          export BUILD_DIR="$PWD/build-macos-$slug-candidate-a"
+          export OUTPUT_DIR="$PWD/release/macos/$slug"
+          bash packaging/macos/package-dmg.sh
+          dmg="$(find "$OUTPUT_DIR" -maxdepth 1 -name 'ThothPad-*-${{ matrix.variant }}-macOS.dmg' -print -quit)"
+          test -n "$dmg"
+          python3 packaging/tests/verify_unix_package.py --format dmg --artifact "$dmg" --variant ${{ matrix.variant }} --launch-trials 100 --evidence "$OUTPUT_DIR/acceptance-$slug-macos.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: matrix.candidate == 'a'
+        with:
+          name: thothpad-release-macos-${{ matrix.variant }}
+          path: source-a/release/macos/*
+          if-no-files-found: error
+
+  reproducibility-arbiter:
+    needs: [windows-candidate, linux-candidate, macos-candidate]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            variant: Core
+            slug: core
+          - platform: windows
+            variant: Full
+            slug: full
+          - platform: linux
+            variant: Core
+            slug: core
+          - platform: linux
+            variant: Full
+            slug: full
+          - platform: macos
+            variant: Core
+            slug: core
+          - platform: macos
+            variant: Full
+            slug: full
+    name: Arbiter ${{ matrix.platform }} ${{ matrix.variant }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: thothpad-repro-${{ matrix.platform }}-${{ matrix.variant }}-a
+          path: candidate-a
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: thothpad-repro-${{ matrix.platform }}-${{ matrix.variant }}-b
+          path: candidate-b
+      - name: Compare independently built candidates
+        run: |
+          mkdir -p evidence
+          if [[ "${{ matrix.platform }}" == "linux" ]]; then
+            for format in appimage flatpak; do
+              left="$(find candidate-a -name "$format.normalized.json" -print -quit)"
+              right="$(find candidate-b -name "$format.normalized.json" -print -quit)"
+              test -n "$left" && test -n "$right"
+              python3 packaging/reproducibility.py compare --left "$left" --right "$right" --source-commit "${{ github.sha }}" --toolchain-lock packaging/toolchain-lock.json --left-pool repro-a --right-pool repro-b --output "evidence/${{ matrix.platform }}-${{ matrix.slug }}-$format.json"
+            done
+          else
+            left="$(find candidate-a -name 'tree.normalized.json' -print -quit)"
+            right="$(find candidate-b -name 'tree.normalized.json' -print -quit)"
+            test -n "$left" && test -n "$right"
+            python3 packaging/reproducibility.py compare --left "$left" --right "$right" --source-commit "${{ github.sha }}" --toolchain-lock packaging/toolchain-lock.json --left-pool repro-a --right-pool repro-b --output "evidence/${{ matrix.platform }}-${{ matrix.slug }}.json"
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: thothpad-repro-evidence-${{ matrix.platform }}-${{ matrix.variant }}
+          path: evidence
+          if-no-files-found: error
+
+  attest-release:
+    needs: [windows-candidate, linux-candidate, macos-candidate, reproducibility-arbiter]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            variant: Core
+          - platform: windows
+            variant: Full
+          - platform: linux
+            variant: Core
+          - platform: linux
+            variant: Full
+          - platform: macos
+            variant: Core
+          - platform: macos
+            variant: Full
+    name: Attest ${{ matrix.platform }} ${{ matrix.variant }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: thothpad-release-${{ matrix.platform }}-${{ matrix.variant }}
+          path: release-artifacts
+      - uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+        with:
+          subject-path: release-artifacts/**/*

@@ -1,0 +1,131 @@
+name: thothpad-engine
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: writer-engine
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: "0.12.3"
+          enable-cache: true
+      - run: uv sync --locked --extra dev
+      - run: uv run ruff check .
+
+  typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: writer-engine
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: "0.12.3"
+          enable-cache: true
+      - run: uv sync --locked --extra dev
+      - run: uv run mypy backend
+
+  benchmark:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: writer-engine
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: "0.12.3"
+          enable-cache: true
+      - run: rustup toolchain install 1.95.0 --profile minimal
+      - run: uv sync --locked --extra dev --extra desktop
+      - name: Verify sealed benchmark contract
+        working-directory: .
+        run: |
+          uv run --project writer-engine python benchmarks/gate.py verify
+          uv run --project writer-engine python benchmarks/test_gate.py
+      - name: Run measured, non-certifying smoke
+        working-directory: .
+        run: >-
+          uv run --project writer-engine python benchmarks/gate.py run-engine --suite smoke
+          --corpus clean --word-count 10000 --output benchmark-results
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: thothpad-engine-smoke-windows
+          path: benchmark-results
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        python: ["3.11", "3.12"]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: writer-engine
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: "0.12.3"
+          enable-cache: true
+      - run: rustup toolchain install 1.95.0 --profile minimal
+      - run: uv sync --locked --extra dev --extra desktop
+      # Windows/macOS lanes install the spaCy model via the desktop extra, so
+      # they run the full suite; capability-gated tests skip themselves.
+      - name: Run test suite
+        if: runner.os != 'Linux'
+        run: uv run python -m pytest -q
+      - name: Run test suite (capability-gated)
+        if: runner.os == 'Linux'
+        run: uv run python -m pytest -q -m "not windows and not requires_harper and not requires_spacy_model"
+      - run: uv run python -m backend.build_sidecar --smoke
+
+  freeze:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: writer-engine
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: "0.12.3"
+          enable-cache: true
+      - run: rustup toolchain install 1.95.0 --profile minimal
+      - run: uv sync --locked --extra dev --extra desktop
+      - run: uv run python -m backend.build_sidecar
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: thothpad-engine-${{ runner.os }}-${{ runner.arch }}
+          path: writer-engine/dist/writer-engine
+          if-no-files-found: error

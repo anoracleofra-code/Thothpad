@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "target": {
+    "id": "2vcpu-8gb-integrated-ssd",
+    "logical_cpu_limit": 2,
+    "memory_bytes": 8589934592,
+    "storage": "ssd",
+    "graphics": "integrated",
+    "network_required": false
+  },
+  "trial_policy": {
+    "smoke": {"cold": 1, "warm": 1, "certifying": false},
+    "certification": {"cold": 20, "warm": 30, "certifying": true}
+  },
+  "platforms": ["windows", "macos", "linux"],
+  "collectors": {
+    "engine": ["full_analysis_ms", "diagnostic_count"],
+    "qt_instrumented": [
+      "input_to_paint_ms", "gui_edit_ms", "ui_stall_ms",
+      "scroll_frame_ms", "tooltip_lookup_ms", "open_to_editable_ms",
+      "hydration_first_spans_ms", "hydration_complete_ms",
+      "cancellation_ack_ms", "cancellation_stop_ms", "stale_result_count"
+    ],
+    "process_tree": ["idle_rss_bytes", "steady_rss_bytes", "report_peak_rss_bytes", "idle_cpu_percent"],
+    "physical_power": ["idle_wakeups_per_second", "idle_power_above_baseline_watts"],
+    "accuracy": [
+      "exact_rule_agreement_percent", "heuristic_precision_percent",
+      "heuristic_recall_percent", "adv_precision_percent", "adv_recall_percent",
+      "adv_f1_percent", "adj_precision_percent", "adj_recall_percent",
+      "adj_f1_percent", "verb_precision_percent", "verb_recall_percent",
+      "verb_f1_percent"
+    ],
+    "package": ["core_compressed_bytes", "core_extracted_bytes", "clean_launch_success_percent"]
+  }
+}
+

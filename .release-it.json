@@ -1,0 +1,88 @@
+{
+    "hooks": {},
+    "git": {
+        "changelog": null,
+        "requireCleanWorkingDir": false,
+        "requireUpstream": true,
+        "requireCommits": true,
+        "addUntrackedFiles": true,
+        "commit": true,
+        "commitMessage": "Version bump to ${version}",
+        "commitArgs": [],
+        "tag": true,
+        "tagName": null,
+        "tagAnnotation": "Release ${version}",
+        "tagArgs": [],
+        "push": true,
+        "pushArgs": ["--follow-tags"],
+        "pushRepo": "",
+        "requireBranch": "master"
+    },
+    "github": {
+        "release": true,
+        "releaseName": "ghostwriter ${version}",
+        "releaseNotes": "./releaseNotes.py ${version}",
+        "preRelease": false,
+        "draft": true,
+        "tokenRef": "GITHUB_TOKEN",
+        "assets": ["COPYING"],
+        "host": null,
+        "timeout": 0,
+        "proxy": null,
+        "skipChecks": false,
+        "web": false
+    },
+    "plugins": {
+        "@j-ulrich/release-it-regex-bumper": {
+            "out": [
+                {
+                    "file": "ghostwriter.pro",
+                    "search": "VERSION = .*",
+                    "replace": "VERSION = {{version}}"
+                },
+                {
+                    "file": "./resources/linux/ghostwriter.appdata.xml",
+                    "search": "<release .*/>",
+                    "replace": "<release version=\"{{version}}\" date=\"{{now:YYYY-MM-DD}}\" type=\"stable\"/>"
+                },
+                "./resources/linux/ghostwriter.1",
+                {
+                    "file": "./resources/linux/ghostwriter.1",
+                    "search": "(\\.TH man \\d+) \".*?\" (.*)",
+                    "replace": "$1 \"{{now:D MMM YYYY}}\" $2"
+                },
+                {
+                    "file": "ghostwriter.spec",
+                    "search": "%global changelog_date .*",
+                    "replace": "%global changelog_date {{now:ddd MMM DD YYYY}}"
+                },
+                {
+                    "file": "ghostwriter.spec",
+                    "search": "%global appver .*",
+                    "replace": "%global appver {{version}}"
+                },
+                "./debian/changelog",
+                {
+                    "file": "./debian/changelog",
+                    "search": "(\\s+--\\s+.*?>).*",
+                    "replace": "$1  {{now:ddd, DD MMM YYYY HH:mm:ss ZZ}}"
+                },
+                {
+                    "file": "appveyor.yml",
+                    "search": "version:.*",
+                    "replace": "version: {{version}}+{build}"
+                },
+                {
+                    "file": "appveyor.yml",
+                    "search": "appver:.*",
+                    "replace": "appver: {{version}}"
+                },
+                {
+                    "file": "CHANGELOG.md",
+                    "search": "\\[Unreleased\\].*",
+                    "replace": "[{{version}}] - {{now:YYYY-MM-DD}}"
+                }
+            ]
+        }
+    }
+}

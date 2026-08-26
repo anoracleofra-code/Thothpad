@@ -1,0 +1,48 @@
+{
+  "name": "essay-direct",
+  "register_target": "conversational essay, declarative, specific, no throat-clearing",
+  "default_mode": "rewrite",
+  "reader_profile": "A smart reader who wants the point quickly and does not need hand-holding.",
+  "scene_anchor": "A reader scanning a draft and deciding whether the argument earns their attention.",
+  "preserve": ["argument", "examples", "stance", "facts"],
+  "prefer": ["clear claims", "specific examples", "short paragraphs", "implicit transitions"],
+  "avoid": ["rhetorical setup", "business jargon", "fake profundity", "meta-commentary"],
+  "hard_bans": ["Here's the thing:", "Let me be clear", "The truth is,"],
+  "soft_flags": ["This matters because", "At its core", "The reality is"],
+  "filter_words": {
+    "enabled": true,
+    "ignore_dialogue": true,
+    "severity": "taste_flag",
+    "custom_severity": "hard_fail",
+    "categories": {
+      "perception": ["saw", "heard", "felt", "noticed", "watched"],
+      "cognitive": ["realized", "knew", "thought", "wondered", "remembered", "decided"],
+      "distancing": ["could see", "could hear", "began to", "started to"],
+      "hedges": ["just", "really", "quite", "rather", "somewhat", "perhaps"],
+      "vague_modifiers": ["very", "somehow", "almost", "slightly", "a little", "a bit"]
+    },
+    "custom": []
+  },
+  "possible_adverbs": {"enabled": true, "ignore_dialogue": true, "confirm_pos": false, "exceptions": []},
+  "possible_adjectives": {"enabled": false, "ignore_dialogue": false, "exceptions": []},
+  "possible_verbs": {"enabled": false, "ignore_dialogue": false, "exceptions": []},
+  "cliches": {"ignore_dialogue": true},
+  "cliche_categories": {
+    "general": true,
+    "genre": true,
+    "self_help": true,
+    "corporate": true,
+    "wordiness": true,
+    "redundancy": true
+  },
+  "external_tools": {"proselint": false},
+  "manuscript": {"use_spacy": false},
+  "analyzer_weights": {
+    "binary_contrast": 1.3,
+    "vague_abstracts": 1.2,
+    "false_agency": 1.0,
+    "filter_words": 1.0,
+    "stylometry": 0.5,
+    "cliches": 0.9
+  }
+}

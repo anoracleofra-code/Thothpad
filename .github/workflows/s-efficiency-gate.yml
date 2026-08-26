@@ -1,0 +1,162 @@
+name: s-efficiency-gate
+
+on:
+  pull_request:
+    paths:
+      - "benchmarks/**"
+      - "packaging/**"
+      - ".github/workflows/**"
+      - "CMakeLists.txt"
+  push:
+    branches: [main]
+    paths:
+      - "benchmarks/**"
+      - "packaging/**"
+      - ".github/workflows/**"
+      - "CMakeLists.txt"
+  workflow_dispatch:
+    inputs:
+      certification:
+        description: "Run the sealed certification matrix on attested runners"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - name: Verify immutable contract
+        run: |
+          python benchmarks/gate.py verify
+          python benchmarks/test_gate.py
+      - name: Reproduce corpus hashes
+        run: python benchmarks/gate.py fixtures --output benchmark-results/corpora
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: benchmark-contract-${{ runner.os }}
+          path: benchmark-results/corpora/corpus-manifest.json
+
+  immutable-thresholds:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Prevent changes to an established S standard
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          base="origin/${{ github.base_ref }}"
+          if git cat-file -e "$base:benchmarks/thresholds/s-grade-v1.json" 2>/dev/null; then
+            git diff --exit-code "$base" -- \
+              benchmarks/thresholds/s-grade-v1.json \
+              benchmarks/thresholds/s-grade-v1.sha256
+          else
+            echo "Bootstrapping S-grade v1; subsequent changes will be rejected."
+          fi
+
+  engine-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: "0.12.3"
+          enable-cache: true
+      - run: rustup toolchain install 1.95.0 --profile minimal
+      - run: uv sync --project writer-engine --locked --extra dev --extra desktop
+      - name: Non-certifying measured smoke
+        run: >-
+          uv run --project writer-engine python benchmarks/gate.py run-engine --suite smoke
+          --corpus clean --word-count 10000 --output benchmark-results
+      - name: Aggregate smoke evidence
+        run: >-
+          uv run --project writer-engine python benchmarks/gate.py aggregate benchmark-results/raw
+          --output benchmark-results/aggregate-${{ runner.os }}.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: benchmark-smoke-${{ runner.os }}
+          path: benchmark-results
+
+  certification:
+    if: github.event_name == 'workflow_dispatch' && inputs.certification
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            runner: '["self-hosted", "thothpad-benchmark", "windows", "2vcpu-8gb"]'
+          - platform: linux
+            runner: '["self-hosted", "thothpad-benchmark", "linux", "2vcpu-8gb"]'
+          - platform: macos
+            runner: '["self-hosted", "thothpad-benchmark", "macos", "2vcpu-8gb"]'
+    runs-on: ${{ fromJSON(matrix.runner) }}
+    env:
+      THOTHPAD_BENCHMARK_TARGET_ATTESTED: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: "0.12.3"
+          enable-cache: true
+      - run: rustup toolchain install 1.95.0 --profile minimal
+      - run: uv sync --project writer-engine --locked --extra dev --extra desktop
+      - name: Configure native efficiency collector
+        run: >-
+          cmake -S . -B build-s-efficiency -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DTHOTHPAD_PACKAGE_VARIANT=Core -DTHOTHPAD_BUNDLE_ENGINE=OFF
+      - name: Run complete engine matrix
+        run: uv run --project writer-engine python benchmarks/gate.py run-engine --suite certification --output benchmark-results
+      - name: Collect platform instrumentation
+        run: >-
+          uv run --project writer-engine python benchmarks/run_external_collector.py
+          --output benchmark-results --build-dir build-s-efficiency
+          --suite certification
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: benchmark-certification-${{ matrix.platform }}
+          path: benchmark-results
+
+  arbitrate:
+    if: github.event_name == 'workflow_dispatch' && inputs.certification
+    needs: certification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: benchmark-certification-*
+          path: benchmark-results
+          merge-multiple: true
+      - name: Compute lowest-domain grade
+        run: >-
+          python benchmarks/gate.py evaluate benchmark-results
+          --output benchmark-results/certification.json --require-s
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: s-efficiency-certification
+          path: benchmark-results/certification.json

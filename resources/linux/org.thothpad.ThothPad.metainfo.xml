@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.thothpad.ThothPad</id>
+  <launchable type="desktop-id">org.thothpad.ThothPad.desktop</launchable>
+  <name>ThothPad</name>
+  <summary>A prose-aware writing studio</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>See what your prose is doing. ThothPad combines focused Markdown editing with local, user-controlled observations about repetition, filter words, adverbs, cliches, formulaic patterns, rhythm, and other prose habits.</p>
+  </description>
+  <provides>
+    <binary>thothpad</binary>
+  </provides>
+  <categories>
+    <category>Office</category>
+    <category>WordProcessor</category>
+  </categories>
+</component>

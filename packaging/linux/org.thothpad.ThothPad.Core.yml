@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+app-id: org.thothpad.ThothPad
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+command: thothpad
+separate-locales: false
+
+finish-args:
+  - --device=dri
+  - --filesystem=home
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --talk-name=org.a11y.Bus
+  - --talk-name=org.freedesktop.secrets
+
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - '*.a'
+  - '*.la'
+
+modules:
+  - name: qtkeychain
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUILD_WITH_QT6=ON
+      - -DBUILD_TRANSLATIONS=OFF
+      - -DBUILD_TEST_APPLICATION=OFF
+    sources:
+      - type: archive
+        url: https://github.com/frankosterfeld/qtkeychain/archive/refs/tags/0.15.0.tar.gz
+        sha256: f4254dc8f0933b06d90672d683eab08ef770acd8336e44dfa030ce041dc2ca22
+
+  - name: writer-engine
+    buildsystem: simple
+    build-commands:
+      - install -d /app/bin/writer-engine
+      - cp -a . /app/bin/writer-engine/
+      - chmod 0755 /app/bin/writer-engine/writer-engine
+    sources:
+      - type: dir
+        path: ../../writer-engine/dist/writer-engine
+
+  - name: thothpad
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTING=OFF
+      - -DTHOTHPAD_BUNDLE_ENGINE=OFF
+      - -DTHOTHPAD_PACKAGE_VARIANT=Core
+    sources:
+      - type: dir
+        path: ../..

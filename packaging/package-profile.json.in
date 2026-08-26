@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "application": "ThothPad",
+  "version": "@RELEASE_SERVICE_VERSION@",
+  "variant": "@THOTHPAD_PACKAGE_VARIANT@",
+  "webengine_policy": "@THOTHPAD_PACKAGE_WEBENGINE_POLICY@"
+}
+

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ThothPad</title>
+  <style>
+    :root { color-scheme: dark; --bg:#111315; --panel:#181b1f; --line:#2b3138; --text:#ece7df; --muted:#9aa2ad; --accent:#69b58f; --bad:#df7a68; }
+    * { box-sizing: border-box; }
+    body { margin:0; font:14px/1.45 system-ui, Segoe UI, sans-serif; background:var(--bg); color:var(--text); }
+    header { height:56px; display:flex; gap:10px; align-items:center; padding:10px 14px; border-bottom:1px solid var(--line); background:#15181b; }
+    select, input, button, textarea { font:inherit; }
+    select, input { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:7px 8px; }
+    button { background:var(--accent); color:#07100b; border:0; border-radius:6px; padding:8px 10px; font-weight:700; cursor:pointer; }
+    button.secondary { background:#2a3138; color:var(--text); }
+    main { display:grid; grid-template-columns:1fr 1fr 380px; height:calc(100vh - 56px); }
+    section { min-width:0; border-right:1px solid var(--line); display:flex; flex-direction:column; }
+    h2 { margin:0; padding:10px 12px; font-size:13px; color:var(--muted); border-bottom:1px solid var(--line); font-weight:600; }
+    textarea { flex:1; resize:none; border:0; padding:14px; color:var(--text); background:#101214; outline:none; }
+    #report { overflow:auto; padding:10px 12px; }
+    .score { display:flex; justify-content:space-between; border:1px solid var(--line); border-radius:6px; padding:8px; margin-bottom:10px; background:var(--panel); }
+    .flag { border:1px solid var(--line); border-left:3px solid var(--bad); border-radius:6px; padding:8px; margin:8px 0; background:var(--panel); }
+    .flag b { display:block; margin-bottom:4px; }
+    .muted { color:var(--muted); }
+    #file { display:none; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong title="A prose-aware writing studio">ThothPad</strong>
+    <select id="profile"><option>creative-default</option></select>
+    <select id="mode"><option value="diagnose">Diagnose</option><option value="rewrite">Rewrite</option><option value="deslop">Deslop</option><option value="line_edit">Line edit</option></select>
+    <input id="passes" type="number" min="1" max="4" value="1" style="width:70px" title="Passes" />
+    <button id="analyze">Analyze</button>
+    <button id="rewrite">Rewrite + Analyze</button>
+    <button id="compare" class="secondary">Compare</button>
+    <input id="file" type="file" accept=".txt,.md,.markdown,text/plain,text/markdown" />
+    <button id="import" class="secondary">Import</button>
+    <button id="saveOutput" class="secondary">Save Output</button>
+    <button id="saveReport" class="secondary">Save Report</button>
+    <span id="status" class="muted"></span>
+  </header>
+  <main>
+    <section><h2>Original</h2><textarea id="input" placeholder="Paste prose here"></textarea></section>
+    <section><h2>Rewritten</h2><textarea id="output" placeholder="Output appears here"></textarea></section>
+    <section><h2>Formulaic Pattern Report</h2><div id="report" class="muted">These observations describe prose patterns, not authorship. Run Analyze or Rewrite.</div></section>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let currentReport = null;
+    let sourceName = 'thothpad-output';
+    async function profiles() {
+      const res = await fetch('/api/profiles'); const data = await res.json();
+      $('profile').innerHTML = data.map(p => `<option>${p.name}</option>`).join('');
+    }
+    function render(report) {
+      currentReport = report;
+      $('output').value = report.output_text || $('output').value;
+      const analysis = report.analysis_after || report.analysis_before || [];
+      let flags = [];
+      for (const r of analysis) for (const f of (r.flags || [])) flags.push({...f, analyzer:r.name});
+      $('report').innerHTML = `<div class="score"><span>Before ${report.score_before}</span><span>After ${report.score_after}</span></div>` +
+        (flags.length ? flags.map(f => `<div class="flag"><b>${f.severity} - ${f.analyzer} - ${f.type}</b><div>${escapeHtml(f.excerpt || '')}</div><p class="muted">Source: ${escapeHtml(f.source || 'unspecified')} - ${escapeHtml(f.suggestion || '')}</p></div>`).join('') : '<p>No flags.</p>');
+      $('status').textContent = report.run_id ? `Saved run ${report.run_id}` : '';
+      if (report.llm_errors && report.llm_errors.length) $('status').textContent += ' - LLM unavailable';
+    }
+    function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function baseName(name){ return name.replace(/\.[^.]+$/, '').replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '') || 'thothpad-output'; }
+    async function saveText(text, filename, mime) {
+      if (!text.trim()) { $('status').textContent = 'Nothing to save.'; return; }
+      if (window.showSaveFilePicker) {
+        const ext = filename.slice(filename.lastIndexOf('.'));
+        const handle = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: mime, accept: { [mime]: [ext] } }] });
+        const writable = await handle.createWritable();
+        await writable.write(text);
+        await writable.close();
+        $('status').textContent = `Saved ${filename}`;
+        return;
+      }
+      const blob = new Blob([text], {type:mime});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+      $('status').textContent = `Downloaded ${filename}`;
+    }
+    async function post(url, body) {
+      $('status').textContent = 'Working...';
+      const res = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json(); render(data);
+    }
+    $('analyze').onclick = () => post('/api/diagnose', {text:$('input').value, profile:$('profile').value, passes:+$('passes').value});
+    $('rewrite').onclick = () => {
+      const mode = $('mode').value === 'diagnose' ? 'rewrite' : $('mode').value;
+      post(mode === 'deslop' ? '/api/deslop' : '/api/rewrite', {text:$('input').value, profile:$('profile').value, mode, passes:+$('passes').value});
+    };
+    $('compare').onclick = () => post('/api/compare', {before:$('input').value, after:$('output').value, profile:$('profile').value});
+    $('import').onclick = () => $('file').click();
+    $('file').onchange = async (event) => {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      $('input').value = await file.text();
+      sourceName = baseName(file.name);
+      $('status').textContent = `Imported ${file.name}`;
+    };
+    $('saveOutput').onclick = () => saveText($('output').value, `${sourceName}-rewritten.md`, 'text/markdown');
+    $('saveReport').onclick = () => saveText(currentReport ? JSON.stringify(currentReport, null, 2) : '', `${sourceName}-report.json`, 'application/json');
+    profiles();
+  </script>
+</body>
+</html>

@@ -1,0 +1,1037 @@
+﻿/*
+ * SPDX-FileCopyrightText: 2022-2024 Megan Conkle <megan.conkle@kdemail.net>
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+/******************************************************************************/
+/*  Scrollbars                                                                */
+/******************************************************************************/
+
+ghostwriter--MarkdownEditor QAbstractScrollArea::corner,
+ghostwriter--HtmlPreview QAbstractScrollArea::corner,
+ghostwriter--Sidebar QAbstractScrollArea::corner {
+    background: transparent;
+}
+
+ghostwriter--MarkdownEditor QAbstractScrollArea,
+ghostwriter--HtmlPreview QAbstractScrollArea,
+ghostwriter--Sidebar QAbstractScrollArea {
+    padding: 3px 3px 0px 3px;
+    margin: 0
+}
+
+ghostwriter--Sidebar MarkdownEditor::horizontal,
+ghostwriter--Sidebar HtmlPreview::horizontal,
+ghostwriter--Sidebar QScrollBar::horizontal {
+    height: 16px;
+    margin: 5px;
+    border: 0;
+    background: transparent;
+}
+
+ghostwriter--MarkdownEditor QScrollBar::vertical,
+ghostwriter--HtmlPreview QScrollBar::vertical {
+    width: 16px;
+    margin: 5px;
+    border: 0;
+    background: transparent;
+}
+
+ghostwriter--Sidebar QScrollBar::vertical {
+    width: 8px;
+    margin: 2px;
+    border: 0;
+    background: transparent;
+}
+
+
+ghostwriter--MarkdownEditor QScrollBar::horizontal:hover,
+ghostwriter--HtmlPreview QScrollBar::horizontal:hover,
+ghostwriter--Sidebar QScrollBar::horizontal:hover {
+    background-color: $tertiary-fill-color;
+    border-radius: $scrollbar-border-radius;
+}
+
+ghostwriter--MarkdownEditor QScrollBar::vertical:hover,
+ghostwriter--HtmlPreview QScrollBar::vertical:hover,
+ghostwriter--Sidebar QScrollBar::vertical:hover {
+    background-color: $tertiary-fill-color;
+    border-radius: $scrollbar-border-radius;
+}
+
+ghostwriter--MarkdownEditor QScrollBar::handle:horizontal,
+ghostwriter--HtmlPreview QScrollBar::handle:horizontal,
+ghostwriter--Sidebar QScrollBar::handle:horizontal {
+    min-width: 50px;
+    border: 0;
+    background: $secondary-fill-color;
+    border-radius: $scrollbar-border-radius;
+
+}
+
+ghostwriter--MarkdownEditor QScrollBar::handle:horizontal,
+ghostwriter--HtmlPreview QScrollBar::handle:horizontal,
+ghostwriter--Sidebar QScrollBar::handle:horizontal {
+    min-width: 50px;
+    border: 0;
+    background: $secondary-fill-color;
+    border-radius: $scrollbar-border-radius;
+}
+
+ghostwriter--MarkdownEditor QScrollBar::handle:vertical,
+ghostwriter--HtmlPreview QScrollBar::handle:vertical,
+ghostwriter--Sidebar QScrollBar::handle:vertical {
+    min-height: 50px;
+    border: 0;
+    background: $secondary-fill-color;
+    border-radius: $scrollbar-border-radius;
+}
+
+ghostwriter--MarkdownEditor QScrollBar::handle:horizontal:hover,
+ghostwriter--HtmlPreview QScrollBar::handle:horizontal:hover,
+ghostwriter--Sidebar QScrollBar::handle:horizontal:hover {
+    background: $accent-color;
+}
+
+ghostwriter--MarkdownEditor QScrollBar::handle:vertical:hover,
+ghostwriter--HtmlPreview QScrollBar::handle:vertical:hover,
+ghostwriter--Sidebar QScrollBar::handle:vertical:hover {
+    background: $accent-color;
+}
+
+ghostwriter--MarkdownEditor QScrollBar::add-line,
+ghostwriter--HtmlPreview QScrollBar::add-line,
+ghostwriter--Sidebar QScrollBar::add-line,
+ghostwriter--MarkdownEditor QScrollBar::sub-line,
+ghostwriter--HtmlPreview QScrollBar::sub-line,
+ghostwriter--Sidebar QScrollBar::sub-line,
+ghostwriter--MarkdownEditor QScrollBar::add-page,
+ghostwriter--HtmlPreview QScrollBar::add-page,
+ghostwriter--Sidebar QScrollBar::add-page,
+ghostwriter--MarkdownEditor QScrollBar::sub-page,
+ghostwriter--HtmlPreview QScrollBar::sub-page,
+ghostwriter--Sidebar QScrollBar::sub-page,
+ghostwriter--MarkdownEditor QScrollBar::down-arrow,
+ghostwriter--HtmlPreview QScrollBar::down-arrow,
+ghostwriter--Sidebar QScrollBar::down-arrow,
+ghostwriter--MarkdownEditor QScrollBar::right-arrow,
+ghostwriter--HtmlPreview QScrollBar::right-arrow,
+ghostwriter--Sidebar QScrollBar::right-arrow {
+    background: transparent;
+    border: 0
+}
+
+/******************************************************************************/
+/*  Menu Bar                                                                  */
+/******************************************************************************/
+
+QMainWindow QMenuBar {
+    color: $label-color;
+    background-color: $background-color;
+    font-size: 10.5pt;
+    spacing: 2px;
+    border: 0px;
+    border-bottom: 1px;
+    border-color: $secondary-separator-color;
+    border-style: solid;
+    padding: 1px 0px 1px 0px;
+}
+
+QMainWindow QMenuBar::item {
+    padding: 2px 7px 2px 7px;
+    border: 0px;
+    margin: 2px;
+    border-radius: $default-border-radius;
+}
+
+QMainWindow QMenuBar::item:selected {
+    background-color: $fill-color;
+}
+
+QMainWindow QMenuBar::item:hover {
+    background-color: $fill-color-hover;
+}
+
+QMainWindow QMenuBar::item:pressed {
+    background-color: $fill-color-pressed;
+}
+
+QMainWindow QMenuBar QWidget#thothpadChromeControls {
+    background-color: transparent;
+    color: $secondary-label-color;
+}
+
+QMainWindow QMenuBar QToolButton#thothpadLightModeButton,
+QMainWindow QMenuBar QToolButton#thothpadDarkModeButton,
+QMainWindow QMenuBar QToolButton#thothpadThemeButton {
+    min-width: 24px;
+    min-height: 24px;
+    padding: 3px;
+    border: 0;
+    border-radius: $default-border-radius;
+    background-color: transparent;
+    color: $secondary-label-color;
+}
+
+QMainWindow QMenuBar QToolButton#thothpadLightModeButton:hover,
+QMainWindow QMenuBar QToolButton#thothpadDarkModeButton:hover,
+QMainWindow QMenuBar QToolButton#thothpadThemeButton:hover {
+    background-color: $fill-color-hover;
+    color: $label-color;
+}
+
+QMainWindow QMenuBar QToolButton#thothpadDarkModeButton:checked {
+    background-color: $fill-color;
+}
+
+QMainWindow QMenuBar QToolButton#thothpadLightModeButton:checked,
+QMainWindow QMenuBar QToolButton#thothpadThemeButton:checked {
+    background-color: $fill-color;
+}
+
+QMainWindow QMenuBar QFrame#thothpadChromeSeparator {
+    min-width: 1px;
+    max-width: 1px;
+    min-height: 18px;
+    max-height: 18px;
+    background-color: $secondary-separator-color;
+}
+
+QMainWindow QMenuBar QLabel#thothpadWordmark {
+    padding: 0 0 0 0;
+    color: $secondary-label-color;
+    font-size: 9pt;
+    font-weight: 600;
+    letter-spacing: 1px;
+}
+
+/******************************************************************************/
+/*  Popup menus                                                               */
+/******************************************************************************/
+
+QMainWindow QMenu,
+QMenuBar QMenu {
+    color: $label-color;
+    background-color: $secondary-background-color;
+    border: 0px;
+    padding: 7px 0px 7px 0px;
+}
+
+QMainWindow QMenu::item,
+QMenuBar QMenu::item {
+    background-color: transparent;
+    padding: 5px 10px 5px 10px;
+    margin: 0px 0px 0px 0px;
+}
+
+QMainWindow QMenu::indicator,
+QMenuBar QMenu::indicator {
+    width: 16px;
+    height: 16px;
+    background-color: $fill-color;
+    padding: 0px 5px 0px 5px;
+    margin: 0px 5px 0px 5px;
+}
+
+QMainWindow QMenu::indicator::unchecked,
+QMenuBar QMenu::indicator::unchecked {
+    width: 16px;
+    height: 16px;
+    background-color: $fill-color;
+    border-radius: 2px;
+    border-style: solid;
+    border-width: 1px;
+    border-color: $label-color;
+    margin: 0px 5px 0px 5px;
+}
+
+QMainWindow QMenu::indicator::checked,
+QMenuBar QMenu::indicator::checked {
+    width: 16px;
+    height: 16px;
+    background-color: $selected-text-bg-color;
+    border-radius: 2px;
+    border-style: solid;
+    border-width: 1px;
+    border-color: $selected-text-fg-color;
+    margin: 0px 5px 0px 5px;
+}
+
+QMainWindow QMenu::item:selected,
+QMenuBar QMenu::item::selected {
+    background-color: $selected-text-bg-color;
+    color: $selected-text-fg-color;
+}
+
+QMainWindow QMenu::icon,
+QMenuBar QMenu::icon {
+    border-radius: 2px;
+    border-width: 0px;
+    padding: 1px 3px 1px 3px;
+    margin: 0px 3px 0px 3px;
+}
+
+QMainWindow QMenu::icon::checked,
+QMenuBar QMenu::icon::checked {
+    background-color: $fill-color-hover;
+}
+
+/******************************************************************************/
+/*  Editor                                                                    */
+/******************************************************************************/
+
+QMainWindow QPlainTextEdit {
+    border: 0;
+    margin: 0;
+    padding: 5px;
+    background-color: $background-color;
+    color: $text-color;
+    selection-color: $selected-text-fg-color;
+    selection-background-color: $selected-text-bg-color;
+    font-family: $editor-font-family;
+    font-size: $editor-font-size;
+}
+
+QMainWindow QSplitter::handle {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    background-color: $secondary-separator-color;
+}
+
+QMainWindow QSplitter::handle:vertical {
+    height: 1px;
+}
+
+QMainWindow QSplitter::handle:horizontal {
+    width: 1px;
+}
+
+/******************************************************************************/
+/*  Sidebar and Activity Bar                                                  */
+/******************************************************************************/
+
+/* Sidebar */
+QMainWindow ghostwriter--Sidebar,
+QSplitter ghostwriter--Sidebar {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    background-color: $tertiary-fill-color;
+}
+
+ghostwriter--Sidebar QStackedWidget,
+ghostwriter--Sidebar QStackedWidget#sidebarStack {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    background-color: $secondary-background-color;
+    border-width: 0px;
+}
+
+/* Activity bar tabs */
+ghostwriter--Sidebar QPushButton[checkable="true"] {
+    icon-size: 22px;
+    min-width: 56px;
+    max-width: 56px;
+    height: 40px;
+    outline: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background-color: transparent;
+    color: $secondary-label-color;
+    border-width: 0px;
+    border-left-width: 3px;
+    border-style: solid;
+    border-color: transparent;
+    border-radius: 0px;
+}
+
+ghostwriter--Sidebar QPushButton:checked {
+    border-color: $accent-color;
+    color: $label-color;
+    background-color: $tertiary-fill-color;
+}
+
+ghostwriter--Sidebar QPushButton:hover {
+    background-color: $tertiary-fill-color;
+}
+
+ghostwriter--Sidebar QPushButton:checked:hover {
+    border-color: $accent-color;
+    color: $label-color;
+    background-color: $tertiary-fill-color;
+}
+
+/* Activity bar buttons */
+ghostwriter--Sidebar QPushButton[checkable="false"] {
+    icon-size: 22px;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 5px;
+    background-color: transparent;
+    color: $secondary-label-color;
+    width: 56px;
+    height: 40px;
+}
+
+ghostwriter--Sidebar QPushButton[checkable="false"]:hover {
+    color: $label-color;
+    background-color: $tertiary-fill-color;
+}
+
+ghostwriter--Sidebar QPushButton[checkable="false"]:pressed {
+    color: $label-color;
+    background-color: transparent;
+}
+
+/* Stacked widgets inside sidebar pane */
+
+ghostwriter--Sidebar QListWidget {
+    outline: none;
+    border: 0;
+    padding: 1;
+    background-color: $background-color;
+    color: $label-color;
+    font-size: 11pt;
+    font-weight: normal
+}
+
+ghostwriter--Sidebar QListWidget::item {
+    border: 0;
+    padding: 1 0 1 0;
+    margin: 0;
+    background-color: $background-color;
+    color: $label-color;
+    font-weight: normal
+}
+
+ghostwriter--Sidebar QListWidget::item:selected {
+    border-radius: 0px;
+    color: $selected-text-fg-color;
+    background-color: $selected-text-bg-color;
+}
+
+ghostwriter--Sidebar QLabel {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    background-color: transparent;
+    font-size: 11pt;
+    color: $label-color;
+}
+
+/* Prose Awareness: a quiet, focused writing instrument. */
+ghostwriter--ProseAwarenessWidget {
+    background-color: $secondary-background-color;
+    color: $text-color;
+    font-family: "Segoe UI";
+    font-size: 10.5pt;
+}
+
+ghostwriter--ProseAwarenessWidget QFrame#proseAwarenessHeaderSurface {
+    background-color: $tertiary-fill-color;
+    border: 0;
+    border-bottom: 1px solid $secondary-separator-color;
+}
+
+ghostwriter--ProseAwarenessWidget QFrame#proseAwarenessSetupSurface {
+    background-color: $panel-fill-color;
+    border: 1px solid $secondary-separator-color;
+    border-radius: 7px;
+}
+
+ghostwriter--ProseAwarenessWidget QFrame#proseAwarenessLensesSurface,
+ghostwriter--ProseAwarenessWidget QFrame#proseAwarenessFindingsSurface {
+    background-color: transparent;
+    border: 0;
+}
+
+ghostwriter--ProseAwarenessWidget QFrame#proseAwarenessDetailsSurface {
+    background-color: $observation-fill-color;
+    border: 1px solid $secondary-separator-color;
+    border-radius: 5px;
+}
+
+ghostwriter--ProseAwarenessWidget #proseAwarenessScrollArea {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    background-color: $secondary-background-color;
+}
+
+ghostwriter--ProseAwarenessWidget QScrollArea#proseAwarenessScrollArea,
+ghostwriter--ProseAwarenessWidget QScrollArea#proseAwarenessScrollArea > QWidget#qt_scrollarea_viewport,
+ghostwriter--ProseAwarenessWidget QWidget#proseAwarenessContent {
+    border: 0;
+    background-color: $secondary-background-color;
+}
+
+ghostwriter--ProseAwarenessWidget QLabel {
+    color: $text-color;
+    font-family: "Segoe UI";
+    font-size: 10.5pt;
+}
+
+ghostwriter--ProseAwarenessWidget QLabel#proseAwarenessSectionLabel {
+    font-weight: 600;
+    padding-top: 1px;
+}
+
+ghostwriter--ProseAwarenessWidget QLabel#proseAwarenessTitle {
+    font-weight: bold;
+    font-size: 10.5pt;
+}
+
+ghostwriter--ProseAwarenessWidget QLabel#proseAwarenessHelperLabel,
+ghostwriter--ProseAwarenessWidget QLabel#proseAwarenessFindingsHint,
+ghostwriter--ProseAwarenessWidget QLabel#proseAwarenessStatusLabel,
+ghostwriter--ProseAwarenessWidget QLabel#proseAwarenessDetailLabel {
+    color: $secondary-label-color;
+    font-size: 9pt;
+}
+
+ghostwriter--ProseAwarenessWidget QLabel#proseAwarenessFindingsHint {
+    padding-bottom: 6px;
+    border-bottom: 1px solid $secondary-separator-color;
+}
+
+ghostwriter--ProseAwarenessWidget QLabel#proseAwarenessDetailLabel {
+    font-weight: 600;
+}
+
+ghostwriter--ProseAwarenessWidget QLabel#proseAwarenessExplanationLabel:focus,
+ghostwriter--ProseAwarenessWidget QLabel#proseAwarenessSuggestionLabel:focus {
+    border: 1px solid $accent-color;
+    background-color: $accent-fill-color;
+}
+
+ghostwriter--ProseAwarenessWidget QLabel#proseAwarenessSuggestionLabel {
+    background-color: $suggestion-fill-color;
+    border-left: 3px solid $secondary-label-color;
+    padding: 5px 7px;
+}
+
+ghostwriter--ProseAwarenessWidget QComboBox,
+ghostwriter--ProseAwarenessWidget QPushButton,
+ghostwriter--ProseAwarenessWidget QToolButton {
+    min-height: 24px;
+    padding: 4px 9px;
+    border: 1px solid $secondary-separator-color;
+    border-radius: 4px;
+    background-color: $fill-color;
+    color: $text-color;
+    font-family: "Segoe UI";
+    font-size: 10pt;
+}
+
+ghostwriter--ProseAwarenessWidget QComboBox:hover,
+ghostwriter--ProseAwarenessWidget QPushButton:hover:enabled,
+ghostwriter--ProseAwarenessWidget QToolButton:hover:enabled {
+    border-color: $accent-fill-color;
+    background-color: $fill-color-hover;
+}
+
+ghostwriter--ProseAwarenessWidget QComboBox:focus {
+    border: 1px solid $secondary-separator-color;
+    background-color: $background-color;
+}
+
+ghostwriter--ProseAwarenessWidget QPushButton:focus,
+ghostwriter--ProseAwarenessWidget QToolButton:focus {
+    border: 1px solid $secondary-separator-color;
+    background-color: $fill-color;
+}
+
+ghostwriter--ProseAwarenessWidget QComboBox:pressed,
+ghostwriter--ProseAwarenessWidget QPushButton:pressed:enabled,
+ghostwriter--ProseAwarenessWidget QToolButton:pressed:enabled {
+    border-color: $accent-color;
+    background-color: $fill-color-pressed;
+}
+
+ghostwriter--ProseAwarenessWidget QComboBox:disabled,
+ghostwriter--ProseAwarenessWidget QPushButton:disabled,
+ghostwriter--ProseAwarenessWidget QToolButton:disabled {
+    border-color: $fill-color-disabled;
+    background-color: $fill-color-disabled;
+    color: $text-color-disabled;
+}
+
+ghostwriter--ProseAwarenessWidget QComboBox {
+    min-height: 26px;
+    padding: 3px 26px 3px 8px;
+    background-color: $background-color;
+}
+
+ghostwriter--ProseAwarenessWidget QComboBox#proseAwarenessProfileCombo {
+    background-color: $secondary-fill-color;
+}
+
+ghostwriter--ProseAwarenessWidget QComboBox::drop-down {
+    width: 22px;
+    border: 0;
+    background-color: transparent;
+}
+
+ghostwriter--ProseAwarenessWidget QComboBox::down-arrow {
+    width: 12px;
+    height: 12px;
+    image: url($combo-box-arrow-icon-path);
+}
+
+ghostwriter--ProseAwarenessWidget QComboBox QAbstractItemView {
+    padding: 4px;
+    border: 1px solid $secondary-separator-color;
+    background-color: $secondary-background-color;
+    color: $text-color;
+    selection-background-color: $selected-text-bg-color;
+    selection-color: $selected-text-fg-color;
+}
+
+ghostwriter--ProseAwarenessWidget QComboBox QAbstractItemView::item {
+    min-height: 24px;
+    padding: 4px 7px;
+    border-radius: 3px;
+}
+
+ghostwriter--ProseAwarenessWidget QComboBox QAbstractItemView::item:hover {
+    background-color: $fill-color-hover;
+}
+
+/* One clear document-wide command; scope review and rewrite remain secondary. */
+ghostwriter--ProseAwarenessWidget QPushButton#scanButton {
+    min-height: 34px;
+    padding: 5px 14px;
+    border: 1px solid $secondary-separator-color;
+    background-color: $secondary-fill-color;
+    color: $text-color;
+    font-weight: bold;
+}
+
+ghostwriter--ProseAwarenessWidget QPushButton#scanButton:hover:enabled,
+ghostwriter--ProseAwarenessWidget QPushButton#scanButton:pressed:enabled {
+    border-color: $accent-color;
+    background-color: $fill-color-hover;
+    color: $text-color;
+}
+
+ghostwriter--ProseAwarenessWidget QPushButton#scanButton:focus {
+    border: 2px solid $text-color;
+    padding: 4px 13px;
+}
+
+ghostwriter--ProseAwarenessWidget QPushButton#scanButton:disabled {
+    border-color: $fill-color-disabled;
+    background-color: $fill-color-disabled;
+    color: $text-color-disabled;
+}
+
+ghostwriter--ProseAwarenessWidget QPushButton#rewriteSelectionButton {
+    background-color: transparent;
+    border-color: transparent;
+    color: $text-color;
+}
+
+ghostwriter--ProseAwarenessWidget QPushButton#rewriteSelectionButton:hover:enabled {
+    background-color: $fill-color-hover;
+    border-color: $secondary-separator-color;
+}
+
+ghostwriter--ProseAwarenessWidget QPlainTextEdit {
+    min-height: 48px;
+    padding: 6px 7px;
+    border: 1px solid $secondary-separator-color;
+    border-radius: 4px;
+    background-color: $fill-color;
+    color: $text-color;
+    placeholder-text-color: $placeholder-text-color;
+    selection-color: $selected-text-fg-color;
+    selection-background-color: $selected-text-bg-color;
+}
+
+ghostwriter--ProseAwarenessWidget QPlainTextEdit:focus {
+    border: 1px solid $text-color;
+    background-color: $background-color;
+}
+
+ghostwriter--ProseAwarenessWidget QTreeWidget,
+ghostwriter--ProseAwarenessWidget QListView {
+    padding: 3px;
+    border: 1px solid $secondary-separator-color;
+    border-radius: 5px;
+    background-color: $panel-fill-color;
+    color: $text-color;
+    outline: none;
+    font-family: "Segoe UI";
+    font-size: 10pt;
+}
+
+ghostwriter--ProseAwarenessWidget QTreeWidget:focus,
+ghostwriter--ProseAwarenessWidget QListView:focus {
+    border: 1px solid $secondary-separator-color;
+}
+
+ghostwriter--ProseAwarenessWidget QTreeWidget::item,
+ghostwriter--ProseAwarenessWidget QListView::item {
+    min-height: 28px;
+    padding: 4px 6px;
+    border-radius: 3px;
+    background-color: transparent;
+    color: $text-color;
+}
+
+ghostwriter--ProseAwarenessWidget QTreeWidget::item:hover,
+ghostwriter--ProseAwarenessWidget QListView::item:hover {
+    background-color: $fill-color-hover;
+}
+
+ghostwriter--ProseAwarenessWidget QTreeWidget::item:selected,
+ghostwriter--ProseAwarenessWidget QListView::item:selected {
+    background-color: $secondary-fill-color;
+    color: $text-color;
+}
+
+ghostwriter--ProseAwarenessWidget QTreeWidget::item:selected:hover,
+ghostwriter--ProseAwarenessWidget QListView::item:selected:hover {
+    background-color: $secondary-fill-color;
+    color: $text-color;
+}
+
+ghostwriter--ProseAwarenessWidget QTreeWidget::indicator {
+    width: 14px;
+    height: 14px;
+    border: 1px solid $secondary-label-color;
+    border-radius: 3px;
+    background-color: $background-color;
+}
+
+ghostwriter--ProseAwarenessWidget QTreeWidget::indicator:hover {
+    border-color: $accent-color;
+}
+
+ghostwriter--ProseAwarenessWidget QTreeWidget::indicator:checked {
+    border: 0;
+    background-color: transparent;
+    image: url(:/icons/prose-checkbox-checked.svg);
+}
+
+ghostwriter--ProseAwarenessWidget QPushButton#applySuggestionButton {
+    border-color: $secondary-separator-color;
+    background-color: $secondary-fill-color;
+    color: $text-color;
+    font-weight: bold;
+}
+
+ghostwriter--ProseAwarenessWidget QPushButton#applySuggestionButton:hover:enabled,
+ghostwriter--ProseAwarenessWidget QPushButton#applySuggestionButton:pressed:enabled {
+    border-color: $accent-color;
+    background-color: $fill-color-hover;
+    color: $text-color;
+}
+
+ghostwriter--ProseAwarenessWidget QToolButton#deleteActionButton {
+    border-color: $secondary-separator-color;
+    background-color: $secondary-fill-color;
+    color: $text-color;
+}
+
+ghostwriter--ProseAwarenessWidget QToolButton#deleteActionButton:hover:enabled,
+ghostwriter--ProseAwarenessWidget QToolButton#deleteActionButton:pressed:enabled {
+    border-color: $error-color;
+    background-color: $fill-color-hover;
+    color: $error-color;
+}
+
+ghostwriter--ProseAwarenessWidget QToolButton#backObservationButton,
+ghostwriter--ProseAwarenessWidget QToolButton#nextObservationButton,
+ghostwriter--ProseAwarenessWidget QToolButton#undoActionButton,
+ghostwriter--ProseAwarenessWidget QToolButton#findingActionsButton,
+ghostwriter--ProseAwarenessWidget QToolButton#proseAwarenessToolsButton {
+    border-color: $secondary-separator-color;
+    background-color: $secondary-fill-color;
+    color: $text-color;
+}
+
+ghostwriter--ProseAwarenessWidget QToolButton#backObservationButton:hover:enabled,
+ghostwriter--ProseAwarenessWidget QToolButton#nextObservationButton:hover:enabled,
+ghostwriter--ProseAwarenessWidget QToolButton#undoActionButton:hover:enabled,
+ghostwriter--ProseAwarenessWidget QToolButton#findingActionsButton:hover:enabled,
+ghostwriter--ProseAwarenessWidget QToolButton#proseAwarenessToolsButton:hover:enabled {
+    border-color: $accent-color;
+    background-color: $fill-color-hover;
+    color: $text-color;
+}
+
+ghostwriter--ProseAwarenessWidget QToolButton#proseAwarenessToolsButton {
+    border-color: transparent;
+    background-color: transparent;
+    font-weight: 600;
+}
+
+ghostwriter--ProseAwarenessWidget QToolButton#proseAwarenessCollapseButton {
+    min-height: 26px;
+    padding: 2px;
+    border-color: transparent;
+    background-color: transparent;
+    color: $secondary-label-color;
+    font-size: 15pt;
+    font-weight: 600;
+}
+
+ghostwriter--ProseAwarenessWidget QToolButton#proseAwarenessCollapseButton:hover:enabled {
+    border-color: $secondary-separator-color;
+    background-color: $secondary-fill-color;
+    color: $text-color;
+}
+
+/******************************************************************************/
+/* Status bar                                                                 */
+/******************************************************************************/
+
+QStatusBar {
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid $secondary-separator-color;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+    background: $tertiary-fill-color;
+    color: $secondary-label-color;
+}
+
+QStatusBar QLabel {
+    font-size: 11pt;
+    margin: 0px;
+    padding: 5px;
+    border: 0;
+    background: transparent;
+    color: $secondary-label-color;
+}
+
+QStatusBar QToolButton#showSidebarButton {
+    min-width: 108px;
+    min-height: 24px;
+    padding: 3px 8px;
+    color: $label-color;
+    background-color: $fill-color;
+    font-size: 10pt;
+}
+
+QStatusBar QToolButton#showSidebarButton:hover {
+    background-color: $fill-color-hover;
+}
+
+QStatusBar QToolButton {
+    padding: 5 5 5 5;
+    margin: 0;
+    border: 0;
+    border-radius: 5px;
+    color: $secondary-label-color;
+    background-color: transparent;
+    font-size: 16px;
+    width: 32px;
+    height: 16px;
+}
+
+QStatusBar QToolButton:hover,
+QStatusBar QToolButton:checked:hover {
+    background-color: $fill-color-hover;
+}
+
+QStatusBar QToolButton:pressed,
+QStatusBar QToolButton:checked:pressed {
+    color: $secondary-label-color-pressed;
+    background-color: $fill-color-pressed;
+}
+
+QStatusBar QToolButton:flat,
+QStatusBar QToolButton:checked {
+    background-color: $fill-color;
+}
+
+QStatusBar QComboBox {
+    height: 22px;
+    border: 0px;
+    margin: 0;
+    padding: 0;
+    color: $secondary-label-color;
+    background-color: $tertiary-fill-color;
+    font-size: 11pt;
+}
+
+QStatusBar QComboBox:hover {
+    border-bottom: 2px solid $accent-color;
+}
+
+QStatusBar QListView {
+    padding: 7px 0px 7px 0px;
+    margin: 0px;
+    color: $label-color;
+    background-color: $background-color;
+}
+
+QStatusBar QListView::item {
+    background-color: transparent;
+    padding: 5px 10px 5px 10px;
+    margin: 0px;
+}
+
+QStatusBar QListView::item:selected {
+    background-color: $selected-text-bg-color;
+    color: $selected-text-fg-color;
+}
+
+QStatusBar QComboBox::drop-down {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    height: 20px;
+    width: 20px;
+}
+
+QStatusBar QComboBox::down-arrow {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    height: 14px;
+    width: 14px;
+    image: url($status-indicator-icon-path)
+}
+
+QStatusBar QComboBox::drop-down:hover {
+    border-radius: 10px;
+    background-color: $fill-color-hover;
+}
+
+QStatusBar #leftStatusBarWidget,
+QStatusBar #midStatusBarWidget,
+QStatusBar #rightStatusBarWidget {
+    border: 0;
+    margin: 0;
+    padding: 0;
+}
+
+/******************************************************************************/
+/* Find and Replace Pane                                                      */
+/******************************************************************************/
+
+ghostwriter--FindReplace QLabel {
+    font-size: 11pt;
+    margin: 0px;
+    padding: 5px;
+    border: 0;
+    background: transparent;
+    color: $secondary-label-color;
+}
+
+ghostwriter--FindReplace QPushButton {
+    font-size: 16px;
+    padding: 5 5 5 5;
+    margin: 0;
+    border: 0;
+    border-radius: $default-border-radius;
+    color: $secondary-label-color;
+    background-color: transparent;
+    min-width: 16px;
+}
+
+ghostwriter--FindReplace QPushButton:pressed {
+    color: $label-color-pressed;
+    background-color: transparent;
+}
+
+ghostwriter--FindReplace QPushButton:hover {
+    color: $label-color-hover;
+    background-color: transparent;
+}
+
+ghostwriter--FindReplace QPushButton:disabled {
+    color: $secondary-label-color-disabled;
+    background-color: transparent;
+}
+
+ghostwriter--FindReplace QPushButton[checkable="true"] {
+    color: $secondary-label-color;
+    background-color: transparent;
+    min-width: 32px;
+    height: 16px;
+}
+
+ghostwriter--FindReplace QPushButton[checkable="true"]:disabled,
+ghostwriter--FindReplace QPushButton:flat:disabled {
+    color: $secondary-label-color-disabled;
+    background-color: $fill-color-disabled;
+}
+
+ghostwriter--FindReplace QPushButton[checkable="true"]:hover,
+ghostwriter--FindReplace QPushButton:checked:hover {
+    background-color: $secondary-label-color-hover;
+    background-color: $fill-color-hover;
+}
+
+ghostwriter--FindReplace QPushButton[checkable="true"]:pressed,
+ghostwriter--FindReplace QPushButton:checked:pressed {
+    color: $secondary-label-color-pressed;
+    background-color: $fill-color-pressed;
+}
+
+ghostwriter--FindReplace QPushButton:checked {
+    background-color: $fill-color;
+}
+
+ghostwriter--FindReplace QPushButton:flat {
+    color: $secondary-label-color;
+    background-color: $fill-color;
+    font-weight: bold;
+}
+
+ghostwriter--FindReplace QPushButton:flat:hover {
+    color: $secondary-label-color-hover;
+    background-color: $fill-color-hover;
+}
+
+ghostwriter--FindReplace QPushButton:flat:pressed {
+    color: $secondary-label-color-pressed;
+    background-color: $fill-color-pressed;
+}
+
+ghostwriter--FindReplace QPushButton:flat:disabled {
+    color: $secondary-label-color-disabled;
+    background-color: $fill-color-disabled;
+}
+
+ghostwriter--FindReplace QPushButton#matchCaseButton,
+ghostwriter--FindReplace QPushButton#regexButton {
+    font-size: 16px;
+    font-family: default;
+    font-weight: bold;
+} 
+
+ghostwriter--FindReplace QPushButton#replaceButton,
+ghostwriter--FindReplace QPushButton#replaceAllButton {
+    font-size: 11pt;
+    font-family: default;
+}
+
+ghostwriter--FindReplace QPushButton#findReplaceCloseButton {
+    padding: 0;
+    margin: 0;
+    icon-size: 16px;
+}
+
+ghostwriter--FindReplace QLineEdit {
+    color: $text-color;
+    background-color: $tertiary-fill-color;
+    border: 0px;
+    border-radius: 3px;
+    selection-color: $selected-text-fg-color;
+    selection-background-color: $selected-text-bg-color;
+}
+
+ghostwriter--FindReplace QLineEdit:focus {
+    border: 1px solid $tertiary-fill-color-active;
+}

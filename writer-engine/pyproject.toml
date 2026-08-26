@@ -1,0 +1,86 @@
+[project]
+name = "thothpad-engine"
+version = "0.4.0"
+description = "ThothPad's local prose analysis, revision, CLI, and MCP engine."
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi==0.141.1",
+  "uvicorn==0.52.4",
+  "pydantic==2.13.4"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==9.1.1",
+  "httpx==0.28.1",
+  "ruff==0.16.4",
+  "mypy==2.3.1"
+]
+prose = [
+  "proselint==0.16.0",
+  "spacy==3.8.15",
+  "lexicalrichness==0.5.1"
+]
+desktop = [
+  "pyinstaller==6.22.2",
+  "spacy==3.8.15",
+  "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"
+]
+
+[project.scripts]
+writer = "backend.cli:main"
+thothpad-mcp = "backend.mcp_server:main"
+thothpad-sidecar = "backend.sidecar:main"
+thothpad-build-sidecar = "backend.build_sidecar:main"
+
+[build-system]
+requires = ["setuptools==84.0.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["backend", "backend.analyzers"]
+
+[tool.setuptools.package-data]
+backend = ["data/slopless/*.json", "data/slopless/LICENSE", "py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+markers = [
+  "windows: test exercises Windows-only behavior (job objects, process handles)",
+  "requires_harper: test needs the built Harper grammar bridge binary",
+  "requires_spacy_model: test needs the en_core_web_sm model from the desktop extra",
+]
+filterwarnings = [
+  "error",
+  # starlette's TestClient still runs on httpx; switch to httpx2 upstream first.
+  "ignore::starlette.exceptions.StarletteDeprecationWarning",
+  # Subprocess-based tests leak pipe handles that surface as unraisable
+  # ResourceWarnings at GC time; closing them needs an engine-side fix.
+  "ignore::pytest.PytestUnraisableExceptionWarning",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+extend-exclude = ["dist", "build"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# Data-heavy modules: MCP tool-description JSON, analyzer rule packs,
+# benchmark payloads, and test fixture sentences must not be re-wrapped.
+"backend/mcp_server.py" = ["E501"]
+"backend/analyzers/*" = ["E501"]
+"benchmarks/*" = ["E501"]
+"tests/*" = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+# Ratchet schedule: this is the permissive entry point. Next passes raise
+# check_untyped_defs -> disallow_untyped_defs on backend/, then drop
+# ignore_missing_imports once stubs are pinned. Do not loosen further.
+ignore_missing_imports = true
+check_untyped_defs = false

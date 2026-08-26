@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "fixture_version": "thothpad-s-v1",
+  "word_counts": [10000, 100000, 500000],
+  "corpora": [
+    {"id": "clean", "description": "Restrained prose with sparse style findings."},
+    {"id": "representative", "description": "Mixed narrative, exposition, action, and dialogue."},
+    {"id": "dialogue", "description": "Dialogue-heavy prose with curly quotes and contractions."},
+    {"id": "unicode", "description": "Combining marks, emoji, non-Latin names, and curly punctuation."},
+    {"id": "dense", "description": "Adversarial prose intended to produce findings on most tokens."}
+  ],
+  "required_matrix": [
+    "clean-10000", "representative-10000", "dialogue-10000", "unicode-10000", "dense-10000",
+    "clean-100000", "representative-100000", "dialogue-100000", "unicode-100000", "dense-100000",
+    "clean-500000", "representative-500000", "dialogue-500000", "unicode-500000", "dense-500000"
+  ]
+}
+

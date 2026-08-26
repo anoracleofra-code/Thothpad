@@ -1,0 +1,48 @@
+{
+  "name": "business-clean",
+  "register_target": "plain senior business communication, specific dates and owners, no softening",
+  "default_mode": "rewrite",
+  "reader_profile": "A busy operator who needs the ask, status, risk, owner, and date.",
+  "scene_anchor": "A phone or laptop before a meeting, with little patience for context-setting.",
+  "preserve": ["facts", "dates", "owners", "commitments", "risks"],
+  "prefer": ["specific dates", "named owners", "direct asks", "active voice"],
+  "avoid": ["business jargon", "hedging", "landscape language", "moving forward"],
+  "hard_bans": ["Moving forward", "circle back", "lean into", "deep dive"],
+  "soft_flags": ["navigate", "landscape", "alignment", "on the same page"],
+  "filter_words": {
+    "enabled": true,
+    "ignore_dialogue": true,
+    "severity": "taste_flag",
+    "custom_severity": "hard_fail",
+    "categories": {
+      "perception": ["saw", "heard", "felt", "noticed", "watched"],
+      "cognitive": ["realized", "knew", "thought", "wondered", "remembered", "decided"],
+      "distancing": ["could see", "could hear", "began to", "started to"],
+      "hedges": ["just", "really", "quite", "rather", "somewhat", "perhaps"],
+      "vague_modifiers": ["very", "somehow", "almost", "slightly", "a little", "a bit"]
+    },
+    "custom": []
+  },
+  "possible_adverbs": {"enabled": true, "ignore_dialogue": true, "confirm_pos": false, "exceptions": []},
+  "possible_adjectives": {"enabled": false, "ignore_dialogue": false, "exceptions": []},
+  "possible_verbs": {"enabled": false, "ignore_dialogue": false, "exceptions": []},
+  "cliches": {"ignore_dialogue": true},
+  "cliche_categories": {
+    "general": true,
+    "genre": true,
+    "self_help": true,
+    "corporate": true,
+    "wordiness": true,
+    "redundancy": true
+  },
+  "external_tools": {"proselint": false},
+  "manuscript": {"use_spacy": false},
+  "analyzer_weights": {
+    "false_agency": 1.2,
+    "vague_abstracts": 1.3,
+    "concrete_anchor": 1.2,
+    "filter_words": 1.0,
+    "stylometry": 0.4,
+    "cliches": 1.1
+  }
+}
