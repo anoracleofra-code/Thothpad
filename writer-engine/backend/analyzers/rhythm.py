@@ -5,6 +5,16 @@ from typing import Any
 from backend.models import AnalyzerResult, Flag
 from backend.text_utils import excerpt, safe_stdev, sentence_word_lengths, sentences, words
 
+ABSTRACT_MIC_DROP_WORDS = {
+    "truth",
+    "choice",
+    "memory",
+    "silence",
+    "grief",
+    "hunger",
+    "thing",
+}
+
 
 class RhythmAnalyzer:
     name = "rhythm"
@@ -29,8 +39,7 @@ class RhythmAnalyzer:
         for start, end, sentence in sents:
             toks = words(sentence)
             if 1 <= len(toks) <= 4 and sentence.strip().endswith((".", "!", "?")):
-                lowered = " ".join(toks)
-                if any(token in lowered for token in ("truth", "choice", "memory", "silence", "grief", "hunger", "thing")):
+                if ABSTRACT_MIC_DROP_WORDS.intersection(toks):
                     flags.append(
                         Flag(
                             type="abstract_mic_drop",
