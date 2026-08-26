@@ -47,7 +47,9 @@ public:
     QString fileName() const;
 
     /**
-     * Sets the file name.
+     * Sets the file name. If a write is still in flight, this waits for that
+     * transaction to finish before changing the destination so completion
+     * signals can never be associated with the wrong path.
      */
     void setFileName(const QString &fileName);
 
@@ -68,13 +70,20 @@ public:
     bool writeInProgress() const;
 
     /**
-     * Waits for write to finish (if needed) before returning.
+     * Waits for the current write to finish (if needed) and returns true only
+     * when the most recently completed write was durably committed.
      */
-    void waitForFinished();
+    bool waitForFinished();
+
+    /**
+     * Returns the error from the most recently completed write, or an empty
+     * string when the write succeeded (or no write has completed yet).
+     */
+    QString lastError() const;
 
     /**
      * Writes the given text to the file.  Note: Previous contents of the file
-     * will be replaced.
+     * will be replaced only after the atomic save transaction commits.
      */
     bool write(const QString &text);
 

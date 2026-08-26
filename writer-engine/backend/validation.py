@@ -39,6 +39,8 @@ def validate_text(text: str, *, live: bool = False) -> str:
 
 
 def validate_passes(passes: int) -> int:
+    if isinstance(passes, bool):
+        raise ValueError(f"passes must be between 1 and {config.MAX_PASSES}")
     value = int(passes)
     if value < 1 or value > config.MAX_PASSES:
         raise ValueError(f"passes must be between 1 and {config.MAX_PASSES}")
@@ -88,6 +90,7 @@ def validate_json_path(value: str, *, must_exist: bool = False) -> Path:
         raise ValueError("profile import path does not exist or is not a file")
     return path
 
+
 def require_json_boolean(value: Any, name: str) -> bool:
     if type(value) is not bool:
         raise ValueError(f"{name} must be a JSON boolean")
@@ -107,7 +110,14 @@ bool_arg = strict_bool_arg
 
 
 def bounded_int(value: Any, name: str, minimum: int, maximum: int) -> int:
-    parsed = int(value)
+    # bool subclasses int in Python, but JSON true/false must never silently
+    # become numeric configuration values such as page sizes or timeouts.
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be an integer")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{name} must be an integer") from exc
     if parsed < minimum or parsed > maximum:
         raise ValueError(f"{name} must be between {minimum} and {maximum}")
     return parsed
