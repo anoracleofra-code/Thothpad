@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from backend.analyzers.concrete_anchor import ConcreteAnchorAnalyzer
 from backend.analyzers.external_tools import ExternalToolsAnalyzer
 from backend.analyzers.rhythm import RhythmAnalyzer
+from backend.validation import bounded_int, validate_passes
 
 
 def test_rhythm_does_not_match_abstract_tokens_by_substring():
@@ -95,3 +98,14 @@ def test_languagetool_utf16_offsets_map_back_to_python_codepoints(monkeypatch):
     finding = next(flag for flag in result.flags if flag.type == "languagetool:AUDIT_UTF16")
     assert (finding.start, finding.end) == (4, 7)
     assert finding.excerpt == "teh"
+
+
+def test_boolean_json_values_are_not_accepted_as_integers():
+    with pytest.raises(ValueError, match="integer"):
+        bounded_int(True, "limit", 1, 10)
+    with pytest.raises(ValueError, match="passes"):
+        validate_passes(False)
+
+    # Preserve the deliberate compatibility with integer-looking strings.
+    assert bounded_int("3", "limit", 1, 10) == 3
+    assert validate_passes("1") == 1
