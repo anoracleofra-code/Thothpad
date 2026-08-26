@@ -29,6 +29,18 @@ def test_possible_adverbs_use_live_context_and_lexicon():
     assert findings[0]["source"] == "heuristic+wordnet"
 
 
+def test_possible_adjectives_can_run_in_live_preset_when_enabled():
+    report = analyze_text(
+        "She crossed the narrow hall.",
+        preset="live",
+        overrides={"possible_adjectives": {"enabled": True}},
+    )
+    assert any(
+        item["analyzer"] == "possible_adjectives" and item["excerpt"] == "narrow"
+        for item in report["diagnostics"]
+    )
+
+
 def test_cliche_live_preset_detects_phrase():
     report = analyze_text("The errand became a wild goose chase.", preset="live")
     assert any(item["analyzer"] == "cliches" for item in report["diagnostics"])
