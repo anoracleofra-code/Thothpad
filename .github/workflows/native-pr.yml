@@ -42,12 +42,48 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          python -m pip install --disable-pip-version-check certifi cmake==4.3.2 ninja==1.13.0
+
+          # GitHub's Windows image exposes Git-Bash and a separate MinGW tree
+          # globally. Craft explicitly warns that sh/gcc/g++/cpp from those
+          # trees contaminate an MSVC ABI and can make Autotools packages pick
+          # C:\mingw64 tools. Preserve only the host facilities Craft actually
+          # needs until craftenv.ps1 installs its controlled environment.
+          $pythonExe = (Get-Command python.exe).Source
+          & $pythonExe -m pip install --disable-pip-version-check certifi cmake==4.3.2 ninja==1.13.0
+          $pythonDir = Split-Path $pythonExe
+          $pythonScripts = Join-Path $pythonDir "Scripts"
+          $gitCmd = "C:\Program Files\Git\cmd"
+          $env:PATH = @(
+            $pythonDir,
+            $pythonScripts,
+            $gitCmd,
+            "$env:SystemRoot\System32",
+            "$env:SystemRoot",
+            "$env:SystemRoot\System32\Wbem"
+          ) -join ";"
+          foreach ($forbidden in @("sh.exe", "gcc.exe", "g++.exe", "cpp.exe")) {
+            if (Get-Command $forbidden -ErrorAction SilentlyContinue) {
+              throw "Hosted PATH sanitization failed: $forbidden is still visible before Craft bootstrap."
+            }
+          }
+          if (-not (Get-Command git.exe -ErrorAction SilentlyContinue)) {
+            throw "git.exe is unavailable after hosted PATH sanitization."
+          }
+
           $lock = Get-Content packaging/toolchain-lock.json | ConvertFrom-Json
           $craftCommit = $lock.craft.core_commit
           $bootstrap = Join-Path $env:RUNNER_TEMP "CraftBootstrap.py"
           Invoke-WebRequest "$env:CRAFT_BOOTSTRAP_ROOT/$craftCommit/setup/CraftBootstrap.py" -OutFile $bootstrap
-          python $bootstrap --prefix C:\CraftRoot --branch $craftCommit --use-defaults
+          & $pythonExe $bootstrap --prefix C:\CraftRoot --branch $craftCommit --use-defaults
+
+          $settings = Get-Content C:\CraftRoot\etc\CraftSettings.ini -Raw
+          if ($settings -notmatch '(?m)^\s*ABI\s*=\s*windows-cl-msvc2022-x86_64\s*$') {
+            throw "Craft selected an unexpected Windows ABI.`n$settings"
+          }
+          if (-not (Test-Path C:\CraftRoot\craft\craftenv.ps1)) {
+            throw "Craft bootstrap did not complete; craftenv.ps1 is missing."
+          }
+
           . C:\CraftRoot\craft\craftenv.ps1
           craft kde/frameworks/extra-cmake-modules
           craft kde/frameworks/tier1/sonnet
@@ -89,7 +125,14 @@ jobs:
       - name: Bootstrap KDE Craft and native dependencies
         shell: bash
         run: |
-          set -euo pipefail
+          set -eo pipefail
+
+          # GitHub-hosted desktop runners also ship Android SDKs. Craft's
+          # bootstrap uses the mere presence of ANDROID_SDK_ROOT to decide it
+          # is targeting Android, so scrub those unrelated runner variables or
+          # it silently chooses android-clang-arm64 on a desktop Linux job.
+          unset ANDROID_SDK_ROOT ANDROID_HOME ANDROID_NDK_ROOT ANDROID_NDK_HOME || true
+
           python3 -m pip install --disable-pip-version-check cmake==4.3.2 ninja==1.13.0
           craft_commit="$(python3 -c 'import json; print(json.load(open("packaging/toolchain-lock.json"))["craft"]["core_commit"])')"
           craft_root="$RUNNER_TEMP/CraftRoot"
@@ -98,6 +141,17 @@ jobs:
             "$CRAFT_BOOTSTRAP_ROOT/$craft_commit/setup/CraftBootstrap.py" \
             --output "$bootstrap"
           python3 "$bootstrap" --prefix "$craft_root" --branch "$craft_commit" --use-defaults
+
+          if ! grep -Eq '^\s*ABI\s*=\s*linux-(gcc|clang)-x86_64\s*$' "$craft_root/etc/CraftSettings.ini"; then
+            echo "Craft selected an unexpected Linux ABI:" >&2
+            grep -E '^\s*ABI\s*=' "$craft_root/etc/CraftSettings.ini" >&2 || true
+            exit 1
+          fi
+          test -f "$craft_root/craft/craftenv.sh"
+
+          # Craft's generated environment script is intentionally compatible
+          # with ordinary shells, not bash nounset mode. Keep errexit/pipefail
+          # but do not impose `set -u` while sourcing it.
           source "$craft_root/craft/craftenv.sh"
           craft kde/frameworks/extra-cmake-modules
           craft kde/frameworks/tier1/sonnet
@@ -112,7 +166,8 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          set -euo pipefail
+          set -eo pipefail
+          unset ANDROID_SDK_ROOT ANDROID_HOME ANDROID_NDK_ROOT ANDROID_NDK_HOME || true
           craft_root="$RUNNER_TEMP/CraftRoot"
           source "$craft_root/craft/craftenv.sh"
           for variant in Core Full; do
@@ -141,7 +196,9 @@ jobs:
       - name: Bootstrap KDE Craft and native dependencies
         shell: bash
         run: |
-          set -euo pipefail
+          set -eo pipefail
+          unset ANDROID_SDK_ROOT ANDROID_HOME ANDROID_NDK_ROOT ANDROID_NDK_HOME || true
+
           python3 -m pip install --disable-pip-version-check cmake==4.3.2 ninja==1.13.0
           craft_commit="$(python3 -c 'import json; print(json.load(open("packaging/toolchain-lock.json"))["craft"]["core_commit"])')"
           craft_root="$RUNNER_TEMP/CraftRoot"
@@ -150,6 +207,14 @@ jobs:
             "$CRAFT_BOOTSTRAP_ROOT/$craft_commit/setup/CraftBootstrap.py" \
             --output "$bootstrap"
           python3 "$bootstrap" --prefix "$craft_root" --branch "$craft_commit" --use-defaults
+
+          if ! grep -Eq '^\s*ABI\s*=\s*macos-clang-x86_64\s*$' "$craft_root/etc/CraftSettings.ini"; then
+            echo "Craft selected an unexpected macOS ABI:" >&2
+            grep -E '^\s*ABI\s*=' "$craft_root/etc/CraftSettings.ini" >&2 || true
+            exit 1
+          fi
+          test -f "$craft_root/craft/craftenv.sh"
+
           source "$craft_root/craft/craftenv.sh"
           craft kde/frameworks/extra-cmake-modules
           craft kde/frameworks/tier1/sonnet
@@ -164,7 +229,8 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          set -euo pipefail
+          set -eo pipefail
+          unset ANDROID_SDK_ROOT ANDROID_HOME ANDROID_NDK_ROOT ANDROID_NDK_HOME || true
           craft_root="$RUNNER_TEMP/CraftRoot"
           source "$craft_root/craft/craftenv.sh"
           for variant in Core Full; do
