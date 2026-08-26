@@ -227,6 +227,7 @@ def test_live_cancellation_stops_cooperatively_within_250ms_and_emits_no_result(
     assert elapsed_ms <= 250
     writer.seek(0)
     response = read_frame(writer)
+    assert response is not None
     assert response["ok"] is False
     assert response["error"]["code"] == "cancelled"
     assert read_frame(writer) is None
@@ -259,10 +260,12 @@ def test_dispose_document_keeps_report_worker_and_harper_warm(monkeypatch, tmp_p
     server = SidecarServer(io.BytesIO(), writer)
     server._report_worker = worker
     server._accept(value)
-    entry = server._inflight["dispose-release"]
-    assert entry.thread is not None
-    entry.thread.join(timeout=5)
+    deadline = time.monotonic() + 5
+    while not writer.getvalue() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert writer.getvalue()
     response = read_frame(io.BytesIO(writer.getvalue()))
+    assert response is not None
     assert response["ok"] is True
     assert response["result"]["disposed_analyses"] == 2
     assert worker.stopped is False
