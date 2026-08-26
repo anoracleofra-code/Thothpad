@@ -52,7 +52,7 @@ class _HarperSession:
         path = harper_path()
         if not path.is_file():
             raise FileNotFoundError(path)
-        flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
         self._responses = queue.Queue(maxsize=1)
         self._process = subprocess.Popen(
             [str(path)],
