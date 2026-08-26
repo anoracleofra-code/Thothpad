@@ -227,6 +227,7 @@ def test_live_cancellation_stops_cooperatively_within_250ms_and_emits_no_result(
     assert elapsed_ms <= 250
     writer.seek(0)
     response = read_frame(writer)
+    assert response is not None
     assert response["ok"] is False
     assert response["error"]["code"] == "cancelled"
     assert read_frame(writer) is None
