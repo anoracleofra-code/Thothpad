@@ -15,7 +15,7 @@ from backend import config
 from backend.analyzers.possible_adverbs import spacy_model_status
 from backend.llm_clients import _validated_url
 from backend.models import AnalyzerResult, Flag
-from backend.text_utils import excerpt
+from backend.text_utils import Utf16Index, excerpt
 
 
 class _ApprovedRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -237,9 +237,12 @@ class ExternalToolsAnalyzer:
                 if len(raw) > config.MAX_LLM_RESPONSE_BYTES:
                     raise ValueError("LanguageTool response is too large")
                 payload = json.loads(raw.decode("utf-8"))
+                index = Utf16Index(text)
                 for match in payload.get("matches", []):
-                    start = int(match.get("offset", 0))
-                    end = start + int(match.get("length", 1))
+                    start_utf16 = int(match.get("offset", 0))
+                    end_utf16 = start_utf16 + int(match.get("length", 1))
+                    start = index.codepoint_offset(start_utf16)
+                    end = index.codepoint_offset(end_utf16)
                     rule_id = match.get("rule", {}).get("id", "style")
                     flags.append(
                         Flag(
