@@ -59,6 +59,13 @@ public:
         const QString &toolId,
         const std::function<void()> &command);
 
+    /**
+     * Undo one specific journaled agent transaction only when the current
+     * manuscript exactly matches that transaction's recorded post-edit hash.
+     * This prevents an old activity-card button from undoing later human work.
+     */
+    QJsonObject undoTransaction(const QString &operationId);
+
     QJsonArray recentTransactions(int limit = 20) const;
 
 signals:
