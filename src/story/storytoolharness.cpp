@@ -171,6 +171,8 @@ QJsonArray StoryToolHarness::manifest() const
     tools.append(tool(QStringLiteral("apply_verified_replacements"), QStringLiteral("R4"),
                       tr("Apply multiple exact verified replacements as one checkpointed undo transaction."),
                       QStringLiteral("replacements: array, summary?: string")));
+    tools.append(tool(QStringLiteral("apply_objective_grammar_fixes"), QStringLiteral("R4"),
+                      tr("Apply all fully loaded strong grammar/mechanics findings that have deterministic replacements as one checkpointed Undo step.")));
     return tools;
 }
 
@@ -232,8 +234,14 @@ QJsonObject StoryToolHarness::proseState(int findingLimit) const
     }
     state.insert(QStringLiteral("counts"), counts);
 
+    QJsonObject hydratedCounts;
     QJsonArray findings;
     const QList<ProseDiagnostic> diagnostics = m_proseWidget->diagnosticsSnapshot();
+    for (const ProseDiagnostic &diagnostic : diagnostics) {
+        hydratedCounts.insert(
+            diagnostic.category,
+            hydratedCounts.value(diagnostic.category).toInt() + 1);
+    }
     for (int index = 0; index < diagnostics.size() && index < limit; ++index) {
         const ProseDiagnostic &diagnostic = diagnostics.at(index);
         QJsonObject finding;
@@ -248,10 +256,17 @@ QJsonObject StoryToolHarness::proseState(int findingLimit) const
         finding.insert(QStringLiteral("start_utf16"), diagnostic.start);
         finding.insert(QStringLiteral("end_utf16"), diagnostic.end);
         finding.insert(QStringLiteral("revision"), diagnostic.revision);
+        finding.insert(QStringLiteral("confidence"), diagnostic.confidence);
+        QJsonArray replacements;
+        for (const QString &replacement : diagnostic.replacements) {
+            replacements.append(replacement.left(500));
+        }
+        finding.insert(QStringLiteral("replacements"), replacements);
         findings.append(finding);
     }
     state.insert(QStringLiteral("findings"), findings);
     state.insert(QStringLiteral("findings_hydrated"), diagnostics.size());
+    state.insert(QStringLiteral("hydrated_counts"), hydratedCounts);
     return state;
 }
 
@@ -361,6 +376,118 @@ QJsonObject StoryToolHarness::findProseFinding(const QString &findingId, bool na
                    QStringLiteral("not_found"));
 }
 
+QJsonObject StoryToolHarness::applyObjectiveGrammarFixes(bool allowBulkEdits)
+{
+    if (!allowBulkEdits) {
+        return failure(tr("Objective grammar correction requires explicit bulk-edit authorization."),
+                       QStringLiteral("authorization_required"));
+    }
+
+    const QHash<QString, int> counts = m_proseWidget->categoryCountsSnapshot();
+    const int reportedTotal = counts.value(QStringLiteral("grammar_mechanics"));
+    QList<ProseDiagnostic> grammar;
+    for (const ProseDiagnostic &diagnostic : m_proseWidget->diagnosticsSnapshot()) {
+        if (diagnostic.category == QStringLiteral("grammar_mechanics")
+            || diagnostic.analyzer == QStringLiteral("grammar_mechanics")) {
+            grammar.append(diagnostic);
+        }
+    }
+
+    if (reportedTotal > grammar.size()) {
+        QJsonObject result = failure(
+            tr("Grammar findings are not fully hydrated yet. Open/select the Grammar & Mechanics lens after a document scan, then retry."),
+            QStringLiteral("grammar_findings_not_fully_loaded"));
+        result.insert(QStringLiteral("reported_total"), reportedTotal);
+        result.insert(QStringLiteral("hydrated"), grammar.size());
+        return result;
+    }
+    if (grammar.isEmpty()) {
+        QJsonObject result = success();
+        result.insert(QStringLiteral("reported_total"), reportedTotal);
+        result.insert(QStringLiteral("hydrated"), 0);
+        result.insert(QStringLiteral("applied"), 0);
+        result.insert(QStringLiteral("message"), tr("No loaded grammar/mechanics fixes are available."));
+        return result;
+    }
+
+    std::sort(grammar.begin(), grammar.end(), [](const ProseDiagnostic &left, const ProseDiagnostic &right) {
+        if (left.start == right.start) {
+            return left.end < right.end;
+        }
+        return left.start < right.start;
+    });
+
+    const QString currentText = m_editor->toPlainText();
+    QJsonArray replacements;
+    int skippedNonObjective = 0;
+    int skippedNoReplacement = 0;
+    int skippedStale = 0;
+    int skippedOverlap = 0;
+    int previousEnd = -1;
+
+    for (const ProseDiagnostic &diagnostic : std::as_const(grammar)) {
+        if (diagnostic.level != QStringLiteral("strong_flag")) {
+            ++skippedNonObjective;
+            continue;
+        }
+        if (diagnostic.replacements.isEmpty()) {
+            ++skippedNoReplacement;
+            continue;
+        }
+        if (diagnostic.start < 0 || diagnostic.end <= diagnostic.start
+            || diagnostic.end > currentText.size()) {
+            ++skippedStale;
+            continue;
+        }
+        if (diagnostic.start < previousEnd) {
+            ++skippedOverlap;
+            continue;
+        }
+
+        const QString expected = currentText.mid(diagnostic.start, diagnostic.end - diagnostic.start);
+        const QString replacement = diagnostic.replacements.first();
+        if (replacement == expected) {
+            ++skippedNoReplacement;
+            continue;
+        }
+        QJsonObject item;
+        item.insert(QStringLiteral("start_utf16"), diagnostic.start);
+        item.insert(QStringLiteral("end_utf16"), diagnostic.end);
+        item.insert(QStringLiteral("expected"), expected);
+        item.insert(QStringLiteral("replacement"), replacement);
+        replacements.append(item);
+        previousEnd = diagnostic.end;
+    }
+
+    if (replacements.isEmpty()) {
+        QJsonObject result = success();
+        result.insert(QStringLiteral("reported_total"), reportedTotal);
+        result.insert(QStringLiteral("hydrated"), grammar.size());
+        result.insert(QStringLiteral("objective_candidates"), 0);
+        result.insert(QStringLiteral("applied"), 0);
+        result.insert(QStringLiteral("skipped_non_objective"), skippedNonObjective);
+        result.insert(QStringLiteral("skipped_no_replacement"), skippedNoReplacement);
+        result.insert(QStringLiteral("skipped_stale"), skippedStale);
+        result.insert(QStringLiteral("skipped_overlap"), skippedOverlap);
+        return result;
+    }
+
+    QJsonObject result = m_transactions->applyVerifiedReplacements(
+        replacements,
+        tr("Apply %1 objective grammar/mechanics fixes").arg(replacements.size()),
+        QStringLiteral("apply_objective_grammar_fixes"));
+    result.insert(QStringLiteral("reported_total"), reportedTotal);
+    result.insert(QStringLiteral("hydrated"), grammar.size());
+    result.insert(QStringLiteral("objective_candidates"), replacements.size());
+    result.insert(QStringLiteral("applied"),
+                  result.value(QStringLiteral("ok")).toBool() ? replacements.size() : 0);
+    result.insert(QStringLiteral("skipped_non_objective"), skippedNonObjective);
+    result.insert(QStringLiteral("skipped_no_replacement"), skippedNoReplacement);
+    result.insert(QStringLiteral("skipped_stale"), skippedStale);
+    result.insert(QStringLiteral("skipped_overlap"), skippedOverlap);
+    return result;
+}
+
 QJsonObject StoryToolHarness::runIndent(
     bool wholeDocument,
     bool unindent,
@@ -452,13 +579,13 @@ QJsonObject StoryToolHarness::execute(
         const QString scope = arguments.value(QStringLiteral("scope")).toString(QStringLiteral("document")).trimmed().toLower();
         if (scope == QStringLiteral("document")) {
             m_proseController->reviewDocument();
-            result = success(QJsonObject{{QStringLiteral("scope"), scope}, {QStringLiteral("started"), true}});
+            result = success(QJsonObject{{QStringLiteral("scope"), scope}, {QStringLiteral("started"), true}, {QStringLiteral("pending"), true}});
         } else if (scope == QStringLiteral("selection")) {
             m_proseController->reviewSelection();
-            result = success(QJsonObject{{QStringLiteral("scope"), scope}, {QStringLiteral("started"), true}});
+            result = success(QJsonObject{{QStringLiteral("scope"), scope}, {QStringLiteral("started"), true}, {QStringLiteral("pending"), true}});
         } else if (scope == QStringLiteral("folder")) {
             m_proseController->reviewFolder();
-            result = success(QJsonObject{{QStringLiteral("scope"), scope}, {QStringLiteral("started"), true}});
+            result = success(QJsonObject{{QStringLiteral("scope"), scope}, {QStringLiteral("started"), true}, {QStringLiteral("pending"), true}});
         } else {
             result = failure(tr("scope must be document, selection, or folder."), QStringLiteral("invalid_arguments"));
         }
@@ -496,6 +623,8 @@ QJsonObject StoryToolHarness::execute(
                 arguments.value(QStringLiteral("summary")).toString(tr("Apply AI edit batch")),
                 toolId);
         }
+    } else if (toolId == QStringLiteral("apply_objective_grammar_fixes")) {
+        result = applyObjectiveGrammarFixes(allowBulkEdits);
     } else {
         result = failure(tr("Unknown or unexposed Story Intelligence tool."), QStringLiteral("unknown_tool"));
     }
