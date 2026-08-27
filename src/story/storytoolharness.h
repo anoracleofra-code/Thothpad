@@ -47,6 +47,13 @@ public:
     QJsonArray manifest() const;
     QJsonObject snapshot() const;
 
+    /**
+     * Native-only progress state used by StoryIntelligenceController to resume
+     * asynchronous tool rounds. This object is deliberately not inserted into
+     * the model prompt.
+     */
+    QJsonObject completionState() const;
+
     QJsonObject execute(
         const QString &toolId,
         const QJsonObject &arguments = {},
