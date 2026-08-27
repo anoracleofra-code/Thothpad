@@ -82,11 +82,12 @@ void installStoryIntelligence(ghostwriter::MainWindow *window)
 
     auto *controller = new ghostwriter::StoryIntelligenceController(
         editor, widget, engine, credentials, dock);
+    controller->setToolServices(harness, transactions, activity);
     controller->start();
-    transactions->setProjectRoot(controller->projectRoot());
 
-    // Keep the services discoverable under the Story Intelligence dock while
-    // the structured multi-round tool loop is wired into the controller.
+    // Keep the native services discoverable under the Story Intelligence dock
+    // for diagnostics and tests without exposing arbitrary QObject access to
+    // the model. The model only sees StoryToolHarness::manifest().
     harness->setObjectName(QStringLiteral("storyToolHarness"));
     transactions->setObjectName(QStringLiteral("agentEditTransactionManager"));
     activity->setObjectName(QStringLiteral("documentActivityTracker"));
