@@ -123,16 +123,21 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
         ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceSetupSurface,
         ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceSceneCard,
         ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceSuggestionCard,
+        ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceActivityCard,
         ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceCharacterCard {
             background: palette(alternate-base);
             border: 1px solid palette(mid);
             border-radius: 7px;
         }
+        ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceActivityCard {
+            background: palette(button);
+        }
         ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceTitle,
         ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceSectionTitle,
         ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceCaption,
         ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceCardHeading,
-        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceBubbleSpeaker {
+        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceBubbleSpeaker,
+        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceActivityTitle {
             font-weight: 600;
         }
         ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceTitle {
@@ -141,9 +146,14 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
         ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceMutedLabel,
         ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceKeyState,
         ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceStatus,
-        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceSuggestionQuote {
+        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceSuggestionQuote,
+        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceActivityCaption,
+        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceActivityDetail {
             color: palette(mid);
             font-size: 9pt;
+        }
+        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceActivityCaption {
+            font-weight: 600;
         }
         ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceSuggestionReplacement {
             padding: 6px;
@@ -152,7 +162,8 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
             background: palette(base);
         }
         ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligencePrimaryButton,
-        ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceApplyButton {
+        ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceApplyButton,
+        ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceUndoButton {
             min-height: 28px;
             padding: 4px 10px;
             border: 1px solid palette(mid);
@@ -164,8 +175,12 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
             background: palette(highlight);
             color: palette(highlighted-text);
         }
+        ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceUndoButton {
+            font-weight: 600;
+        }
         ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligencePrimaryButton:hover,
         ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceApplyButton:hover,
+        ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceUndoButton:hover,
         ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceCharacterCard:hover {
             border-color: palette(highlight);
         }
@@ -605,6 +620,13 @@ void StoryIntelligenceWidget::rebuildAnnotations()
             layout->addWidget(replacementLabel);
         }
         auto *actions = new QHBoxLayout;
+        auto *goTo = new QPushButton(tr("Go to"), card);
+        goTo->setObjectName(QStringLiteral("storyIntelligencePrimaryButton"));
+        goTo->setToolTip(tr("Select this marked passage in the manuscript"));
+        actions->addWidget(goTo);
+        connect(goTo, &QPushButton::clicked, this, [this, id]() {
+            emit annotationNavigationRequested(id);
+        });
         actions->addStretch(1);
         auto *dismiss = new QPushButton(tr("Dismiss"), card);
         dismiss->setObjectName(QStringLiteral("storyIntelligencePrimaryButton"));
@@ -625,6 +647,14 @@ void StoryIntelligenceWidget::rebuildAnnotations()
     }
 }
 
+void StoryIntelligenceWidget::scrollChatToBottom()
+{
+    QTimer::singleShot(0, m_chatScrollArea, [this]() {
+        QScrollBar *bar = m_chatScrollArea->verticalScrollBar();
+        bar->setValue(bar->maximum());
+    });
+}
+
 void StoryIntelligenceWidget::appendChatMessage(const QString &role, const QString &text, const QString &speaker)
 {
     if (text.trimmed().isEmpty()) {
@@ -643,10 +673,51 @@ void StoryIntelligenceWidget::appendChatMessage(const QString &role, const QStri
     layout->addWidget(speakerLabel);
     layout->addWidget(message);
     m_chatLayout->insertWidget(qMax(0, m_chatLayout->count() - 1), bubble);
-    QTimer::singleShot(0, m_chatScrollArea, [this]() {
-        QScrollBar *bar = m_chatScrollArea->verticalScrollBar();
-        bar->setValue(bar->maximum());
-    });
+    scrollChatToBottom();
+}
+
+void StoryIntelligenceWidget::appendActivityCard(
+    const QString &title,
+    const QString &detail,
+    const QString &operationId)
+{
+    if (title.trimmed().isEmpty() && detail.trimmed().isEmpty()) {
+        return;
+    }
+    auto *card = new QFrame(m_chatContainer);
+    card->setObjectName(QStringLiteral("storyIntelligenceActivityCard"));
+    auto *layout = new QVBoxLayout(card);
+    layout->setContentsMargins(9, 8, 9, 8);
+    layout->setSpacing(4);
+
+    auto *caption = plainLabel(tr("THOTHPAD ACTION"), card, QStringLiteral("storyIntelligenceActivityCaption"));
+    layout->addWidget(caption);
+    if (!title.trimmed().isEmpty()) {
+        auto *titleLabel = plainLabel(title, card, QStringLiteral("storyIntelligenceActivityTitle"));
+        titleLabel->setWordWrap(true);
+        layout->addWidget(titleLabel);
+    }
+    if (!detail.trimmed().isEmpty()) {
+        auto *detailLabel = plainLabel(detail, card, QStringLiteral("storyIntelligenceActivityDetail"));
+        detailLabel->setWordWrap(true);
+        detailLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        layout->addWidget(detailLabel);
+    }
+    if (!operationId.isEmpty()) {
+        auto *actions = new QHBoxLayout;
+        actions->addStretch(1);
+        auto *undo = new QPushButton(tr("Undo AI edit"), card);
+        undo->setObjectName(QStringLiteral("storyIntelligenceUndoButton"));
+        undo->setToolTip(tr("Undo only if this exact AI transaction is still the current manuscript state"));
+        actions->addWidget(undo);
+        connect(undo, &QPushButton::clicked, this, [this, operationId]() {
+            emit undoAgentTransactionRequested(operationId);
+        });
+        layout->addLayout(actions);
+    }
+
+    m_chatLayout->insertWidget(qMax(0, m_chatLayout->count() - 1), card);
+    scrollChatToBottom();
 }
 
 void StoryIntelligenceWidget::clearChat()
