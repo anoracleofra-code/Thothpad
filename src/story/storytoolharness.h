@@ -66,6 +66,7 @@ private:
     QJsonObject navigateRange(int start, int end, bool select);
     QJsonObject runIndent(bool wholeDocument, bool unindent, bool allowBulkEdits, bool allowBoundedEdits);
     QJsonObject findProseFinding(const QString &findingId, bool navigate) const;
+    QJsonObject applyObjectiveGrammarFixes(bool allowBulkEdits);
     static QJsonObject success(const QJsonObject &payload = {});
     static QJsonObject failure(const QString &message, const QString &code = QStringLiteral("tool_error"));
 
