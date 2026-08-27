@@ -34,6 +34,7 @@ public:
     void setSceneContext(const QJsonObject &context);
     void setCharacters(const QJsonArray &characters);
     void setActiveCharacter(const QString &characterId);
+    void setAnnotations(const QJsonArray &annotations);
     void appendChatMessage(const QString &role, const QString &text, const QString &speaker = QString());
     void clearChat();
     void setBusy(bool busy);
@@ -50,11 +51,14 @@ signals:
     void characterActivated(const QString &characterId);
     void chatRequested(const QString &message);
     void clearAnnotationsRequested();
+    void applySuggestionRequested(const QString &annotationId);
+    void dismissSuggestionRequested(const QString &annotationId);
 
 private:
     QFrame *makeCard(const QString &objectName);
     QLabel *makeSectionTitle(const QString &text);
     void rebuildCharacters();
+    void rebuildAnnotations();
     void submitChat();
     QString characterId(const QJsonObject &character) const;
 
@@ -69,6 +73,9 @@ private:
     QLabel *m_contextDetailLabel;
     QWidget *m_charactersContainer;
     QVBoxLayout *m_charactersLayout;
+    QWidget *m_annotationsSection;
+    QWidget *m_annotationsContainer;
+    QVBoxLayout *m_annotationsLayout;
     QWidget *m_chatContainer;
     QVBoxLayout *m_chatLayout;
     QScrollArea *m_chatScrollArea;
@@ -76,6 +83,7 @@ private:
     QPushButton *m_sendButton;
     QLabel *m_statusLabel;
     QJsonArray m_characters;
+    QJsonArray m_annotations;
     QString m_activeCharacterId;
 };
 }
