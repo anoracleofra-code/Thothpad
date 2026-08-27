@@ -36,6 +36,10 @@ public:
     void setActiveCharacter(const QString &characterId);
     void setAnnotations(const QJsonArray &annotations);
     void appendChatMessage(const QString &role, const QString &text, const QString &speaker = QString());
+    void appendActivityCard(
+        const QString &title,
+        const QString &detail,
+        const QString &operationId = QString());
     void clearChat();
     void setBusy(bool busy);
     void setStatusMessage(const QString &message);
@@ -51,14 +55,17 @@ signals:
     void characterActivated(const QString &characterId);
     void chatRequested(const QString &message);
     void clearAnnotationsRequested();
+    void annotationNavigationRequested(const QString &annotationId);
     void applySuggestionRequested(const QString &annotationId);
     void dismissSuggestionRequested(const QString &annotationId);
+    void undoAgentTransactionRequested(const QString &operationId);
 
 private:
     QFrame *makeCard(const QString &objectName);
     QLabel *makeSectionTitle(const QString &text);
     void rebuildCharacters();
     void rebuildAnnotations();
+    void scrollChatToBottom();
     void submitChat();
     QString characterId(const QJsonObject &character) const;
 
