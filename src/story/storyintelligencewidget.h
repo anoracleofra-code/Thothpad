@@ -5,12 +5,13 @@
 #ifndef STORY_INTELLIGENCE_WIDGET_H
 #define STORY_INTELLIGENCE_WIDGET_H
 
+#include <QIcon>
 #include <QJsonArray>
 #include <QJsonObject>
-#include <QPointer>
 #include <QString>
 #include <QWidget>
 
+class QFrame;
 class QLabel;
 class QPlainTextEdit;
 class QPushButton;
