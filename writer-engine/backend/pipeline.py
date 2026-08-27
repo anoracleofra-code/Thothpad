@@ -8,7 +8,8 @@ from backend.llm_clients import complete_chat, scrub_provider
 from backend.models import AnalyzerResult, Derivation, RunRequest
 from backend.profiles import load_profile
 from backend.storage import save_run
-from backend.story_intelligence import run_story_intelligence, try_parse_story_payload
+from backend.story_intelligence import try_parse_story_payload
+from backend.story_runtime import run_story_intelligence
 from backend.text_utils import Utf16Index
 from backend.validation import validate_passes, validate_profile, validate_text
 
