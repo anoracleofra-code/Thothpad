@@ -24,25 +24,32 @@
 #include <KAboutData>
 #include <KToolTipHelper>
 
+#include "documentmanager.h"
 #include "editor/markdowneditor.h"
 #include "logging.h"
 #include "mainwindow.h"
 #include "prose/credentialstore.h"
+#include "prose/proseawarenesswidget.h"
 #include "prose/prosecontroller.h"
 #include "prose/writerengineclient.h"
 #include "settings/appsettings.h"
+#include "story/agentedittransactionmanager.h"
+#include "story/documentactivitytracker.h"
 #include "story/storyintelligencecontroller.h"
 #include "story/storyintelligencewidget.h"
+#include "story/storytoolharness.h"
 
 namespace
 {
 void installStoryIntelligence(ghostwriter::MainWindow *window)
 {
     auto *editor = window->findChild<ghostwriter::MarkdownEditor *>();
+    auto *documentManager = window->findChild<ghostwriter::DocumentManager *>();
     auto *proseController = window->findChild<ghostwriter::ProseController *>();
+    auto *proseWidget = window->findChild<ghostwriter::ProseAwarenessWidget *>();
     auto *engine = proseController ? proseController->findChild<ghostwriter::WriterEngineClient *>() : nullptr;
     auto *credentials = proseController ? proseController->findChild<ghostwriter::CredentialStore *>() : nullptr;
-    if (!editor || !proseController || !engine || !credentials) {
+    if (!editor || !documentManager || !proseController || !proseWidget || !engine || !credentials) {
         qWarning() << "Story Intelligence could not attach to the editor/engine services.";
         return;
     }
@@ -65,9 +72,46 @@ void installStoryIntelligence(ghostwriter::MainWindow *window)
     dock->setWidget(widget);
     window->addDockWidget(Qt::RightDockWidgetArea, dock);
 
+    auto *transactions = new ghostwriter::AgentEditTransactionManager(
+        editor, documentManager, dock);
+    auto *activity = new ghostwriter::DocumentActivityTracker(
+        editor, transactions, dock);
+    auto *harness = new ghostwriter::StoryToolHarness(
+        window, editor, documentManager, proseController, proseWidget,
+        transactions, dock);
+
     auto *controller = new ghostwriter::StoryIntelligenceController(
         editor, widget, engine, credentials, dock);
     controller->start();
+    transactions->setProjectRoot(controller->projectRoot());
+
+    // Keep the services discoverable under the Story Intelligence dock while
+    // the structured multi-round tool loop is wired into the controller.
+    harness->setObjectName(QStringLiteral("storyToolHarness"));
+    transactions->setObjectName(QStringLiteral("agentEditTransactionManager"));
+    activity->setObjectName(QStringLiteral("documentActivityTracker"));
+
+    QObject::connect(activity, &ghostwriter::DocumentActivityTracker::activityEvent,
+                     dock, [widget](const QJsonObject &event) {
+        if (!event.value(QStringLiteral("visible")).toBool()) {
+            return;
+        }
+        const QString type = event.value(QStringLiteral("type")).toString();
+        const QString summary = event.value(QStringLiteral("summary")).toString();
+        QString message;
+        if (type == QStringLiteral("USER_UNDID_AGENT_TRANSACTION")) {
+            message = QCoreApplication::translate("main", "↶ You undid the AI action: %1").arg(summary);
+        } else if (type == QStringLiteral("USER_REDID_AGENT_TRANSACTION")) {
+            message = QCoreApplication::translate("main", "↷ You redid the AI action: %1").arg(summary);
+        } else if (type == QStringLiteral("USER_EDITED_AGENT_TARGET")) {
+            const int line = event.value(QStringLiteral("line")).toInt();
+            message = QCoreApplication::translate("main", "You changed a passage the AI had touched%1.")
+                .arg(line > 0 ? QCoreApplication::translate("main", " near line %1").arg(line) : QString());
+        } else {
+            return;
+        }
+        widget->appendChatMessage(QStringLiteral("assistant"), message, QStringLiteral("ThothPad"));
+    });
 
     QObject::connect(widget, &ghostwriter::StoryIntelligenceWidget::collapseRequested,
                      dock, &QDockWidget::hide);
@@ -178,7 +222,7 @@ int main(int argc, char *argv[])
         QCoreApplication::translate("main",
             "UberWriter (now Apostrophe) developer, for providing inspiration"),
         QString(),
-        "https://www.wolfvollprecht.de");
+        "https://github.com/retext-project/retext");
     aboutData.addCredit(QCoreApplication::translate("main", "Other Contributors"),
         QCoreApplication::translate("main",
             "Everyone who provided translations, documentation, bug fixes, or new features over the years"),
