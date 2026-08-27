@@ -35,6 +35,7 @@ _PATH_KEYS = {
     "folder_path",
     "local_path",
     "path",
+    "paths",
 }
 _WINDOWS_ABSOLUTE = re.compile(r"^(?:[A-Za-z]:[\\/]|\\\\)")
 
