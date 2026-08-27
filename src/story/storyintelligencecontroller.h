@@ -9,6 +9,7 @@
 #include <QJsonObject>
 #include <QObject>
 #include <QString>
+#include <QTimer>
 
 namespace ghostwriter
 {
@@ -55,14 +56,28 @@ private slots:
     void clearAnnotations();
     void applySuggestion(const QString &suggestionId);
     void dismissSuggestion(const QString &suggestionId);
+    void pollPendingTool();
 
 private:
+    struct PendingAsyncTool {
+        bool active = false;
+        QString callId;
+        QString toolId;
+        QString waitKind;
+        QString category;
+        QString baselineAnalysisId;
+        qint64 targetGeneration = 0;
+        int revision = -1;
+        int elapsedMs = 0;
+    };
+
     struct PendingChat {
         QString prompt;
         QJsonObject provider;
         QString credentialId;
         QString apiKey;
         QJsonArray toolResults;
+        PendingAsyncTool asyncTool;
         int revision = -1;
         int toolRound = 0;
         bool waitingForCredential = false;
@@ -84,9 +99,17 @@ private:
     void appendHistory(const QString &role, const QString &content, const QString &speaker = QString());
     QJsonArray boundedHistory() const;
     QString currentDocumentPath() const;
+    QString modelSafePath(const QString &path) const;
+    QJsonObject modelSafeToolResult(const QJsonObject &result) const;
     QString toolRisk(const QString &toolId) const;
     bool authorizeTool(const QString &toolId, const QJsonObject &arguments);
     bool executeToolCalls(const QJsonArray &toolCalls);
+    void beginPendingTool(
+        const QString &callId,
+        const QString &toolId,
+        const QJsonObject &nativeResult);
+    void finishPendingTool(bool completed, const QString &error = QString());
+    bool pendingToolCompleted() const;
     void finishChatTurn(const QJsonObject &story, const QJsonObject &result);
     void resetPendingChat();
 
@@ -103,6 +126,7 @@ private:
     QJsonArray m_annotations;
     PendingChat m_pendingChat;
     QString m_chatRequestId;
+    QTimer m_toolWaitTimer;
     int m_revision = 0;
 };
 }
