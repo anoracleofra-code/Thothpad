@@ -15,7 +15,9 @@
 #include <limits>
 
 #include <QAction>
+#include <QDir>
 #include <QDockWidget>
+#include <QFileInfo>
 #include <QJsonValue>
 #include <QMainWindow>
 #include <QTextBlock>
@@ -132,11 +134,17 @@ QJsonArray StoryToolHarness::manifest() const
     tools.append(tool(QStringLiteral("get_editor_state"), QStringLiteral("R0"),
                       tr("Read cursor, selection, document revision and save/undo state.")));
     tools.append(tool(QStringLiteral("get_prose_summary"), QStringLiteral("R0"),
-                      tr("Read Prose Intelligence lens counts and current loaded findings."),
+                      tr("Read Prose Intelligence lens counts and current hydrated findings."),
                       QStringLiteral("limit?: integer")));
     tools.append(tool(QStringLiteral("get_prose_findings"), QStringLiteral("R0"),
                       tr("Read currently hydrated Prose Intelligence findings."),
                       QStringLiteral("limit?: integer")));
+    tools.append(tool(QStringLiteral("run_prose_scan"), QStringLiteral("R2"),
+                      tr("Run a fresh local full-document Prose Intelligence scan and wait for its new snapshot."),
+                      QStringLiteral("scope?: document")));
+    tools.append(tool(QStringLiteral("hydrate_prose_category"), QStringLiteral("R2"),
+                      tr("Load all findings for one lens from the current Prose Intelligence snapshot before reasoning or bulk edits."),
+                      QStringLiteral("category: lens id")));
     tools.append(tool(QStringLiteral("set_theme"), QStringLiteral("R1"),
                       tr("Switch the current theme between light and dark mode."),
                       QStringLiteral("theme: light|dark")));
@@ -151,9 +159,6 @@ QJsonArray StoryToolHarness::manifest() const
     tools.append(tool(QStringLiteral("select_range"), QStringLiteral("R1"),
                       tr("Select a verified UTF-16 manuscript range."),
                       QStringLiteral("start_utf16: integer, end_utf16: integer")));
-    tools.append(tool(QStringLiteral("run_prose_scan"), QStringLiteral("R2"),
-                      tr("Run Prose Intelligence on the document, selection, or project folder."),
-                      QStringLiteral("scope: document|selection|folder")));
     tools.append(tool(QStringLiteral("go_to_prose_finding"), QStringLiteral("R1"),
                       tr("Navigate to a currently hydrated prose finding by stable finding ID."),
                       QStringLiteral("finding_id: string")));
@@ -172,7 +177,7 @@ QJsonArray StoryToolHarness::manifest() const
                       tr("Apply multiple exact verified replacements as one checkpointed undo transaction."),
                       QStringLiteral("replacements: array, summary?: string")));
     tools.append(tool(QStringLiteral("apply_objective_grammar_fixes"), QStringLiteral("R4"),
-                      tr("Apply all fully loaded strong grammar/mechanics findings that have deterministic replacements as one checkpointed Undo step.")));
+                      tr("Apply hydrated strong grammar/mechanics findings with deterministic replacements as one checkpointed Undo step.")));
     return tools;
 }
 
@@ -195,6 +200,31 @@ QJsonObject StoryToolHarness::appState() const
     return state;
 }
 
+QString StoryToolHarness::modelSafeDocumentPath() const
+{
+    const QString path = m_documentManager->document()->filePath();
+    if (path.isEmpty()) {
+        return {};
+    }
+
+    const QFileInfo file(path);
+    const QString projectRoot = m_transactions->projectRoot();
+    if (!projectRoot.isEmpty()) {
+        const QDir root(projectRoot);
+        const QString relative = QDir::fromNativeSeparators(
+            root.relativeFilePath(file.absoluteFilePath()));
+        if (!relative.isEmpty()
+            && relative != QStringLiteral("..")
+            && !relative.startsWith(QStringLiteral("../"))
+            && !QDir::isAbsolutePath(relative)) {
+            return relative;
+        }
+    }
+    // Outside an opened project, the model only needs the leaf name. Do not
+    // leak the user's home directory or machine-specific folder layout.
+    return file.fileName();
+}
+
 QJsonObject StoryToolHarness::editorState() const
 {
     const QTextCursor cursor = m_editor->textCursor();
@@ -202,7 +232,7 @@ QJsonObject StoryToolHarness::editorState() const
     const int selectionEnd = std::max(cursor.position(), cursor.anchor());
 
     QJsonObject state;
-    state.insert(QStringLiteral("document_path"), m_documentManager->document()->filePath());
+    state.insert(QStringLiteral("document_path"), modelSafeDocumentPath());
     state.insert(QStringLiteral("document_revision"), m_editor->document()->revision());
     state.insert(QStringLiteral("modified"), m_editor->document()->isModified());
     state.insert(QStringLiteral("read_only"), m_editor->isReadOnly());
@@ -228,11 +258,16 @@ QJsonObject StoryToolHarness::proseState(int findingLimit) const
     state.insert(QStringLiteral("selected_category"), m_proseWidget->selectedCategory());
 
     QJsonObject counts;
+    QJsonArray hydratedCategories;
     const QHash<QString, int> categoryCounts = m_proseWidget->categoryCountsSnapshot();
     for (auto iterator = categoryCounts.cbegin(); iterator != categoryCounts.cend(); ++iterator) {
         counts.insert(iterator.key(), iterator.value());
+        if (iterator.value() <= 0 || m_proseController->categoryHydratedForAgent(iterator.key())) {
+            hydratedCategories.append(iterator.key());
+        }
     }
     state.insert(QStringLiteral("counts"), counts);
+    state.insert(QStringLiteral("hydrated_categories"), hydratedCategories);
 
     QJsonObject hydratedCounts;
     QJsonArray findings;
@@ -276,6 +311,24 @@ QJsonObject StoryToolHarness::snapshot() const
     result.insert(QStringLiteral("app"), appState());
     result.insert(QStringLiteral("editor"), editorState());
     result.insert(QStringLiteral("prose"), proseState());
+    return result;
+}
+
+QJsonObject StoryToolHarness::completionState() const
+{
+    QJsonObject result;
+    result.insert(QStringLiteral("analysis_generation"),
+                  static_cast<qint64>(m_proseController->analysisGenerationSnapshot()));
+    result.insert(QStringLiteral("analysis_id"), m_proseController->analysisIdSnapshot());
+
+    QJsonArray hydratedCategories;
+    const QHash<QString, int> counts = m_proseWidget->categoryCountsSnapshot();
+    for (auto iterator = counts.cbegin(); iterator != counts.cend(); ++iterator) {
+        if (iterator.value() <= 0 || m_proseController->categoryHydratedForAgent(iterator.key())) {
+            hydratedCategories.append(iterator.key());
+        }
+    }
+    result.insert(QStringLiteral("hydrated_categories"), hydratedCategories);
     return result;
 }
 
@@ -341,6 +394,79 @@ QJsonObject StoryToolHarness::navigateRange(int start, int end, bool select)
     return success(payload);
 }
 
+QJsonObject StoryToolHarness::runProseScan(const QJsonObject &arguments)
+{
+    const QString scope = arguments.value(QStringLiteral("scope"))
+                              .toString(QStringLiteral("document"))
+                              .trimmed()
+                              .toLower();
+    if (scope != QStringLiteral("document")) {
+        return failure(
+            tr("The observable Story Intelligence scan currently supports the full document only. Use the current hydrated prose state for selection-level questions."),
+            QStringLiteral("unsupported_scope"));
+    }
+    if (!m_proseWidget->engineReadySnapshot()) {
+        return failure(tr("ThothPad Engine is not ready."), QStringLiteral("engine_unavailable"));
+    }
+
+    const QJsonObject before = completionState();
+    const quint64 beforeGeneration = m_proseController->analysisGenerationSnapshot();
+    m_proseController->reviewDocumentForAgent();
+    const quint64 targetGeneration = m_proseController->analysisGenerationSnapshot();
+    if (targetGeneration <= beforeGeneration) {
+        return failure(
+            tr("The prose scan could not start. Pending document synchronization or an empty document may be blocking it."),
+            QStringLiteral("scan_not_started"));
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("scope"), scope);
+    result.insert(QStringLiteral("started"), true);
+    result.insert(QStringLiteral("pending"), true);
+    result.insert(QStringLiteral("wait_kind"), QStringLiteral("analysis_snapshot"));
+    result.insert(QStringLiteral("target_generation"), static_cast<qint64>(targetGeneration));
+    result.insert(QStringLiteral("baseline_analysis_id"), before.value(QStringLiteral("analysis_id")));
+    return success(result);
+}
+
+QJsonObject StoryToolHarness::hydrateProseCategory(const QJsonObject &arguments)
+{
+    const QString category = arguments.value(QStringLiteral("category")).toString().trimmed();
+    if (category.isEmpty()) {
+        return failure(tr("category is required."), QStringLiteral("invalid_arguments"));
+    }
+
+    const QHash<QString, int> counts = m_proseWidget->categoryCountsSnapshot();
+    if (counts.value(category, 0) <= 0) {
+        QJsonObject result;
+        result.insert(QStringLiteral("category"), category);
+        result.insert(QStringLiteral("hydrated"), true);
+        result.insert(QStringLiteral("finding_count"), counts.value(category, 0));
+        result.insert(QStringLiteral("pending"), false);
+        return success(result);
+    }
+    if (m_proseController->categoryHydratedForAgent(category)) {
+        QJsonObject result;
+        result.insert(QStringLiteral("category"), category);
+        result.insert(QStringLiteral("hydrated"), true);
+        result.insert(QStringLiteral("finding_count"), counts.value(category));
+        result.insert(QStringLiteral("pending"), false);
+        return success(result);
+    }
+    if (!m_proseController->hydrateCategoryForAgent(category)) {
+        return failure(
+            tr("That prose category cannot be hydrated from the current snapshot. Run a document scan first and use a valid lens ID."),
+            QStringLiteral("category_unavailable"));
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("category"), category);
+    result.insert(QStringLiteral("finding_count"), counts.value(category));
+    result.insert(QStringLiteral("pending"), true);
+    result.insert(QStringLiteral("wait_kind"), QStringLiteral("category_hydration"));
+    return success(result);
+}
+
 QJsonObject StoryToolHarness::findProseFinding(const QString &findingId, bool navigate) const
 {
     if (findingId.isEmpty()) {
@@ -372,7 +498,7 @@ QJsonObject StoryToolHarness::findProseFinding(const QString &findingId, bool na
         payload.insert(QStringLiteral("end_utf16"), diagnostic.end);
         return success(payload);
     }
-    return failure(tr("That prose finding is not currently hydrated. Run/select the relevant lens first."),
+    return failure(tr("That prose finding is not currently hydrated. Hydrate the relevant lens first."),
                    QStringLiteral("not_found"));
 }
 
@@ -383,30 +509,33 @@ QJsonObject StoryToolHarness::applyObjectiveGrammarFixes(bool allowBulkEdits)
                        QStringLiteral("authorization_required"));
     }
 
+    const QString grammarCategory = QStringLiteral("grammar_mechanics");
     const QHash<QString, int> counts = m_proseWidget->categoryCountsSnapshot();
-    const int reportedTotal = counts.value(QStringLiteral("grammar_mechanics"));
+    const int reportedTotal = counts.value(grammarCategory);
+    if (reportedTotal > 0 && !m_proseController->categoryHydratedForAgent(grammarCategory)) {
+        QJsonObject result = failure(
+            tr("Grammar findings are not fully hydrated yet. Ask ThothPad to hydrate the grammar_mechanics lens, then retry."),
+            QStringLiteral("grammar_findings_not_fully_loaded"));
+        result.insert(QStringLiteral("reported_total"), reportedTotal);
+        result.insert(QStringLiteral("next_tool"), QStringLiteral("hydrate_prose_category"));
+        result.insert(QStringLiteral("next_category"), grammarCategory);
+        return result;
+    }
+
     QList<ProseDiagnostic> grammar;
     for (const ProseDiagnostic &diagnostic : m_proseWidget->diagnosticsSnapshot()) {
-        if (diagnostic.category == QStringLiteral("grammar_mechanics")
-            || diagnostic.analyzer == QStringLiteral("grammar_mechanics")) {
+        if (diagnostic.category == grammarCategory
+            || diagnostic.analyzer == grammarCategory) {
             grammar.append(diagnostic);
         }
     }
 
-    if (reportedTotal > grammar.size()) {
-        QJsonObject result = failure(
-            tr("Grammar findings are not fully hydrated yet. Open/select the Grammar & Mechanics lens after a document scan, then retry."),
-            QStringLiteral("grammar_findings_not_fully_loaded"));
-        result.insert(QStringLiteral("reported_total"), reportedTotal);
-        result.insert(QStringLiteral("hydrated"), grammar.size());
-        return result;
-    }
-    if (grammar.isEmpty()) {
+    if (reportedTotal <= 0 || grammar.isEmpty()) {
         QJsonObject result = success();
         result.insert(QStringLiteral("reported_total"), reportedTotal);
-        result.insert(QStringLiteral("hydrated"), 0);
+        result.insert(QStringLiteral("hydrated"), grammar.size());
         result.insert(QStringLiteral("applied"), 0);
-        result.insert(QStringLiteral("message"), tr("No loaded grammar/mechanics fixes are available."));
+        result.insert(QStringLiteral("message"), tr("No objective grammar/mechanics fixes are available."));
         return result;
     }
 
@@ -548,6 +677,10 @@ QJsonObject StoryToolHarness::execute(
         } else {
             result = success(proseState(limit));
         }
+    } else if (toolId == QStringLiteral("run_prose_scan")) {
+        result = runProseScan(arguments);
+    } else if (toolId == QStringLiteral("hydrate_prose_category")) {
+        result = hydrateProseCategory(arguments);
     } else if (toolId == QStringLiteral("set_theme")) {
         const QString theme = arguments.value(QStringLiteral("theme")).toString().trimmed().toLower();
         if (theme != QStringLiteral("light") && theme != QStringLiteral("dark")) {
@@ -574,20 +707,6 @@ QJsonObject StoryToolHarness::execute(
             result = failure(tr("Range offsets must be integers."), QStringLiteral("invalid_arguments"));
         } else {
             result = navigateRange(start, end, toolId == QStringLiteral("select_range"));
-        }
-    } else if (toolId == QStringLiteral("run_prose_scan")) {
-        const QString scope = arguments.value(QStringLiteral("scope")).toString(QStringLiteral("document")).trimmed().toLower();
-        if (scope == QStringLiteral("document")) {
-            m_proseController->reviewDocument();
-            result = success(QJsonObject{{QStringLiteral("scope"), scope}, {QStringLiteral("started"), true}, {QStringLiteral("pending"), true}});
-        } else if (scope == QStringLiteral("selection")) {
-            m_proseController->reviewSelection();
-            result = success(QJsonObject{{QStringLiteral("scope"), scope}, {QStringLiteral("started"), true}, {QStringLiteral("pending"), true}});
-        } else if (scope == QStringLiteral("folder")) {
-            m_proseController->reviewFolder();
-            result = success(QJsonObject{{QStringLiteral("scope"), scope}, {QStringLiteral("started"), true}, {QStringLiteral("pending"), true}});
-        } else {
-            result = failure(tr("scope must be document, selection, or folder."), QStringLiteral("invalid_arguments"));
         }
     } else if (toolId == QStringLiteral("go_to_prose_finding")) {
         result = findProseFinding(arguments.value(QStringLiteral("finding_id")).toString(), true);
