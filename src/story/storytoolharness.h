@@ -64,9 +64,12 @@ private:
     QJsonObject setCheckedAction(const QString &stableId, bool desired);
     QJsonObject setPanelVisible(const QString &panel, bool visible);
     QJsonObject navigateRange(int start, int end, bool select);
+    QJsonObject runProseScan(const QJsonObject &arguments);
+    QJsonObject hydrateProseCategory(const QJsonObject &arguments);
     QJsonObject runIndent(bool wholeDocument, bool unindent, bool allowBulkEdits, bool allowBoundedEdits);
     QJsonObject findProseFinding(const QString &findingId, bool navigate) const;
     QJsonObject applyObjectiveGrammarFixes(bool allowBulkEdits);
+    QString modelSafeDocumentPath() const;
     static QJsonObject success(const QJsonObject &payload = {});
     static QJsonObject failure(const QString &message, const QString &code = QStringLiteral("tool_error"));
 
