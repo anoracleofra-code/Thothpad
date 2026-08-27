@@ -27,12 +27,14 @@
 #include <QInputDialog>
 #include <QJsonDocument>
 #include <QJsonParseError>
+#include <QJsonValue>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QSet>
 #include <QSettings>
 #include <QTextBlock>
 #include <QTextCharFormat>
@@ -51,6 +53,9 @@ constexpr int MaximumHistoryMessages = 16;
 constexpr int MaximumChatInputCharacters = 20000;
 constexpr int MaximumToolCallsPerRound = 8;
 constexpr int MaximumToolRounds = 4;
+constexpr int ToolPollIntervalMs = 200;
+constexpr int ToolWaitTimeoutMs = 120000;
+constexpr int MaximumAccumulatedToolResults = 32;
 
 QString providerDisplayName(const QString &kind)
 {
@@ -109,6 +114,16 @@ QString toolDisplayName(const QString &toolId)
     display.replace(QChar('_'), QChar(' '));
     return display;
 }
+
+bool jsonArrayContainsString(const QJsonArray &values, const QString &needle)
+{
+    for (const QJsonValue &value : values) {
+        if (value.toString() == needle) {
+            return true;
+        }
+    }
+    return false;
+}
 }
 
 StoryIntelligenceController::StoryIntelligenceController(
@@ -127,6 +142,11 @@ StoryIntelligenceController::StoryIntelligenceController(
     Q_ASSERT(m_widget);
     Q_ASSERT(m_engine);
     Q_ASSERT(m_credentials);
+
+    m_toolWaitTimer.setInterval(ToolPollIntervalMs);
+    m_toolWaitTimer.setSingleShot(false);
+    connect(&m_toolWaitTimer, &QTimer::timeout,
+            this, &StoryIntelligenceController::pollPendingTool);
 
     connect(m_widget, &StoryIntelligenceWidget::projectFolderRequested,
             this, &StoryIntelligenceController::chooseProjectFolder);
@@ -153,12 +173,15 @@ StoryIntelligenceController::StoryIntelligenceController(
     connect(m_engine, &WriterEngineClient::responseReceived,
             this, &StoryIntelligenceController::handleResponse);
     connect(m_engine, &WriterEngineClient::requestsInvalidated, this, [this](const QStringList &ids) {
-        if (!m_chatRequestId.isEmpty() && ids.contains(m_chatRequestId)) {
-            m_chatRequestId.clear();
-            resetPendingChat();
-            m_widget->setBusy(false);
-            m_widget->setStatusMessage(tr("Engine restarted; resend the last message."));
+        const bool chatInvalidated = !m_chatRequestId.isEmpty() && ids.contains(m_chatRequestId);
+        if (!chatInvalidated && !m_pendingChat.asyncTool.active) {
+            return;
         }
+        m_chatRequestId.clear();
+        m_toolWaitTimer.stop();
+        resetPendingChat();
+        m_widget->setBusy(false);
+        m_widget->setStatusMessage(tr("Engine restarted; resend the last message."));
     });
     connect(m_credentials, &CredentialStore::loaded,
             this, &StoryIntelligenceController::handleCredentialLoaded);
@@ -621,9 +644,83 @@ QString StoryIntelligenceController::currentDocumentPath() const
     return {};
 }
 
+QString StoryIntelligenceController::modelSafePath(const QString &path) const
+{
+    if (path.isEmpty()) {
+        return {};
+    }
+    const QFileInfo file(path);
+    if (!m_projectRoot.isEmpty()) {
+        const QDir root(m_projectRoot);
+        const QString relative = QDir::fromNativeSeparators(
+            root.relativeFilePath(file.absoluteFilePath()));
+        if (!relative.isEmpty()
+            && relative != QStringLiteral("..")
+            && !relative.startsWith(QStringLiteral("../"))
+            && !QDir::isAbsolutePath(relative)) {
+            return relative;
+        }
+    }
+    return file.fileName();
+}
+
+QJsonObject StoryIntelligenceController::modelSafeToolResult(const QJsonObject &source) const
+{
+    const QSet<QString> omittedKeys = {
+        QStringLiteral("analysis_id"),
+        QStringLiteral("baseline_analysis_id"),
+        QStringLiteral("project_root"),
+        QStringLiteral("target_generation"),
+    };
+
+    QJsonObject result;
+    for (auto iterator = source.constBegin(); iterator != source.constEnd(); ++iterator) {
+        const QString key = iterator.key();
+        const QJsonValue value = iterator.value();
+        if (key == QStringLiteral("checkpoint_path")) {
+            result.insert(QStringLiteral("checkpoint_created"),
+                          value.isString() && !value.toString().isEmpty());
+            continue;
+        }
+        if (omittedKeys.contains(key)) {
+            continue;
+        }
+        if (value.isObject()) {
+            result.insert(key, modelSafeToolResult(value.toObject()));
+            continue;
+        }
+        if (value.isArray()) {
+            QJsonArray safeArray;
+            for (const QJsonValue &item : value.toArray()) {
+                if (item.isObject()) {
+                    safeArray.append(modelSafeToolResult(item.toObject()));
+                } else if (item.isString()
+                           && key.endsWith(QStringLiteral("paths"))
+                           && QDir::isAbsolutePath(item.toString())) {
+                    safeArray.append(modelSafePath(item.toString()));
+                } else {
+                    safeArray.append(item);
+                }
+            }
+            result.insert(key, safeArray);
+            continue;
+        }
+        if (value.isString()
+            && key.endsWith(QStringLiteral("path"))
+            && QDir::isAbsolutePath(value.toString())) {
+            result.insert(key, modelSafePath(value.toString()));
+            continue;
+        }
+        result.insert(key, value);
+    }
+    return result;
+}
+
 void StoryIntelligenceController::sendChat(const QString &message)
 {
-    if (!m_chatRequestId.isEmpty() || m_pendingChat.waitingForCredential) {
+    if (!m_chatRequestId.isEmpty()
+        || m_pendingChat.waitingForCredential
+        || m_pendingChat.asyncTool.active) {
         m_widget->setStatusMessage(
             tr("Wait for the current response before sending another message."));
         return;
@@ -699,6 +796,9 @@ void StoryIntelligenceController::dispatchPendingChat(const QString &apiKey)
         m_widget->setBusy(false);
         return;
     }
+    if (m_pendingChat.asyncTool.active) {
+        return;
+    }
     if (!apiKey.isEmpty()) {
         m_pendingChat.apiKey = apiKey;
     }
@@ -725,6 +825,8 @@ void StoryIntelligenceController::dispatchPendingChat(const QString &apiKey)
     storyPayload.insert(QStringLiteral("kind"), QStringLiteral("story_intelligence_v1"));
     storyPayload.insert(QStringLiteral("prompt"), m_pendingChat.prompt);
     storyPayload.insert(QStringLiteral("document"), m_editor->toPlainText());
+    // document_path/project_root are consumed only by the local engine's
+    // retrieval layer. build_story_messages does not forward them to the model.
     storyPayload.insert(QStringLiteral("document_path"), currentDocumentPath());
     storyPayload.insert(QStringLiteral("document_revision"), m_pendingChat.revision);
     storyPayload.insert(QStringLiteral("project_root"), m_projectRoot);
@@ -796,9 +898,26 @@ bool StoryIntelligenceController::authorizeTool(
     }
 
     QString summary = arguments.value(QStringLiteral("summary")).toString().trimmed();
-    if (summary.isEmpty()) {
+    if (toolId == QStringLiteral("apply_objective_grammar_fixes") && m_harness) {
+        const QJsonObject prose = m_harness->snapshot().value(QStringLiteral("prose")).toObject();
+        const int reported = prose.value(QStringLiteral("counts")).toObject()
+                                 .value(QStringLiteral("grammar_mechanics")).toInt();
+        int deterministic = 0;
+        for (const QJsonValue &value : prose.value(QStringLiteral("findings")).toArray()) {
+            const QJsonObject finding = value.toObject();
+            if (finding.value(QStringLiteral("category")).toString() == QStringLiteral("grammar_mechanics")
+                && finding.value(QStringLiteral("level")).toString() == QStringLiteral("strong_flag")
+                && !finding.value(QStringLiteral("replacements")).toArray().isEmpty()) {
+                ++deterministic;
+            }
+        }
+        summary = tr("Apply %1 currently verified objective grammar fix(es) from %2 grammar/mechanics finding(s)")
+                      .arg(deterministic)
+                      .arg(reported);
+    } else if (summary.isEmpty()) {
         summary = toolDisplayName(toolId);
     }
+
     const bool bulk = risk == QStringLiteral("R4");
     const QString detail = bulk
         ? tr("Story Intelligence wants to make a bulk manuscript change:\n\n%1\n\n"
@@ -813,13 +932,134 @@ bool StoryIntelligenceController::authorizeTool(
         QMessageBox::No);
 }
 
+void StoryIntelligenceController::beginPendingTool(
+    const QString &callId,
+    const QString &toolId,
+    const QJsonObject &nativeResult)
+{
+    PendingAsyncTool wait;
+    wait.active = true;
+    wait.callId = callId;
+    wait.toolId = toolId;
+    wait.waitKind = nativeResult.value(QStringLiteral("wait_kind")).toString();
+    wait.category = nativeResult.value(QStringLiteral("category")).toString();
+    wait.baselineAnalysisId = nativeResult.value(QStringLiteral("baseline_analysis_id")).toString();
+    wait.targetGeneration = static_cast<qint64>(
+        nativeResult.value(QStringLiteral("target_generation")).toDouble());
+    wait.revision = m_revision;
+    m_pendingChat.asyncTool = wait;
+    m_toolWaitTimer.start();
+
+    if (wait.waitKind == QStringLiteral("analysis_snapshot")) {
+        m_widget->setStatusMessage(tr("Scanning manuscript · waiting for fresh prose evidence…"));
+    } else if (wait.waitKind == QStringLiteral("category_hydration")) {
+        m_widget->setStatusMessage(
+            tr("Loading %1 findings · then the co-author will continue…").arg(wait.category));
+    } else {
+        m_widget->setStatusMessage(tr("Waiting for ThothPad tool completion…"));
+    }
+}
+
+bool StoryIntelligenceController::pendingToolCompleted() const
+{
+    if (!m_harness || !m_pendingChat.asyncTool.active) {
+        return false;
+    }
+    const PendingAsyncTool &wait = m_pendingChat.asyncTool;
+    const QJsonObject state = m_harness->completionState();
+    if (wait.waitKind == QStringLiteral("analysis_snapshot")) {
+        const qint64 generation = static_cast<qint64>(
+            state.value(QStringLiteral("analysis_generation")).toDouble());
+        const QString analysisId = state.value(QStringLiteral("analysis_id")).toString();
+        return generation >= wait.targetGeneration
+            && !analysisId.isEmpty()
+            && analysisId != wait.baselineAnalysisId;
+    }
+    if (wait.waitKind == QStringLiteral("category_hydration")) {
+        return jsonArrayContainsString(
+            state.value(QStringLiteral("hydrated_categories")).toArray(),
+            wait.category);
+    }
+    return false;
+}
+
+void StoryIntelligenceController::finishPendingTool(bool completed, const QString &error)
+{
+    if (!m_pendingChat.asyncTool.active) {
+        return;
+    }
+    m_toolWaitTimer.stop();
+    const PendingAsyncTool wait = m_pendingChat.asyncTool;
+    m_pendingChat.asyncTool = {};
+
+    QJsonObject toolResult;
+    toolResult.insert(QStringLiteral("call_id"), wait.callId);
+    toolResult.insert(QStringLiteral("tool"), wait.toolId);
+    toolResult.insert(QStringLiteral("tool_id"), wait.toolId);
+    toolResult.insert(QStringLiteral("ok"), completed);
+
+    if (completed && m_harness) {
+        QJsonObject nativeResult;
+        nativeResult.insert(QStringLiteral("ok"), true);
+        nativeResult.insert(QStringLiteral("completed"), true);
+        nativeResult.insert(QStringLiteral("pending"), false);
+        if (wait.waitKind == QStringLiteral("analysis_snapshot")) {
+            nativeResult.insert(QStringLiteral("scope"), QStringLiteral("document"));
+        } else if (wait.waitKind == QStringLiteral("category_hydration")) {
+            nativeResult.insert(QStringLiteral("category"), wait.category);
+        }
+        nativeResult.insert(QStringLiteral("prose"),
+                            m_harness->snapshot().value(QStringLiteral("prose")));
+        toolResult.insert(QStringLiteral("result"), modelSafeToolResult(nativeResult));
+    } else {
+        toolResult.insert(QStringLiteral("error"),
+                          error.isEmpty() ? tr("The native tool did not complete.") : error);
+    }
+
+    m_pendingChat.toolResults.append(toolResult);
+    while (m_pendingChat.toolResults.size() > MaximumAccumulatedToolResults) {
+        m_pendingChat.toolResults.removeAt(0);
+    }
+
+    m_widget->setStatusMessage(completed
+        ? tr("Native evidence ready · resuming co-author…")
+        : tr("Native tool could not complete · asking co-author to adapt…"));
+    dispatchPendingChat();
+}
+
+void StoryIntelligenceController::pollPendingTool()
+{
+    if (!m_pendingChat.asyncTool.active) {
+        m_toolWaitTimer.stop();
+        return;
+    }
+    m_pendingChat.asyncTool.elapsedMs += ToolPollIntervalMs;
+
+    if (m_pendingChat.asyncTool.revision != m_revision) {
+        finishPendingTool(
+            false,
+            tr("The manuscript changed while the native tool was running, so its pending result was discarded as stale."));
+        return;
+    }
+    if (pendingToolCompleted()) {
+        finishPendingTool(true);
+        return;
+    }
+    if (m_pendingChat.asyncTool.elapsedMs >= ToolWaitTimeoutMs) {
+        finishPendingTool(
+            false,
+            tr("The native tool did not complete within %1 seconds.")
+                .arg(ToolWaitTimeoutMs / 1000));
+    }
+}
+
 bool StoryIntelligenceController::executeToolCalls(const QJsonArray &toolCalls)
 {
     if (!m_harness || toolCalls.isEmpty()) {
         return false;
     }
 
-    QJsonArray results;
+    QJsonArray results = m_pendingChat.toolResults;
     const int count = qMin(toolCalls.size(), MaximumToolCallsPerRound);
     for (int index = 0; index < count; ++index) {
         const QJsonValue value = toolCalls.at(index);
@@ -833,8 +1073,19 @@ bool StoryIntelligenceController::executeToolCalls(const QJsonArray &toolCalls)
         }
 
         const QJsonObject call = value.toObject();
-        const QString toolId = call.value(QStringLiteral("id")).toString().trimmed();
+        QString toolId = call.value(QStringLiteral("tool")).toString().trimmed();
+        if (toolId.isEmpty()) {
+            toolId = call.value(QStringLiteral("id")).toString().trimmed();
+        }
+        QString callId = call.value(QStringLiteral("call_id")).toString().trimmed();
+        if (callId.isEmpty()) {
+            callId = QStringLiteral("r%1-c%2")
+                         .arg(m_pendingChat.toolRound)
+                         .arg(index + 1);
+        }
         const QJsonObject arguments = call.value(QStringLiteral("arguments")).toObject();
+        toolResult.insert(QStringLiteral("call_id"), callId);
+        toolResult.insert(QStringLiteral("tool"), toolId);
         toolResult.insert(QStringLiteral("tool_id"), toolId);
 
         const QString risk = toolRisk(toolId);
@@ -854,9 +1105,42 @@ bool StoryIntelligenceController::executeToolCalls(const QJsonArray &toolCalls)
 
         const bool boundedEdit = risk == QStringLiteral("R3") || risk == QStringLiteral("R4");
         const bool bulkEdit = risk == QStringLiteral("R4");
-        toolResult.insert(QStringLiteral("result"),
-                          m_harness->execute(toolId, arguments, boundedEdit, bulkEdit));
-        toolResult.insert(QStringLiteral("ok"), true);
+        const QJsonObject nativeResult =
+            m_harness->execute(toolId, arguments, boundedEdit, bulkEdit);
+        const bool nativeOk = nativeResult.value(QStringLiteral("ok")).toBool();
+
+        if (nativeOk && nativeResult.value(QStringLiteral("pending")).toBool()) {
+            m_pendingChat.toolResults = results;
+            beginPendingTool(callId, toolId, nativeResult);
+            for (int deferredIndex = index + 1; deferredIndex < count; ++deferredIndex) {
+                const QJsonObject deferredCall = toolCalls.at(deferredIndex).toObject();
+                QString deferredTool = deferredCall.value(QStringLiteral("tool")).toString();
+                if (deferredTool.isEmpty()) {
+                    deferredTool = deferredCall.value(QStringLiteral("id")).toString();
+                }
+                QJsonObject deferred;
+                deferred.insert(QStringLiteral("call_id"),
+                                deferredCall.value(QStringLiteral("call_id")).toString());
+                deferred.insert(QStringLiteral("tool"), deferredTool);
+                deferred.insert(QStringLiteral("ok"), false);
+                deferred.insert(QStringLiteral("deferred"), true);
+                deferred.insert(QStringLiteral("error"),
+                                tr("Deferred because an asynchronous native tool must finish first. Request this tool again if it is still needed."));
+                m_pendingChat.toolResults.append(deferred);
+            }
+            while (m_pendingChat.toolResults.size() > MaximumAccumulatedToolResults) {
+                m_pendingChat.toolResults.removeAt(0);
+            }
+            return true;
+        }
+
+        toolResult.insert(QStringLiteral("ok"), nativeOk);
+        toolResult.insert(QStringLiteral("result"), modelSafeToolResult(nativeResult));
+        if (!nativeOk) {
+            toolResult.insert(QStringLiteral("error"),
+                              nativeResult.value(QStringLiteral("error")).toString(
+                                  tr("Native tool execution failed.")));
+        }
         results.append(toolResult);
     }
 
@@ -867,6 +1151,9 @@ bool StoryIntelligenceController::executeToolCalls(const QJsonArray &toolCalls)
                          tr("Additional tool calls were rejected because the per-round limit is %1.")
                              .arg(MaximumToolCallsPerRound));
         results.append(truncated);
+    }
+    while (results.size() > MaximumAccumulatedToolResults) {
+        results.removeAt(0);
     }
     m_pendingChat.toolResults = results;
     return true;
@@ -912,6 +1199,11 @@ void StoryIntelligenceController::handleResponse(
 
         executeToolCalls(toolCalls);
         ++m_pendingChat.toolRound;
+        if (m_pendingChat.asyncTool.active) {
+            // The same co-author turn resumes from pollPendingTool only after
+            // native ThothPad reports real completion or a bounded failure.
+            return;
+        }
         m_widget->setStatusMessage(
             tr("Using ThothPad tools · round %1/%2")
                 .arg(m_pendingChat.toolRound)
@@ -1111,6 +1403,7 @@ void StoryIntelligenceController::clearAnnotations()
 
 void StoryIntelligenceController::resetPendingChat()
 {
+    m_toolWaitTimer.stop();
     if (!m_pendingChat.apiKey.isEmpty()) {
         m_pendingChat.apiKey.fill(QChar('\0'));
     }
