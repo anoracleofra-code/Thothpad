@@ -4,22 +4,102 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include <QAction>
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QCoreApplication>
 #include <QDate>
 #include <QDateTime>
+#include <QDockWidget>
+#include <QIcon>
 #include <QLibraryInfo>
 #include <QLocale>
+#include <QMenu>
+#include <QMenuBar>
+#include <QSettings>
+#include <QStyle>
 #include <QTranslator>
 #include <QWindow>
 
 #include <KAboutData>
 #include <KToolTipHelper>
 
+#include "editor/markdowneditor.h"
 #include "logging.h"
 #include "mainwindow.h"
+#include "prose/credentialstore.h"
+#include "prose/prosecontroller.h"
+#include "prose/writerengineclient.h"
 #include "settings/appsettings.h"
+#include "story/storyintelligencecontroller.h"
+#include "story/storyintelligencewidget.h"
+
+namespace
+{
+void installStoryIntelligence(ghostwriter::MainWindow *window)
+{
+    auto *editor = window->findChild<ghostwriter::MarkdownEditor *>();
+    auto *proseController = window->findChild<ghostwriter::ProseController *>();
+    auto *engine = proseController ? proseController->findChild<ghostwriter::WriterEngineClient *>() : nullptr;
+    auto *credentials = proseController ? proseController->findChild<ghostwriter::CredentialStore *>() : nullptr;
+    if (!editor || !proseController || !engine || !credentials) {
+        qWarning() << "Story Intelligence could not attach to the editor/engine services.";
+        return;
+    }
+
+    auto *dock = new QDockWidget(window);
+    dock->setObjectName(QStringLiteral("storyIntelligenceDock"));
+    dock->setAllowedAreas(Qt::RightDockWidgetArea);
+    dock->setFeatures(QDockWidget::NoDockWidgetFeatures);
+    dock->setMinimumWidth(320);
+    dock->setMaximumWidth(320);
+
+    // The reference UI carries its own quiet header, so suppress the native
+    // dock title bar while retaining QDockWidget's robust edge-layout logic.
+    auto *nativeTitleBarReplacement = new QWidget(dock);
+    nativeTitleBarReplacement->setFixedHeight(0);
+    dock->setTitleBarWidget(nativeTitleBarReplacement);
+
+    auto *widget = new ghostwriter::StoryIntelligenceWidget(dock);
+    widget->setCollapseIcon(window->style()->standardIcon(QStyle::SP_ArrowRight));
+    dock->setWidget(widget);
+    window->addDockWidget(Qt::RightDockWidgetArea, dock);
+
+    auto *controller = new ghostwriter::StoryIntelligenceController(
+        editor, widget, engine, credentials, dock);
+    controller->start();
+
+    QObject::connect(widget, &ghostwriter::StoryIntelligenceWidget::collapseRequested,
+                     dock, &QDockWidget::hide);
+
+    QAction *toggleAction = dock->toggleViewAction();
+    toggleAction->setText(QCoreApplication::translate("main", "Story Intelligence"));
+    toggleAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Alt+I")));
+    toggleAction->setShortcutContext(Qt::WindowShortcut);
+
+    // Put the recovery/toggle affordance alongside the existing View tools.
+    for (QAction *menuAction : window->menuBar()->actions()) {
+        QMenu *menu = menuAction->menu();
+        if (!menu) {
+            continue;
+        }
+        QString title = menu->title();
+        title.remove(QChar('&'));
+        if (title.compare(QStringLiteral("View"), Qt::CaseInsensitive) == 0) {
+            menu->addSeparator();
+            menu->addAction(toggleAction);
+            break;
+        }
+    }
+
+    QSettings settings;
+    const bool visible = settings.value(QStringLiteral("story/visible"), true).toBool();
+    dock->setVisible(visible);
+    QObject::connect(dock, &QDockWidget::visibilityChanged, dock, [](bool nowVisible) {
+        QSettings().setValue(QStringLiteral("story/visible"), nowVisible);
+    });
+}
+}
 
 int main(int argc, char *argv[])
 {
@@ -104,13 +184,13 @@ int main(int argc, char *argv[])
             "Everyone who provided translations, documentation, bug fixes, or new features over the years"),
         QString(),
         QString());
-    aboutData.addComponent("cmark-gfm", 
+    aboutData.addComponent("cmark-gfm",
         QCoreApplication::translate("main",
             "An extended version of the C reference implementation of CommonMark"),
         QString(),
         "https://github.com/github/cmark-gfm");
     aboutData.addComponent("React", QCoreApplication::translate("main", "A JavaScript library for building user interfaces"), QString(), "https://reactjs.org");
-    aboutData.addComponent("MathJax", 
+    aboutData.addComponent("MathJax",
         QCoreApplication::translate("main",
             "A JavaScript display engine for mathematics"),
         QString(),
@@ -154,6 +234,7 @@ int main(int argc, char *argv[])
     // Note: --disable-gpu option was already processed. We added it here
     //       only so it is displayed in the help output.
     ghostwriter::MainWindow window(filePath);
+    installStoryIntelligence(&window);
 
     window.show();
     return app.exec();
