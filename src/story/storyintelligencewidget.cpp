@@ -595,7 +595,9 @@ void StoryIntelligenceWidget::rebuildAnnotations()
         const QString comment = annotation.value(QStringLiteral("comment")).toString();
         const QString quote = annotation.value(QStringLiteral("quote")).toString();
         const QString replacement = annotation.value(QStringLiteral("replacement")).toString();
-        if (id.isEmpty() || quote.isEmpty()) {
+        const int start = annotation.value(QStringLiteral("start_utf16")).toInt(-1);
+        const int end = annotation.value(QStringLiteral("end_utf16")).toInt(-1);
+        if (id.isEmpty() || quote.isEmpty() || start < 0 || end <= start) {
             continue;
         }
         auto *card = new QFrame(m_annotationsContainer);
@@ -624,8 +626,8 @@ void StoryIntelligenceWidget::rebuildAnnotations()
         goTo->setObjectName(QStringLiteral("storyIntelligencePrimaryButton"));
         goTo->setToolTip(tr("Select this marked passage in the manuscript"));
         actions->addWidget(goTo);
-        connect(goTo, &QPushButton::clicked, this, [this, id]() {
-            emit annotationNavigationRequested(id);
+        connect(goTo, &QPushButton::clicked, this, [this, start, end, quote]() {
+            emit annotationNavigationRequested(start, end, quote);
         });
         actions->addStretch(1);
         auto *dismiss = new QPushButton(tr("Dismiss"), card);
