@@ -266,7 +266,7 @@ ThothPad follows a few rules that matter more than any individual analyzer:
 
 ## Building
 
-See [BUILDING.md](BUILDING.md) for the full native and engine build instructions.
+See [BUILDING.md](BUILDING.md) for the full native and engine build instructions, including the distinction between compile-time, optional-integration, and release-packaging dependencies.
 
 At a high level, ThothPad uses:
 
@@ -283,7 +283,10 @@ The engine is covered by `ruff`, `mypy`, and pytest gates, while the desktop app
 ## Project documentation
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — process model, trust boundary, analysis lanes, report storage
-- [BUILDING.md](BUILDING.md) — build and development instructions
+- [BUILDING.md](BUILDING.md) — build prerequisites, dependency classes, source builds, and packaging
+- [PROVENANCE.md](PROVENANCE.md) — source lineage, upstream projects, version basis, and redistribution provenance
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) — major native/engine third-party components and licenses
+- [writer-engine/THIRD_PARTY.md](writer-engine/THIRD_PARTY.md) — engine-specific data, integrations, and analysis references
 - [BRAND.md](BRAND.md) — product identity and visual language
 - [CONTRIBUTING.md](CONTRIBUTING.md) — contribution guidance
 - [writer-engine/README.md](writer-engine/README.md) — engine CLI, MCP, sidecar, grammar, and provider details
@@ -292,7 +295,7 @@ The engine is covered by `ruff`, `mypy`, and pytest gates, while the desktop app
 
 ## License & attribution
 
-ThothPad is a fork of KDE Ghostwriter by Megan Conkle and the KDE community and remains free software under **GPL-3.0-or-later**. License texts live in [`LICENSES/`](LICENSES), with third-party notices in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+ThothPad is a fork of KDE Ghostwriter by Megan Conkle and the KDE community and remains free software under **GPL-3.0-or-later**. License texts live in [`LICENSES/`](LICENSES), with third-party notices in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and source/version lineage in [PROVENANCE.md](PROVENANCE.md).
 
 Standing on the shoulders of: [Ghostwriter](https://github.com/KDE/ghostwriter) · [Harper](https://github.com/automattic/harper) · [spaCy](https://github.com/explosion/spaCy) · [cmark-gfm](https://github.com/github/cmark-gfm) · [Qt](https://www.qt.io) · [WordNet](https://wordnet.princeton.edu)
 
