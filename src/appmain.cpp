@@ -18,6 +18,7 @@
 #include <QMenuBar>
 #include <QSettings>
 #include <QStyle>
+#include <QTextCursor>
 #include <QTranslator>
 #include <QWindow>
 
@@ -91,6 +92,78 @@ void installStoryIntelligence(ghostwriter::MainWindow *window)
     harness->setObjectName(QStringLiteral("storyToolHarness"));
     transactions->setObjectName(QStringLiteral("agentEditTransactionManager"));
     activity->setObjectName(QStringLiteral("documentActivityTracker"));
+
+    QObject::connect(
+        widget,
+        &ghostwriter::StoryIntelligenceWidget::annotationNavigationRequested,
+        dock,
+        [editor, widget](int startUtf16, int endUtf16, const QString &quote) {
+            const QString manuscript = editor->toPlainText();
+            if (startUtf16 < 0
+                || endUtf16 <= startUtf16
+                || endUtf16 > manuscript.size()
+                || quote.size() != endUtf16 - startUtf16
+                || manuscript.mid(startUtf16, endUtf16 - startUtf16) != quote) {
+                widget->setStatusMessage(QCoreApplication::translate(
+                    "main",
+                    "That manuscript mark is stale because the text changed."));
+                return;
+            }
+
+            QTextCursor cursor(editor->document());
+            cursor.setPosition(startUtf16);
+            cursor.setPosition(endUtf16, QTextCursor::KeepAnchor);
+            editor->setTextCursor(cursor);
+            editor->ensureCursorVisible();
+            editor->setFocus();
+            widget->setStatusMessage(QCoreApplication::translate(
+                "main",
+                "Marked passage selected"));
+        });
+
+    QObject::connect(
+        widget,
+        &ghostwriter::StoryIntelligenceWidget::undoAgentTransactionRequested,
+        dock,
+        [transactions, widget](const QString &operationId) {
+            const QJsonObject result = transactions->undoTransaction(operationId);
+            if (!result.value(QStringLiteral("ok")).toBool()) {
+                widget->setStatusMessage(
+                    result.value(QStringLiteral("error")).toString(
+                        QCoreApplication::translate("main", "Could not safely undo that AI edit.")));
+                return;
+            }
+
+            const QString summary = result.value(QStringLiteral("summary")).toString().trimmed();
+            widget->setStatusMessage(summary.isEmpty()
+                ? QCoreApplication::translate("main", "AI edit undone safely")
+                : QCoreApplication::translate("main", "Undid AI edit: %1").arg(summary));
+        });
+
+    QObject::connect(
+        transactions,
+        &ghostwriter::AgentEditTransactionManager::transactionApplied,
+        dock,
+        [widget](const QJsonObject &transaction) {
+            if (!transaction.value(QStringLiteral("ok")).toBool()) {
+                return;
+            }
+            const QString operationId = transaction.value(QStringLiteral("operation_id")).toString();
+            const QString summary = transaction.value(QStringLiteral("summary")).toString().trimmed();
+            const int replacementCount = transaction.value(QStringLiteral("replacement_count")).toInt();
+            const QString title = summary.isEmpty()
+                ? QCoreApplication::translate("main", "AI manuscript edit")
+                : summary;
+            const QString detail = replacementCount > 0
+                ? QCoreApplication::translate(
+                      "main",
+                      "Applied %1 verified change(s) · recovery checkpoint created · one-step Undo available")
+                      .arg(replacementCount)
+                : QCoreApplication::translate(
+                      "main",
+                      "Applied checkpointed native edit · one-step Undo available");
+            widget->appendActivityCard(title, detail, operationId);
+        });
 
     QObject::connect(activity, &ghostwriter::DocumentActivityTracker::activityEvent,
                      dock, [widget](const QJsonObject &event) {
@@ -223,7 +296,7 @@ int main(int argc, char *argv[])
         QCoreApplication::translate("main",
             "UberWriter (now Apostrophe) developer, for providing inspiration"),
         QString(),
-        "https://www.wolfvollprecht.de");
+        "https://github.com/retext-project/retext");
     aboutData.addCredit(QCoreApplication::translate("main", "Other Contributors"),
         QCoreApplication::translate("main",
             "Everyone who provided translations, documentation, bug fixes, or new features over the years"),
