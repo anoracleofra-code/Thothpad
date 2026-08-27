@@ -4,16 +4,22 @@
 
 #include "storyintelligencewidget.h"
 
-#include <QAbstractTextDocumentLayout>
+#include <QDir>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QJsonValue>
 #include <QLabel>
+#include <QLayoutItem>
+#include <QMetaObject>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QShortcut>
 #include <QSizePolicy>
+#include <QStringList>
+#include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -69,6 +75,107 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
     setMinimumWidth(StoryPaneWidth);
     setMaximumWidth(StoryPaneWidth);
     setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+
+    // The React redesign is a reference shell, not a runtime dependency. The
+    // native rail uses the active Qt palette so parchment/teal/dark themes
+    // inherit the same visual hierarchy without maintaining a second theme.
+    setStyleSheet(QStringLiteral(R"QSS(
+        ghostwriter--StoryIntelligenceWidget {
+            background: palette(base);
+            color: palette(text);
+        }
+        ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceHeaderSurface,
+        ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceComposer {
+            background: palette(alternate-base);
+            border: 0;
+        }
+        ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceHeaderSurface {
+            border-bottom: 1px solid palette(mid);
+        }
+        ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceComposer {
+            border-top: 1px solid palette(mid);
+        }
+        ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceSetupSurface,
+        ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceSceneCard,
+        ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceCharacterCard {
+            background: palette(alternate-base);
+            border: 1px solid palette(mid);
+            border-radius: 7px;
+        }
+        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceTitle,
+        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceSectionTitle,
+        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceCaption,
+        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceCardHeading,
+        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceBubbleSpeaker {
+            font-weight: 600;
+        }
+        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceTitle {
+            font-size: 10.5pt;
+        }
+        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceMutedLabel,
+        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceKeyState,
+        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceStatus {
+            color: palette(mid);
+            font-size: 9pt;
+        }
+        ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligencePrimaryButton {
+            min-height: 28px;
+            padding: 4px 10px;
+            border: 1px solid palette(mid);
+            border-radius: 6px;
+            background: palette(button);
+            color: palette(button-text);
+        }
+        ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligencePrimaryButton:hover,
+        ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceCharacterCard:hover {
+            border-color: palette(highlight);
+        }
+        ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceApiKeyButton,
+        ghostwriter--StoryIntelligenceWidget QToolButton#storyIntelligenceTextButton,
+        ghostwriter--StoryIntelligenceWidget QToolButton#storyIntelligenceCollapseButton {
+            border: 0;
+            background: transparent;
+            color: palette(text);
+            padding: 3px 5px;
+        }
+        ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceCharacterCard {
+            min-height: 46px;
+            text-align: left;
+            padding: 7px 9px;
+        }
+        ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceCharacterCard:checked {
+            border-color: palette(highlight);
+            background: palette(highlight);
+            color: palette(highlighted-text);
+        }
+        ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceAssistantBubble {
+            background: palette(alternate-base);
+            border: 1px solid palette(mid);
+            border-radius: 7px;
+        }
+        ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceUserBubble {
+            background: palette(button);
+            border: 1px solid palette(mid);
+            border-radius: 7px;
+        }
+        ghostwriter--StoryIntelligenceWidget QPlainTextEdit#storyIntelligenceChatInput {
+            border: 1px solid palette(mid);
+            border-radius: 7px;
+            padding: 6px;
+            background: palette(base);
+            color: palette(text);
+        }
+        ghostwriter--StoryIntelligenceWidget QScrollArea#storyIntelligenceScrollArea,
+        ghostwriter--StoryIntelligenceWidget QScrollArea#storyIntelligenceChatScroll,
+        ghostwriter--StoryIntelligenceWidget QWidget#storyIntelligenceContent,
+        ghostwriter--StoryIntelligenceWidget QWidget#storyIntelligenceChatContent {
+            background: palette(base);
+            border: 0;
+        }
+        ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceDivider {
+            color: palette(mid);
+        }
+    )QSS"));
 
     auto *root = new QVBoxLayout(this);
     root->setContentsMargins(0, 0, 0, 0);
@@ -264,6 +371,10 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
     connect(editCharacters, &QToolButton::clicked, this, &StoryIntelligenceWidget::editCharactersRequested);
     connect(clearMarks, &QToolButton::clicked, this, &StoryIntelligenceWidget::clearAnnotationsRequested);
     connect(m_sendButton, &QPushButton::clicked, this, &StoryIntelligenceWidget::submitChat);
+
+    auto *sendShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Return")), this);
+    sendShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(sendShortcut, &QShortcut::activated, this, &StoryIntelligenceWidget::submitChat);
 }
 
 void StoryIntelligenceWidget::setCollapseIcon(const QIcon &icon)
@@ -335,7 +446,6 @@ QString StoryIntelligenceWidget::characterId(const QJsonObject &character) const
     if (id.isEmpty()) {
         id = character.value(QStringLiteral("name")).toString().trimmed().toCaseFolded();
         id.replace(QRegularExpression(QStringLiteral("[^a-z0-9]+")), QStringLiteral("-"));
-        id = id.trimmed();
     }
     return id;
 }
@@ -389,15 +499,14 @@ void StoryIntelligenceWidget::rebuildCharacters()
         button->setObjectName(QStringLiteral("storyIntelligenceCharacterCard"));
         button->setCheckable(true);
         button->setChecked(!id.isEmpty() && id == m_activeCharacterId);
-        const QString subtitle = role.isEmpty() ? tr("Character agent") : role;
+        const QString subtitle = role.isEmpty() ? tr("Character simulation") : role;
         button->setText(QStringLiteral("%1   %2\n      %3").arg(initials(name), name, subtitle));
-        button->setToolTip(tr("Use %1 as the active character simulation for new chat messages. Click again to return to the co-writer.").arg(name));
+        button->setToolTip(tr("Use %1 as the active simulated character for new chat messages. Click again to return to the co-writer.").arg(name));
         button->setProperty("characterId", id);
         connect(button, &QPushButton::clicked, this, [this, id](bool checked) {
-            const QString next = checked ? id : QString();
-            m_activeCharacterId = next;
+            m_activeCharacterId = checked ? id : QString();
             rebuildCharacters();
-            emit characterActivated(next);
+            emit characterActivated(m_activeCharacterId);
         });
         m_charactersLayout->addWidget(button);
     }
@@ -414,7 +523,7 @@ void StoryIntelligenceWidget::appendChatMessage(const QString &role, const QStri
     auto *layout = new QVBoxLayout(bubble);
     layout->setContentsMargins(9, 8, 9, 8);
     layout->setSpacing(4);
-    auto *speakerLabel = new QLabel(user ? tr("You") : (speaker.isEmpty() ? tr("AI") : speaker), bubble);
+    auto *speakerLabel = new QLabel(user ? tr("You") : (speaker.isEmpty() ? tr("AI") : tr("%1 · simulation").arg(speaker)), bubble);
     speakerLabel->setObjectName(QStringLiteral("storyIntelligenceBubbleSpeaker"));
     auto *message = new QLabel(text, bubble);
     message->setObjectName(QStringLiteral("storyIntelligenceBubbleText"));
@@ -423,8 +532,10 @@ void StoryIntelligenceWidget::appendChatMessage(const QString &role, const QStri
     layout->addWidget(speakerLabel);
     layout->addWidget(message);
     m_chatLayout->insertWidget(qMax(0, m_chatLayout->count() - 1), bubble);
-    QMetaObject::invokeMethod(m_chatScrollArea->verticalScrollBar(), "setValue", Qt::QueuedConnection,
-                              Q_ARG(int, m_chatScrollArea->verticalScrollBar()->maximum()));
+    QTimer::singleShot(0, m_chatScrollArea, [this]() {
+        QScrollBar *bar = m_chatScrollArea->verticalScrollBar();
+        bar->setValue(bar->maximum());
+    });
 }
 
 void StoryIntelligenceWidget::clearChat()
