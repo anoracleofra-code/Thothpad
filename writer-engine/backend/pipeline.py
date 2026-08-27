@@ -8,6 +8,7 @@ from backend.llm_clients import complete_chat, scrub_provider
 from backend.models import AnalyzerResult, Derivation, RunRequest
 from backend.profiles import load_profile
 from backend.storage import save_run
+from backend.story_intelligence import run_story_intelligence, try_parse_story_payload
 from backend.text_utils import Utf16Index
 from backend.validation import validate_passes, validate_profile, validate_text
 
@@ -126,9 +127,15 @@ def run_pipeline(request: RunRequest) -> dict[str, Any]:
                 profile[key].update(value)
             else:
                 profile[key] = value
-    derivation = derive(profile, request)
-    input_text = validate_text(request.text or "")
 
+    input_text = validate_text(request.text or "")
+    story_payload = try_parse_story_payload(input_text)
+    if story_payload is not None:
+        if request.mode != "write_from_brief":
+            raise ValueError("Story Intelligence payloads require write_from_brief mode")
+        return run_story_intelligence(request, story_payload)
+
+    derivation = derive(profile, request)
     before = run_all_analyzers(input_text, profile)
     score_before = aggregate_score(before, profile)
     output_text = input_text
