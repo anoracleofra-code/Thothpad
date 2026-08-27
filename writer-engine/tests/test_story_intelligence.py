@@ -76,6 +76,28 @@ def test_story_payload_bounds_and_sanitizes_native_context():
     assert parsed["tool_round"] == 0
 
 
+def test_nested_native_failure_cannot_masquerade_as_success():
+    value = _payload()
+    value["tool_results"] = [
+        {
+            "call_index": 0,
+            "tool_id": "set_theme",
+            "ok": True,
+            "result": {
+                "ok": False,
+                "error": "Native action is unavailable.",
+                "code": "unavailable",
+            },
+        }
+    ]
+    parsed = try_parse_story_payload(json.dumps(value))
+    assert parsed is not None
+    result = parsed["tool_results"][0]
+    assert result["ok"] is False
+    assert result["error"] == "Native action is unavailable."
+    assert result["result"]["code"] == "unavailable"
+
+
 def test_duplicate_annotation_requires_occurrence():
     document = "Cold rain. Cold rain."
     payload = _validated(document)
@@ -135,9 +157,11 @@ def test_tool_calls_are_typed_bounded_and_get_stable_call_ids():
     assert story["tool_calls"][0] == {
         "call_id": "read-prose",
         "tool": "get_prose_summary",
+        "id": "get_prose_summary",
         "arguments": {"limit": 20},
     }
     assert story["tool_calls"][1]["call_id"] == "r0-c2"
+    assert story["tool_calls"][1]["id"] == "set_theme"
 
 
 def test_oversized_or_malformed_tool_arguments_get_no_authority():
