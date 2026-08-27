@@ -100,6 +100,41 @@ public:
     void reviewSelection();
     void reviewFolder();
 
+    /**
+     * Story Intelligence uses this local-only review path instead of the
+     * interactive Grammar Settings path. It always uses the bundled/local
+     * automatic grammar configuration, never silently escalating an agent
+     * tool call into a cloud grammar request.
+     */
+    void reviewDocumentForAgent()
+    {
+        requestAnalysis(true, true, true, automaticGrammarSettings(), false);
+    }
+
+    /**
+     * Read-only progress adapters for Story Intelligence. A model never sees
+     * these members directly; the native harness turns them into bounded tool
+     * completion facts. A new full-document snapshot gets a fresh analysis ID.
+     */
+    quint64 analysisGenerationSnapshot() const { return m_analysisPrepGeneration; }
+    QString analysisIdSnapshot() const { return m_analysisId; }
+
+    bool categoryHydratedForAgent(const QString &category) const
+    {
+        return m_snapshotLoadedCategories.contains(category);
+    }
+
+    bool hydrateCategoryForAgent(const QString &category)
+    {
+        if (m_analysisId.isEmpty() || analyzersForCategory(category).isEmpty()) {
+            return false;
+        }
+        if (!m_snapshotLoadedCategories.contains(category)) {
+            prioritizeSnapshotCategory(category);
+        }
+        return true;
+    }
+
 signals:
     /**
      * Emitted whenever an analysis envelope carries the dialogue balance
