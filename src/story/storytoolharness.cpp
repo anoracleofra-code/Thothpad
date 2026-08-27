@@ -210,8 +210,8 @@ QJsonObject StoryToolHarness::editorState() const
     state.insert(QStringLiteral("selection_start_utf16"), selectionStart);
     state.insert(QStringLiteral("selection_end_utf16"), selectionEnd);
     state.insert(QStringLiteral("selection_text"), cursor.hasSelection() ? cursor.selectedText().left(1200) : QString());
-    state.insert(QStringLiteral("undo_available"), m_editor->document()->isUndoAvailable());
-    state.insert(QStringLiteral("redo_available"), m_editor->document()->isRedoAvailable());
+    state.insert(QStringLiteral("undo_available"), m_editor->document()->availableUndoSteps() > 0);
+    state.insert(QStringLiteral("redo_available"), m_editor->document()->availableRedoSteps() > 0);
     return state;
 }
 
