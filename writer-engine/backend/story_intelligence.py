@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 from __future__ import annotations
 
 import hashlib
@@ -166,6 +167,47 @@ def _bounded_object_list(value: Any, maximum_items: int) -> list[dict[str, Any]]
     return result
 
 
+def _bounded_tool_results(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    for item in value[-MAX_TOOL_RESULTS:]:
+        if not isinstance(item, dict):
+            continue
+        record: dict[str, Any] = {}
+        call_id = item.get("call_id")
+        if isinstance(call_id, str) and _CALL_ID.fullmatch(call_id):
+            record["call_id"] = call_id
+        call_index = item.get("call_index")
+        if isinstance(call_index, int) and not isinstance(call_index, bool) and call_index >= 0:
+            record["call_index"] = call_index
+        tool_id = item.get("tool_id") or item.get("tool")
+        if isinstance(tool_id, str) and _TOOL_ID.fullmatch(tool_id):
+            record["tool_id"] = tool_id
+
+        nested = item.get("result")
+        if isinstance(nested, dict):
+            nested_result = _bounded_json_object(nested, MAX_TOOL_ITEM_CHARS)
+            record["result"] = nested_result
+            nested_ok = nested_result.get("ok")
+            record["ok"] = nested_ok if isinstance(nested_ok, bool) else bool(item.get("ok", False))
+            if record["ok"] is False:
+                error = nested_result.get("error") or item.get("error")
+                if isinstance(error, str):
+                    record["error"] = error[:2_000]
+        else:
+            record["ok"] = bool(item.get("ok", False))
+            error = item.get("error")
+            if isinstance(error, str):
+                record["error"] = error[:2_000]
+
+        if item.get("denied_by_user") is True:
+            record["denied_by_user"] = True
+            record["ok"] = False
+        normalized.append(record)
+    return normalized
+
+
 def _validate_story_payload(value: dict[str, Any]) -> dict[str, Any]:
     prompt = value.get("prompt")
     document = value.get("document")
@@ -220,7 +262,7 @@ def _validate_story_payload(value: dict[str, Any]) -> dict[str, Any]:
         "history": normalized_history,
         "app_state": _bounded_json_object(app_state, MAX_APP_STATE_CHARS),
         "tool_manifest": _bounded_tool_manifest(value.get("tool_manifest")),
-        "tool_results": _bounded_object_list(value.get("tool_results"), MAX_TOOL_RESULTS),
+        "tool_results": _bounded_tool_results(value.get("tool_results")),
         "activity_events": _bounded_object_list(value.get("activity_events"), MAX_ACTIVITY_EVENTS),
         "tool_round": tool_round,
     }
@@ -600,7 +642,14 @@ def _normalized_tool_call(raw: Any, index: int, tool_round: int) -> dict[str, An
     call_id = raw.get("call_id")
     if not isinstance(call_id, str) or not _CALL_ID.fullmatch(call_id):
         call_id = f"r{tool_round}-c{index + 1}"
-    return {"call_id": call_id, "tool": tool_id, "arguments": arguments}
+    # `id` is retained as a compatibility alias for the first native prototype.
+    # `tool` + `call_id` is the canonical contract going forward.
+    return {
+        "call_id": call_id,
+        "tool": tool_id,
+        "id": tool_id,
+        "arguments": arguments,
+    }
 
 
 def validate_story_response(text: str, payload: dict[str, Any]) -> dict[str, Any]:
