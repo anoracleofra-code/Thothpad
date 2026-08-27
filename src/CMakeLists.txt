@@ -49,6 +49,8 @@ target_sources(thothpad PRIVATE
     prose/providersettingsdialog.cpp
     prose/rewritereviewdialog.cpp
     prose/writerengineclient.cpp
+    story/storyintelligencecontroller.cpp
+    story/storyintelligencewidget.cpp
     settings/appsettings.cpp
     settings/localedialog.cpp
     settings/preferencesdialog.cpp
