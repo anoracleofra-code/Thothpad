@@ -12,9 +12,12 @@
 
 namespace ghostwriter
 {
+class AgentEditTransactionManager;
 class CredentialStore;
+class DocumentActivityTracker;
 class MarkdownEditor;
 class StoryIntelligenceWidget;
+class StoryToolHarness;
 class WriterEngineClient;
 
 class StoryIntelligenceController : public QObject
@@ -31,6 +34,13 @@ public:
 
     void start();
     QString projectRoot() const;
+    void setToolServices(
+        StoryToolHarness *harness,
+        AgentEditTransactionManager *transactions,
+        DocumentActivityTracker *activity);
+
+signals:
+    void projectRootChanged(const QString &root);
 
 private slots:
     void chooseProjectFolder();
@@ -43,13 +53,18 @@ private slots:
     void handleCredentialLoaded(const QString &credentialId, const QString &secret);
     void handleCredentialError(const QString &credentialId, const QString &message);
     void clearAnnotations();
+    void applySuggestion(const QString &suggestionId);
+    void dismissSuggestion(const QString &suggestionId);
 
 private:
     struct PendingChat {
         QString prompt;
         QJsonObject provider;
         QString credentialId;
+        QString apiKey;
+        QJsonArray toolResults;
         int revision = -1;
+        int toolRound = 0;
         bool waitingForCredential = false;
     };
 
@@ -64,15 +79,24 @@ private:
     QString metadataPath() const;
     QJsonObject activeCharacter() const;
     void applyAnnotations(const QJsonArray &annotations, int responseRevision);
+    void refreshAnnotationPresentation();
     QJsonObject defaultMetadata() const;
     void appendHistory(const QString &role, const QString &content, const QString &speaker = QString());
     QJsonArray boundedHistory() const;
     QString currentDocumentPath() const;
+    QString toolRisk(const QString &toolId) const;
+    bool authorizeTool(const QString &toolId, const QJsonObject &arguments);
+    bool executeToolCalls(const QJsonArray &toolCalls);
+    void finishChatTurn(const QJsonObject &story, const QJsonObject &result);
+    void resetPendingChat();
 
     MarkdownEditor *m_editor;
     StoryIntelligenceWidget *m_widget;
     WriterEngineClient *m_engine;
     CredentialStore *m_credentials;
+    StoryToolHarness *m_harness{nullptr};
+    AgentEditTransactionManager *m_transactions{nullptr};
+    DocumentActivityTracker *m_activity{nullptr};
     QString m_projectRoot;
     QJsonObject m_metadata;
     QJsonArray m_history;
