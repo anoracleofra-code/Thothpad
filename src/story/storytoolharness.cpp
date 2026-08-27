@@ -220,8 +220,6 @@ QString StoryToolHarness::modelSafeDocumentPath() const
             return relative;
         }
     }
-    // Outside an opened project, the model only needs the leaf name. Do not
-    // leak the user's home directory or machine-specific folder layout.
     return file.fileName();
 }
 
@@ -252,6 +250,7 @@ QJsonObject StoryToolHarness::proseState(int findingLimit) const
     const int limit = std::max(0, std::min(findingLimit, 200));
     QJsonObject state;
     state.insert(QStringLiteral("engine_ready"), m_proseWidget->engineReadySnapshot());
+    state.insert(QStringLiteral("snapshot_available"), m_proseController->hasAnalysisSnapshotForAgent());
     state.insert(QStringLiteral("mode"), modeName(m_proseWidget->mode()));
     state.insert(QStringLiteral("profile"), m_proseWidget->profile());
     state.insert(QStringLiteral("scope"), m_proseWidget->scope());
@@ -262,7 +261,8 @@ QJsonObject StoryToolHarness::proseState(int findingLimit) const
     const QHash<QString, int> categoryCounts = m_proseWidget->categoryCountsSnapshot();
     for (auto iterator = categoryCounts.cbegin(); iterator != categoryCounts.cend(); ++iterator) {
         counts.insert(iterator.key(), iterator.value());
-        if (iterator.value() <= 0 || m_proseController->categoryHydratedForAgent(iterator.key())) {
+        if (m_proseController->hasAnalysisSnapshotForAgent()
+            && (iterator.value() <= 0 || m_proseController->categoryHydratedForAgent(iterator.key()))) {
             hydratedCategories.append(iterator.key());
         }
     }
@@ -322,10 +322,12 @@ QJsonObject StoryToolHarness::completionState() const
     result.insert(QStringLiteral("analysis_id"), m_proseController->analysisIdSnapshot());
 
     QJsonArray hydratedCategories;
-    const QHash<QString, int> counts = m_proseWidget->categoryCountsSnapshot();
-    for (auto iterator = counts.cbegin(); iterator != counts.cend(); ++iterator) {
-        if (iterator.value() <= 0 || m_proseController->categoryHydratedForAgent(iterator.key())) {
-            hydratedCategories.append(iterator.key());
+    if (m_proseController->hasAnalysisSnapshotForAgent()) {
+        const QHash<QString, int> counts = m_proseWidget->categoryCountsSnapshot();
+        for (auto iterator = counts.cbegin(); iterator != counts.cend(); ++iterator) {
+            if (iterator.value() <= 0 || m_proseController->categoryHydratedForAgent(iterator.key())) {
+                hydratedCategories.append(iterator.key());
+            }
         }
     }
     result.insert(QStringLiteral("hydrated_categories"), hydratedCategories);
@@ -435,13 +437,26 @@ QJsonObject StoryToolHarness::hydrateProseCategory(const QJsonObject &arguments)
     if (category.isEmpty()) {
         return failure(tr("category is required."), QStringLiteral("invalid_arguments"));
     }
+    if (!m_proseController->categoryKnownForAgent(category)) {
+        return failure(
+            tr("Unknown Prose Intelligence lens. Use a category exposed by the current prose snapshot."),
+            QStringLiteral("unknown_category"));
+    }
+    if (!m_proseController->hasAnalysisSnapshotForAgent()) {
+        QJsonObject result = failure(
+            tr("No current full-document prose snapshot exists. Run a document scan before hydrating a lens."),
+            QStringLiteral("analysis_required"));
+        result.insert(QStringLiteral("next_tool"), QStringLiteral("run_prose_scan"));
+        return result;
+    }
 
     const QHash<QString, int> counts = m_proseWidget->categoryCountsSnapshot();
-    if (counts.value(category, 0) <= 0) {
+    const int findingCount = counts.value(category, 0);
+    if (findingCount <= 0) {
         QJsonObject result;
         result.insert(QStringLiteral("category"), category);
         result.insert(QStringLiteral("hydrated"), true);
-        result.insert(QStringLiteral("finding_count"), counts.value(category, 0));
+        result.insert(QStringLiteral("finding_count"), findingCount);
         result.insert(QStringLiteral("pending"), false);
         return success(result);
     }
@@ -449,7 +464,7 @@ QJsonObject StoryToolHarness::hydrateProseCategory(const QJsonObject &arguments)
         QJsonObject result;
         result.insert(QStringLiteral("category"), category);
         result.insert(QStringLiteral("hydrated"), true);
-        result.insert(QStringLiteral("finding_count"), counts.value(category));
+        result.insert(QStringLiteral("finding_count"), findingCount);
         result.insert(QStringLiteral("pending"), false);
         return success(result);
     }
@@ -461,7 +476,7 @@ QJsonObject StoryToolHarness::hydrateProseCategory(const QJsonObject &arguments)
 
     QJsonObject result;
     result.insert(QStringLiteral("category"), category);
-    result.insert(QStringLiteral("finding_count"), counts.value(category));
+    result.insert(QStringLiteral("finding_count"), findingCount);
     result.insert(QStringLiteral("pending"), true);
     result.insert(QStringLiteral("wait_kind"), QStringLiteral("category_hydration"));
     return success(result);
@@ -476,6 +491,11 @@ QJsonObject StoryToolHarness::findProseFinding(const QString &findingId, bool na
     for (const ProseDiagnostic &diagnostic : diagnostics) {
         if (diagnostic.id != findingId) {
             continue;
+        }
+        if (diagnostic.revision != m_proseController->revisionSnapshotForAgent()) {
+            return failure(
+                tr("That prose finding belongs to an older manuscript revision. Run a fresh scan before navigating from it."),
+                QStringLiteral("stale_analysis"));
         }
         if (navigate) {
             QTextCursor cursor(m_editor->document());
@@ -508,8 +528,21 @@ QJsonObject StoryToolHarness::applyObjectiveGrammarFixes(bool allowBulkEdits)
         return failure(tr("Objective grammar correction requires explicit bulk-edit authorization."),
                        QStringLiteral("authorization_required"));
     }
+    if (!m_proseController->hasAnalysisSnapshotForAgent()) {
+        QJsonObject result = failure(
+            tr("No current prose snapshot exists. Run a fresh document scan before applying grammar fixes."),
+            QStringLiteral("analysis_required"));
+        result.insert(QStringLiteral("next_tool"), QStringLiteral("run_prose_scan"));
+        return result;
+    }
 
     const QString grammarCategory = QStringLiteral("grammar_mechanics");
+    if (!m_proseController->categoryKnownForAgent(grammarCategory)) {
+        return failure(
+            tr("Grammar & Mechanics is unavailable in the current Prose Intelligence build."),
+            QStringLiteral("category_unavailable"));
+    }
+
     const QHash<QString, int> counts = m_proseWidget->categoryCountsSnapshot();
     const int reportedTotal = counts.value(grammarCategory);
     if (reportedTotal > 0 && !m_proseController->categoryHydratedForAgent(grammarCategory)) {
@@ -535,8 +568,20 @@ QJsonObject StoryToolHarness::applyObjectiveGrammarFixes(bool allowBulkEdits)
         result.insert(QStringLiteral("reported_total"), reportedTotal);
         result.insert(QStringLiteral("hydrated"), grammar.size());
         result.insert(QStringLiteral("applied"), 0);
-        result.insert(QStringLiteral("message"), tr("No objective grammar/mechanics fixes are available."));
+        result.insert(QStringLiteral("message"), tr("No objective grammar/mechanics fixes are available in the current scan."));
         return result;
+    }
+
+    const int currentRevision = m_proseController->revisionSnapshotForAgent();
+    for (const ProseDiagnostic &diagnostic : std::as_const(grammar)) {
+        if (diagnostic.revision != currentRevision) {
+            QJsonObject result = failure(
+                tr("Grammar evidence became stale after the manuscript changed. Run a fresh document scan before applying fixes."),
+                QStringLiteral("stale_analysis"));
+            result.insert(QStringLiteral("next_tool"), QStringLiteral("run_prose_scan"));
+            result.insert(QStringLiteral("reported_total"), reportedTotal);
+            return result;
+        }
     }
 
     std::sort(grammar.begin(), grammar.end(), [](const ProseDiagnostic &left, const ProseDiagnostic &right) {
