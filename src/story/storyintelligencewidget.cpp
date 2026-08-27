@@ -10,7 +10,6 @@
 #include <QJsonValue>
 #include <QLabel>
 #include <QLayoutItem>
-#include <QMetaObject>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -49,6 +48,16 @@ QString initials(const QString &name)
     }
     return result.isEmpty() ? QStringLiteral("?") : result;
 }
+
+QLabel *plainLabel(const QString &text, QWidget *parent, const QString &objectName = QString())
+{
+    auto *label = new QLabel(text, parent);
+    label->setTextFormat(Qt::PlainText);
+    if (!objectName.isEmpty()) {
+        label->setObjectName(objectName);
+    }
+    return label;
+}
 }
 
 StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
@@ -64,6 +73,9 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
     , m_contextDetailLabel(new QLabel(this))
     , m_charactersContainer(new QWidget(this))
     , m_charactersLayout(new QVBoxLayout(m_charactersContainer))
+    , m_annotationsSection(new QWidget(this))
+    , m_annotationsContainer(new QWidget(m_annotationsSection))
+    , m_annotationsLayout(new QVBoxLayout(m_annotationsContainer))
     , m_chatContainer(new QWidget(this))
     , m_chatLayout(new QVBoxLayout(m_chatContainer))
     , m_chatScrollArea(new QScrollArea(this))
@@ -75,6 +87,19 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
     setMinimumWidth(StoryPaneWidth);
     setMaximumWidth(StoryPaneWidth);
     setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+
+    for (QLabel *label : {
+             m_providerLabel,
+             m_modelLabel,
+             m_keyStateLabel,
+             m_projectPathLabel,
+             m_settingLabel,
+             m_goalLabel,
+             m_contextDetailLabel,
+             m_statusLabel,
+         }) {
+        label->setTextFormat(Qt::PlainText);
+    }
 
     // The React redesign is a reference shell, not a runtime dependency. The
     // native rail uses the active Qt palette so parchment/teal/dark themes
@@ -97,6 +122,7 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
         }
         ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceSetupSurface,
         ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceSceneCard,
+        ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceSuggestionCard,
         ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceCharacterCard {
             background: palette(alternate-base);
             border: 1px solid palette(mid);
@@ -114,11 +140,19 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
         }
         ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceMutedLabel,
         ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceKeyState,
-        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceStatus {
+        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceStatus,
+        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceSuggestionQuote {
             color: palette(mid);
             font-size: 9pt;
         }
-        ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligencePrimaryButton {
+        ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceSuggestionReplacement {
+            padding: 6px;
+            border: 1px solid palette(mid);
+            border-radius: 5px;
+            background: palette(base);
+        }
+        ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligencePrimaryButton,
+        ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceApplyButton {
             min-height: 28px;
             padding: 4px 10px;
             border: 1px solid palette(mid);
@@ -126,7 +160,12 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
             background: palette(button);
             color: palette(button-text);
         }
+        ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceApplyButton {
+            background: palette(highlight);
+            color: palette(highlighted-text);
+        }
         ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligencePrimaryButton:hover,
+        ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceApplyButton:hover,
         ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceCharacterCard:hover {
             border-color: palette(highlight);
         }
@@ -186,8 +225,7 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
     auto *headerLayout = new QHBoxLayout(header);
     headerLayout->setContentsMargins(14, 10, 10, 10);
     headerLayout->setSpacing(8);
-    auto *title = new QLabel(tr("✦  Story Intelligence"), header);
-    title->setObjectName(QStringLiteral("storyIntelligenceTitle"));
+    auto *title = plainLabel(tr("✦  Story Intelligence"), header, QStringLiteral("storyIntelligenceTitle"));
     headerLayout->addWidget(title);
     headerLayout->addStretch(1);
     m_collapseButton->setObjectName(QStringLiteral("storyIntelligenceCollapseButton"));
@@ -214,8 +252,7 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
     configurationLayout->setSpacing(8);
 
     auto *providerRow = new QHBoxLayout;
-    auto *providerCaption = new QLabel(tr("Model"), configuration);
-    providerCaption->setObjectName(QStringLiteral("storyIntelligenceCaption"));
+    auto *providerCaption = plainLabel(tr("Model"), configuration, QStringLiteral("storyIntelligenceCaption"));
     providerRow->addWidget(providerCaption);
     providerRow->addStretch(1);
     m_modelSettingsButton->setObjectName(QStringLiteral("storyIntelligenceApiKeyButton"));
@@ -240,8 +277,7 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
 
     auto *projectRow = new QHBoxLayout;
     auto *projectLabels = new QVBoxLayout;
-    auto *projectCaption = new QLabel(tr("Project folder"), configuration);
-    projectCaption->setObjectName(QStringLiteral("storyIntelligenceCaption"));
+    auto *projectCaption = plainLabel(tr("Project folder"), configuration, QStringLiteral("storyIntelligenceCaption"));
     m_projectPathLabel->setObjectName(QStringLiteral("storyIntelligenceMutedLabel"));
     m_projectPathLabel->setText(tr("No project selected"));
     m_projectPathLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -271,12 +307,10 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
     auto *sceneCardLayout = new QVBoxLayout(sceneCard);
     sceneCardLayout->setContentsMargins(10, 10, 10, 10);
     sceneCardLayout->setSpacing(5);
-    auto *settingCaption = new QLabel(tr("Setting"), sceneCard);
-    settingCaption->setObjectName(QStringLiteral("storyIntelligenceCardHeading"));
+    auto *settingCaption = plainLabel(tr("Setting"), sceneCard, QStringLiteral("storyIntelligenceCardHeading"));
     m_settingLabel->setWordWrap(true);
     m_settingLabel->setObjectName(QStringLiteral("storyIntelligenceCardBody"));
-    auto *goalCaption = new QLabel(tr("Current Goal"), sceneCard);
-    goalCaption->setObjectName(QStringLiteral("storyIntelligenceCardHeading"));
+    auto *goalCaption = plainLabel(tr("Current Goal"), sceneCard, QStringLiteral("storyIntelligenceCardHeading"));
     m_goalLabel->setWordWrap(true);
     m_goalLabel->setObjectName(QStringLiteral("storyIntelligenceCardBody"));
     m_contextDetailLabel->setWordWrap(true);
@@ -312,6 +346,16 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
     m_charactersLayout->setSpacing(7);
     charactersOuter->addWidget(m_charactersContainer);
     bodyLayout->addWidget(charactersSection);
+
+    auto *annotationsOuter = new QVBoxLayout(m_annotationsSection);
+    annotationsOuter->setContentsMargins(0, 0, 0, 0);
+    annotationsOuter->setSpacing(7);
+    annotationsOuter->addWidget(makeSectionTitle(tr("⌄  Manuscript Marks")));
+    m_annotationsLayout->setContentsMargins(0, 0, 0, 0);
+    m_annotationsLayout->setSpacing(7);
+    annotationsOuter->addWidget(m_annotationsContainer);
+    m_annotationsSection->setVisible(false);
+    bodyLayout->addWidget(m_annotationsSection);
 
     auto *chatHeadingRow = new QHBoxLayout;
     chatHeadingRow->addWidget(makeSectionTitle(tr("▱  Co-Writer Chat")));
@@ -354,6 +398,7 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
     auto *composerActions = new QHBoxLayout;
     m_statusLabel->setObjectName(QStringLiteral("storyIntelligenceStatus"));
     m_statusLabel->setText(tr("Ready"));
+    m_statusLabel->setWordWrap(true);
     composerActions->addWidget(m_statusLabel, 1);
     m_sendButton->setObjectName(QStringLiteral("storyIntelligencePrimaryButton"));
     composerActions->addWidget(m_sendButton);
@@ -362,6 +407,7 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
 
     setSceneContext({});
     setCharacters({});
+    setAnnotations({});
 
     connect(m_collapseButton, &QToolButton::clicked, this, &StoryIntelligenceWidget::collapseRequested);
     connect(m_modelSettingsButton, &QPushButton::clicked, this, &StoryIntelligenceWidget::modelSettingsRequested);
@@ -391,9 +437,7 @@ QFrame *StoryIntelligenceWidget::makeCard(const QString &objectName)
 
 QLabel *StoryIntelligenceWidget::makeSectionTitle(const QString &text)
 {
-    auto *label = new QLabel(text, this);
-    label->setObjectName(QStringLiteral("storyIntelligenceSectionTitle"));
-    return label;
+    return plainLabel(text, this, QStringLiteral("storyIntelligenceSectionTitle"));
 }
 
 void StoryIntelligenceWidget::setProviderSummary(const QString &provider, const QString &model, bool credentialConfigured)
@@ -477,9 +521,8 @@ void StoryIntelligenceWidget::rebuildCharacters()
     }
 
     if (m_characters.isEmpty()) {
-        auto *empty = new QLabel(tr("No characters yet. Add one to ground voice and knowledge checks."), m_charactersContainer);
+        auto *empty = plainLabel(tr("No characters yet. Add one to ground voice and knowledge checks."), m_charactersContainer, QStringLiteral("storyIntelligenceMutedLabel"));
         empty->setWordWrap(true);
-        empty->setObjectName(QStringLiteral("storyIntelligenceMutedLabel"));
         m_charactersLayout->addWidget(empty);
         return;
     }
@@ -512,6 +555,76 @@ void StoryIntelligenceWidget::rebuildCharacters()
     }
 }
 
+void StoryIntelligenceWidget::setAnnotations(const QJsonArray &annotations)
+{
+    m_annotations = annotations;
+    rebuildAnnotations();
+}
+
+void StoryIntelligenceWidget::rebuildAnnotations()
+{
+    while (QLayoutItem *item = m_annotationsLayout->takeAt(0)) {
+        if (QWidget *widget = item->widget()) {
+            widget->deleteLater();
+        }
+        delete item;
+    }
+    m_annotationsSection->setVisible(!m_annotations.isEmpty());
+    for (const QJsonValue value : m_annotations) {
+        if (!value.isObject()) {
+            continue;
+        }
+        const QJsonObject annotation = value.toObject();
+        const QString id = annotation.value(QStringLiteral("id")).toString();
+        const QString category = annotation.value(QStringLiteral("category")).toString();
+        const QString comment = annotation.value(QStringLiteral("comment")).toString();
+        const QString quote = annotation.value(QStringLiteral("quote")).toString();
+        const QString replacement = annotation.value(QStringLiteral("replacement")).toString();
+        if (id.isEmpty() || quote.isEmpty()) {
+            continue;
+        }
+        auto *card = new QFrame(m_annotationsContainer);
+        card->setObjectName(QStringLiteral("storyIntelligenceSuggestionCard"));
+        auto *layout = new QVBoxLayout(card);
+        layout->setContentsMargins(9, 8, 9, 8);
+        layout->setSpacing(5);
+        auto *heading = plainLabel(category.isEmpty() ? tr("Observation") : category.toUpper(), card, QStringLiteral("storyIntelligenceCardHeading"));
+        auto *commentLabel = plainLabel(comment, card);
+        commentLabel->setWordWrap(true);
+        auto *quoteLabel = plainLabel(tr("“%1”").arg(quote), card, QStringLiteral("storyIntelligenceSuggestionQuote"));
+        quoteLabel->setWordWrap(true);
+        layout->addWidget(heading);
+        if (!comment.isEmpty()) {
+            layout->addWidget(commentLabel);
+        }
+        layout->addWidget(quoteLabel);
+        if (!replacement.isEmpty()) {
+            auto *replacementLabel = plainLabel(replacement, card, QStringLiteral("storyIntelligenceSuggestionReplacement"));
+            replacementLabel->setWordWrap(true);
+            replacementLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+            layout->addWidget(replacementLabel);
+        }
+        auto *actions = new QHBoxLayout;
+        actions->addStretch(1);
+        auto *dismiss = new QPushButton(tr("Dismiss"), card);
+        dismiss->setObjectName(QStringLiteral("storyIntelligencePrimaryButton"));
+        actions->addWidget(dismiss);
+        connect(dismiss, &QPushButton::clicked, this, [this, id]() {
+            emit dismissSuggestionRequested(id);
+        });
+        if (!replacement.isEmpty()) {
+            auto *apply = new QPushButton(tr("Apply"), card);
+            apply->setObjectName(QStringLiteral("storyIntelligenceApplyButton"));
+            actions->addWidget(apply);
+            connect(apply, &QPushButton::clicked, this, [this, id]() {
+                emit applySuggestionRequested(id);
+            });
+        }
+        layout->addLayout(actions);
+        m_annotationsLayout->addWidget(card);
+    }
+}
+
 void StoryIntelligenceWidget::appendChatMessage(const QString &role, const QString &text, const QString &speaker)
 {
     if (text.trimmed().isEmpty()) {
@@ -523,12 +636,10 @@ void StoryIntelligenceWidget::appendChatMessage(const QString &role, const QStri
     auto *layout = new QVBoxLayout(bubble);
     layout->setContentsMargins(9, 8, 9, 8);
     layout->setSpacing(4);
-    auto *speakerLabel = new QLabel(user ? tr("You") : (speaker.isEmpty() ? tr("AI") : tr("%1 · simulation").arg(speaker)), bubble);
-    speakerLabel->setObjectName(QStringLiteral("storyIntelligenceBubbleSpeaker"));
-    auto *message = new QLabel(text, bubble);
-    message->setObjectName(QStringLiteral("storyIntelligenceBubbleText"));
+    auto *speakerLabel = plainLabel(user ? tr("You") : (speaker.isEmpty() ? tr("AI") : tr("%1 · simulation").arg(speaker)), bubble, QStringLiteral("storyIntelligenceBubbleSpeaker"));
+    auto *message = plainLabel(text, bubble, QStringLiteral("storyIntelligenceBubbleText"));
     message->setWordWrap(true);
-    message->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::LinksAccessibleByMouse);
+    message->setTextInteractionFlags(Qt::TextSelectableByMouse);
     layout->addWidget(speakerLabel);
     layout->addWidget(message);
     m_chatLayout->insertWidget(qMax(0, m_chatLayout->count() - 1), bubble);
