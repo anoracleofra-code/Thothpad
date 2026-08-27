@@ -452,6 +452,68 @@ QJsonObject AgentEditTransactionManager::runEditorCommand(
     return record;
 }
 
+QJsonObject AgentEditTransactionManager::undoTransaction(const QString &operationId)
+{
+    const QString toolId = QStringLiteral("undo_agent_transaction");
+    if (m_inTransaction) {
+        return failureRecord(toolId, QString(), tr("Another agent edit transaction is active."));
+    }
+    if (operationId.trimmed().isEmpty()) {
+        return failureRecord(toolId, QString(), tr("An agent operation ID is required."));
+    }
+
+    QJsonObject transaction;
+    for (int index = m_recentTransactions.size() - 1; index >= 0; --index) {
+        const QJsonObject candidate = m_recentTransactions.at(index).toObject();
+        if (candidate.value(QStringLiteral("operation_id")).toString() == operationId) {
+            transaction = candidate;
+            break;
+        }
+    }
+    if (transaction.isEmpty()) {
+        return failureRecord(toolId, QString(), tr("That agent transaction is no longer in the recent journal."));
+    }
+
+    const QString summary = transaction.value(QStringLiteral("summary")).toString();
+    const QString expectedAfter = transaction.value(QStringLiteral("after_sha256")).toString();
+    const QString expectedBefore = transaction.value(QStringLiteral("before_sha256")).toString();
+    if (expectedAfter.isEmpty() || expectedBefore.isEmpty()) {
+        return failureRecord(toolId, summary, tr("That transaction does not have complete recovery hashes."));
+    }
+    if (textHash(m_editor->toPlainText()) != expectedAfter) {
+        return failureRecord(
+            toolId,
+            summary,
+            tr("The manuscript has changed since this AI edit. Use normal Undo/history so ThothPad does not remove later human work."));
+    }
+    if (!m_editor->document()->isUndoAvailable()) {
+        return failureRecord(toolId, summary, tr("The matching editor Undo step is no longer available."));
+    }
+
+    m_editor->undo();
+    const QString afterUndo = textHash(m_editor->toPlainText());
+    if (afterUndo != expectedBefore) {
+        // Do not leave the document in an unverified intermediate state. If Qt
+        // can redo the step, restore it before reporting the mismatch.
+        if (m_editor->document()->isRedoAvailable()) {
+            m_editor->redo();
+        }
+        return failureRecord(
+            toolId,
+            summary,
+            tr("The editor Undo stack no longer matches this agent transaction, so the contextual Undo was cancelled."));
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("ok"), true);
+    result.insert(QStringLiteral("tool_id"), toolId);
+    result.insert(QStringLiteral("operation_id"), operationId);
+    result.insert(QStringLiteral("summary"), summary);
+    result.insert(QStringLiteral("undone"), true);
+    result.insert(QStringLiteral("document_revision"), m_editor->document()->revision());
+    return result;
+}
+
 QJsonArray AgentEditTransactionManager::recentTransactions(int limit) const
 {
     const int boundedLimit = std::max(0, std::min(limit, MaximumRecentTransactions));
