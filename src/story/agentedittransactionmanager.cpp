@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <exception>
+#include <limits>
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -224,7 +225,7 @@ QJsonObject AgentEditTransactionManager::finishTransactionRecord(
 
     m_recentTransactions.append(record);
     while (m_recentTransactions.size() > MaximumRecentTransactions) {
-        m_recentTransactions.removeFirst();
+        m_recentTransactions.removeAt(0);
     }
     return record;
 }
@@ -287,9 +288,19 @@ QJsonObject AgentEditTransactionManager::applyVerifiedReplacements(
         }
         const double startDouble = startValue.toDouble(-1);
         const double endDouble = endValue.toDouble(-1);
+        if (startDouble < static_cast<double>(std::numeric_limits<int>::min())
+            || startDouble > static_cast<double>(std::numeric_limits<int>::max())
+            || endDouble < static_cast<double>(std::numeric_limits<int>::min())
+            || endDouble > static_cast<double>(std::numeric_limits<int>::max())) {
+            return failureRecord(toolId, summary, tr("Replacement offsets are outside the supported integer range."));
+        }
         const int start = static_cast<int>(startDouble);
         const int end = static_cast<int>(endDouble);
-        if (startDouble != start || endDouble != end || start < 0 || end <= start || end > beforeText.size()) {
+        if (startDouble != static_cast<double>(start)
+            || endDouble != static_cast<double>(end)
+            || start < 0
+            || end <= start
+            || end > beforeText.size()) {
             return failureRecord(toolId, summary, tr("A replacement range is outside the current document."));
         }
         if (!object.value(QStringLiteral("expected")).isString()
