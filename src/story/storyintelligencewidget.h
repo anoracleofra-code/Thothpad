@@ -55,7 +55,7 @@ signals:
     void characterActivated(const QString &characterId);
     void chatRequested(const QString &message);
     void clearAnnotationsRequested();
-    void annotationNavigationRequested(const QString &annotationId);
+    void annotationNavigationRequested(int startUtf16, int endUtf16, const QString &quote);
     void applySuggestionRequested(const QString &annotationId);
     void dismissSuggestionRequested(const QString &annotationId);
     void undoAgentTransactionRequested(const QString &operationId);
