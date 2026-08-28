@@ -170,6 +170,7 @@ jobs:
           unset ANDROID_SDK_ROOT ANDROID_HOME ANDROID_NDK_ROOT ANDROID_NDK_HOME || true
           craft_root="$RUNNER_TEMP/CraftRoot"
           source "$craft_root/craft/craftenv.sh"
+          cd "$GITHUB_WORKSPACE"
           for variant in Core Full; do
             slug="$(printf '%s' "$variant" | tr '[:upper:]' '[:lower:]')"
             build="build-native-pr-$slug"
@@ -233,6 +234,7 @@ jobs:
           unset ANDROID_SDK_ROOT ANDROID_HOME ANDROID_NDK_ROOT ANDROID_NDK_HOME || true
           craft_root="$RUNNER_TEMP/CraftRoot"
           source "$craft_root/craft/craftenv.sh"
+          cd "$GITHUB_WORKSPACE"
           for variant in Core Full; do
             slug="$(printf '%s' "$variant" | tr '[:upper:]' '[:lower:]')"
             build="build-native-pr-$slug"
