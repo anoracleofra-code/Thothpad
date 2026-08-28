@@ -88,6 +88,23 @@ struct ReportOverlaySuppressionState {
     }
 };
 
+struct AgentProseSnapshotContract {
+    static bool snapshotAvailable(const QString &analysisId)
+    {
+        return !analysisId.isEmpty();
+    }
+
+    static bool categoryHydrated(bool snapshotAvailable, bool categoryKnown, bool categoryLoaded)
+    {
+        return snapshotAvailable && categoryKnown && categoryLoaded;
+    }
+
+    static bool categoryCanHydrate(bool snapshotAvailable, bool categoryKnown)
+    {
+        return snapshotAvailable && categoryKnown;
+    }
+};
+
 class ProseController : public QObject
 {
     Q_OBJECT
@@ -119,7 +136,7 @@ public:
     quint64 analysisGenerationSnapshot() const { return m_analysisPrepGeneration; }
     QString analysisIdSnapshot() const { return m_analysisId; }
     int revisionSnapshotForAgent() const { return m_revision; }
-    bool hasAnalysisSnapshotForAgent() const { return !m_analysisId.isEmpty(); }
+    bool hasAnalysisSnapshotForAgent() const { return AgentProseSnapshotContract::snapshotAvailable(m_analysisId); }
 
     bool categoryKnownForAgent(const QString &category) const
     {
@@ -128,14 +145,16 @@ public:
 
     bool categoryHydratedForAgent(const QString &category) const
     {
-        return hasAnalysisSnapshotForAgent()
-            && categoryKnownForAgent(category)
-            && m_snapshotLoadedCategories.contains(category);
+        return AgentProseSnapshotContract::categoryHydrated(
+            hasAnalysisSnapshotForAgent(),
+            categoryKnownForAgent(category),
+            m_snapshotLoadedCategories.contains(category));
     }
 
     bool hydrateCategoryForAgent(const QString &category)
     {
-        if (!hasAnalysisSnapshotForAgent() || !categoryKnownForAgent(category)) {
+        if (!AgentProseSnapshotContract::categoryCanHydrate(
+                hasAnalysisSnapshotForAgent(), categoryKnownForAgent(category))) {
             return false;
         }
         if (!m_snapshotLoadedCategories.contains(category)) {
