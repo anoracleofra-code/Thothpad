@@ -5,6 +5,8 @@
 #ifndef STORY_TOOL_HARNESS_H
 #define STORY_TOOL_HARNESS_H
 
+#include <utility>
+
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QObject>
