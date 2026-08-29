@@ -76,6 +76,7 @@ private:
         QJsonObject provider;
         QString credentialId;
         QString apiKey;
+        QString documentPath;
         QJsonArray toolResults;
         PendingAsyncTool asyncTool;
         int revision = -1;
