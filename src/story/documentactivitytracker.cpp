@@ -142,8 +142,9 @@ bool DocumentActivityTracker::overlapsRecentAgentTarget(
 
 void DocumentActivityTracker::documentChanged(int position, int charsRemoved, int charsAdded)
 {
-    const int safePosition = std::max(0, std::min(position, m_shadowText.size()));
-    const int safeRemoved = std::max(0, std::min(charsRemoved, m_shadowText.size() - safePosition));
+    const int shadowSize = static_cast<int>(m_shadowText.size());
+    const int safePosition = std::max(0, std::min(position, shadowSize));
+    const int safeRemoved = std::max(0, std::min(charsRemoved, shadowSize - safePosition));
     const QString removedText = m_shadowText.mid(safePosition, safeRemoved);
     const QString addedText = insertedText(position, charsAdded);
     m_shadowText.replace(safePosition, safeRemoved, addedText);
@@ -277,7 +278,7 @@ QJsonArray DocumentActivityTracker::recentEvents(int limit) const
 {
     const int boundedLimit = std::max(0, std::min(limit, MaximumActivityEvents));
     QJsonArray result;
-    const int start = std::max(0, m_events.size() - boundedLimit);
+    const int start = std::max(0, static_cast<int>(m_events.size()) - boundedLimit);
     for (int index = start; index < m_events.size(); ++index) {
         result.append(m_events.at(index));
     }
