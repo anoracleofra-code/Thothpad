@@ -309,7 +309,7 @@ int main(int argc, char *argv[])
         QCoreApplication::translate("main",
             "UberWriter (now Apostrophe) developer, for providing inspiration"),
         QString(),
-        "https://github.com/gottcode/focuswriter");
+        "https://www.wolfvollprecht.de");
     aboutData.addCredit(QCoreApplication::translate("main", "Other Contributors"),
         QCoreApplication::translate("main",
             "Everyone who provided translations, documentation, bug fixes, or new features over the years"),
