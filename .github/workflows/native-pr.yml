@@ -42,68 +42,79 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $transcript = Join-Path $env:RUNNER_TEMP "windows-bootstrap.log"
-          Start-Transcript -Path $transcript -Force
-          try {
-            # GitHub's Windows image exposes Git-Bash and a separate MinGW tree
-            # globally. Craft explicitly warns that sh/gcc/g++/cpp from those
-            # trees contaminate an MSVC ABI and can make Autotools packages pick
-            # C:\mingw64 tools. Preserve only the host facilities Craft actually
-            # needs until craftenv.ps1 installs its controlled environment.
-            $pythonExe = (Get-Command python.exe).Source
-            $pwshExe = (Get-Command pwsh.exe).Source
-            & $pythonExe -m pip install --disable-pip-version-check certifi cmake==4.3.2 ninja==1.13.0
-            $pythonDir = Split-Path $pythonExe
-            $pythonScripts = Join-Path $pythonDir "Scripts"
-            $gitCmd = "C:\Program Files\Git\cmd"
-            $pwshDir = Split-Path $pwshExe
-            $env:PATH = @(
-              $pythonDir,
-              $pythonScripts,
-              $gitCmd,
-              $pwshDir,
-              "$env:SystemRoot\System32",
-              "$env:SystemRoot",
-              "$env:SystemRoot\System32\Wbem"
-            ) -join ";"
-            foreach ($forbidden in @("sh.exe", "gcc.exe", "g++.exe", "cpp.exe")) {
-              if (Get-Command $forbidden -ErrorAction SilentlyContinue) {
-                throw "Hosted PATH sanitization failed: $forbidden is still visible before Craft bootstrap."
-              }
-            }
-            if (-not (Get-Command git.exe -ErrorAction SilentlyContinue)) {
-              throw "git.exe is unavailable after hosted PATH sanitization."
-            }
-            if (-not (Get-Command pwsh.exe -ErrorAction SilentlyContinue)) {
-              throw "pwsh.exe is unavailable after hosted PATH sanitization."
-            }
+          $PSNativeCommandUseErrorActionPreference = $true
+          $bootstrapLog = Join-Path $env:RUNNER_TEMP "windows-bootstrap.log"
+          "Windows native bootstrap started: $(Get-Date -Format o)" | Set-Content -Path $bootstrapLog
 
-            $lock = Get-Content packaging/toolchain-lock.json | ConvertFrom-Json
-            $craftCommit = $lock.craft.core_commit
-            $bootstrap = Join-Path $env:RUNNER_TEMP "CraftBootstrap.py"
-            Invoke-WebRequest "$env:CRAFT_BOOTSTRAP_ROOT/$craftCommit/setup/CraftBootstrap.py" -OutFile $bootstrap
-            & $pythonExe $bootstrap --prefix C:\CraftRoot --branch $craftCommit --use-defaults
-
-            $settings = Get-Content C:\CraftRoot\etc\CraftSettings.ini -Raw
-            if ($settings -notmatch '(?m)^\s*ABI\s*=\s*windows-cl-msvc2022-x86_64\s*$') {
-              throw "Craft selected an unexpected Windows ABI.`n$settings"
-            }
-            if (-not (Test-Path C:\CraftRoot\craft\craftenv.ps1)) {
-              throw "Craft bootstrap did not complete; craftenv.ps1 is missing."
-            }
-
-            . C:\CraftRoot\craft\craftenv.ps1
-            craft kde/frameworks/extra-cmake-modules
-            craft kde/frameworks/tier1/sonnet
-            craft kde/frameworks/tier3/kconfigwidgets
-            craft kde/frameworks/tier3/kxmlgui
-            craft qt-libs/qtkeychain
-            craft libs/qt/qtsvg
-            craft libs/qt/qtwebchannel
-            craft libs/qt/qtwebengine
-          } finally {
-            Stop-Transcript -ErrorAction SilentlyContinue
+          function Invoke-Logged {
+            param(
+              [Parameter(Mandatory = $true)][string]$Label,
+              [Parameter(Mandatory = $true)][scriptblock]$Action
+            )
+            "==> $Label" | Tee-Object -FilePath $bootstrapLog -Append
+            & $Action 2>&1 | Tee-Object -FilePath $bootstrapLog -Append
           }
+
+          # GitHub's Windows image exposes Git-Bash and a separate MinGW tree
+          # globally. Craft explicitly warns that sh/gcc/g++/cpp from those
+          # trees contaminate an MSVC ABI and can make Autotools packages pick
+          # C:\mingw64 tools. Preserve only the host facilities Craft actually
+          # needs until craftenv.ps1 installs its controlled environment.
+          $pythonExe = (Get-Command python.exe).Source
+          $pwshExe = (Get-Command pwsh.exe).Source
+          Invoke-Logged "Install bootstrap tools" {
+            & $pythonExe -m pip install --disable-pip-version-check certifi cmake==4.3.2 ninja==1.13.0
+          }
+          $pythonDir = Split-Path $pythonExe
+          $pythonScripts = Join-Path $pythonDir "Scripts"
+          $gitCmd = "C:\Program Files\Git\cmd"
+          $pwshDir = Split-Path $pwshExe
+          $env:PATH = @(
+            $pythonDir,
+            $pythonScripts,
+            $gitCmd,
+            $pwshDir,
+            "$env:SystemRoot\System32",
+            "$env:SystemRoot",
+            "$env:SystemRoot\System32\Wbem"
+          ) -join ";"
+          foreach ($forbidden in @("sh.exe", "gcc.exe", "g++.exe", "cpp.exe")) {
+            if (Get-Command $forbidden -ErrorAction SilentlyContinue) {
+              throw "Hosted PATH sanitization failed: $forbidden is still visible before Craft bootstrap."
+            }
+          }
+          if (-not (Get-Command git.exe -ErrorAction SilentlyContinue)) {
+            throw "git.exe is unavailable after hosted PATH sanitization."
+          }
+          if (-not (Get-Command pwsh.exe -ErrorAction SilentlyContinue)) {
+            throw "pwsh.exe is unavailable after hosted PATH sanitization."
+          }
+
+          $lock = Get-Content packaging/toolchain-lock.json | ConvertFrom-Json
+          $craftCommit = $lock.craft.core_commit
+          $bootstrap = Join-Path $env:RUNNER_TEMP "CraftBootstrap.py"
+          Invoke-WebRequest "$env:CRAFT_BOOTSTRAP_ROOT/$craftCommit/setup/CraftBootstrap.py" -OutFile $bootstrap
+          Invoke-Logged "Bootstrap Craft $craftCommit" {
+            & $pythonExe $bootstrap --prefix C:\CraftRoot --branch $craftCommit --use-defaults
+          }
+
+          $settings = Get-Content C:\CraftRoot\etc\CraftSettings.ini -Raw
+          if ($settings -notmatch '(?m)^\s*ABI\s*=\s*windows-cl-msvc2022-x86_64\s*$') {
+            throw "Craft selected an unexpected Windows ABI.`n$settings"
+          }
+          if (-not (Test-Path C:\CraftRoot\craft\craftenv.ps1)) {
+            throw "Craft bootstrap did not complete; craftenv.ps1 is missing."
+          }
+
+          . C:\CraftRoot\craft\craftenv.ps1
+          Invoke-Logged "Craft extra-cmake-modules" { craft kde/frameworks/extra-cmake-modules }
+          Invoke-Logged "Craft sonnet" { craft kde/frameworks/tier1/sonnet }
+          Invoke-Logged "Craft kconfigwidgets" { craft kde/frameworks/tier3/kconfigwidgets }
+          Invoke-Logged "Craft kxmlgui" { craft kde/frameworks/tier3/kxmlgui }
+          Invoke-Logged "Craft qtkeychain" { craft qt-libs/qtkeychain }
+          Invoke-Logged "Craft qtsvg" { craft libs/qt/qtsvg }
+          Invoke-Logged "Craft qtwebchannel" { craft libs/qt/qtwebchannel }
+          Invoke-Logged "Craft qtwebengine" { craft libs/qt/qtwebengine }
       - name: Configure, build, and test Core + Full
         shell: pwsh
         run: |
@@ -147,9 +158,10 @@ jobs:
           set -eo pipefail
 
           # Qt6Gui's CMake package still resolves the host OpenGL development
-          # interface even when Qt itself comes from Craft.
+          # interface even when Qt itself comes from Craft. QtWebEngine also
+          # links the host Opus runtime on Ubuntu.
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libgl1-mesa-dev
+          sudo apt-get install -y --no-install-recommends libgl1-mesa-dev libopus0
 
           # GitHub-hosted desktop runners also ship Android SDKs. Craft's
           # bootstrap uses the mere presence of ANDROID_SDK_ROOT to decide it
