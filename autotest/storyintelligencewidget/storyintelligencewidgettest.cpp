@@ -25,6 +25,8 @@ private slots:
     void activityCardWithoutOperationHasNoUndoButton();
     void currentModelRevisionAllowsMutation();
     void staleModelRevisionRejectsMutation();
+    void currentModelDocumentContextAllowsTools();
+    void staleModelDocumentContextRejectsTools();
 };
 
 namespace
@@ -103,6 +105,30 @@ void StoryIntelligenceWidgetTest::staleModelRevisionRejectsMutation()
 {
     QVERIFY(!StoryToolHarness::mutationRevisionCurrent(12, 13));
     QVERIFY(!StoryToolHarness::mutationRevisionCurrent(-1, 0));
+}
+
+void StoryIntelligenceWidgetTest::currentModelDocumentContextAllowsTools()
+{
+    QVERIFY(StoryToolHarness::modelDocumentContextCurrent(
+        12, 12,
+        QStringLiteral("/project/chapter.md"),
+        QStringLiteral("/project/chapter.md")));
+    QVERIFY(StoryToolHarness::modelDocumentContextCurrent(
+        0, 0, QString(), QString()));
+}
+
+void StoryIntelligenceWidgetTest::staleModelDocumentContextRejectsTools()
+{
+    QVERIFY(!StoryToolHarness::modelDocumentContextCurrent(
+        12, 13,
+        QStringLiteral("/project/chapter.md"),
+        QStringLiteral("/project/chapter.md")));
+    QVERIFY(!StoryToolHarness::modelDocumentContextCurrent(
+        12, 12,
+        QStringLiteral("/project/chapter-one.md"),
+        QStringLiteral("/project/chapter-two.md")));
+    QVERIFY(!StoryToolHarness::modelDocumentContextCurrent(
+        -1, 0, QString(), QString()));
 }
 
 QTEST_MAIN(StoryIntelligenceWidgetTest)
