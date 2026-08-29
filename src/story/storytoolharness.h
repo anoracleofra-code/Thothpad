@@ -50,6 +50,12 @@ public:
     QJsonObject snapshot() const;
 
     /**
+     * Read the current prose state for native UI/authorization decisions
+     * without advancing the manuscript revision exposed to the model.
+     */
+    QJsonObject proseSnapshot(int findingLimit = 60) const;
+
+    /**
      * Mutation tools are only valid against the manuscript revision exposed
      * to the model. Any intervening human or native edit forces a fresh model
      * turn before Story Intelligence may mutate the document.
