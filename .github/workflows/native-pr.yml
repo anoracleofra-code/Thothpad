@@ -223,6 +223,17 @@ jobs:
             run_logged "Ubuntu ${variant} tests failed" "$test_log" \
               ctest --test-dir "$build" --output-on-failure
           done
+      - name: Upload native failure logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-linux-failure-logs
+          path: |
+            ${{ runner.temp }}/linux-*-configure.log
+            ${{ runner.temp }}/linux-*-build.log
+            ${{ runner.temp }}/linux-*-test.log
+          if-no-files-found: warn
+          retention-days: 3
 
   macos:
     name: macOS native (Core + Full)
@@ -322,3 +333,14 @@ jobs:
             run_logged "macOS ${variant} tests failed" "$test_log" \
               ctest --test-dir "$build" --output-on-failure
           done
+      - name: Upload native failure logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-macos-failure-logs
+          path: |
+            ${{ runner.temp }}/macos-*-configure.log
+            ${{ runner.temp }}/macos-*-build.log
+            ${{ runner.temp }}/macos-*-test.log
+          if-no-files-found: warn
+          retention-days: 3
