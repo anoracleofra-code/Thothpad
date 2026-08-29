@@ -529,3 +529,4 @@ QJsonArray AgentEditTransactionManager::recentTransactions(int limit) const
     }
     return result;
 }
+}
