@@ -37,6 +37,11 @@ ecm_add_test(
     TEST_NAME efficiencycollector
 )
 
+# KDECompilerSettings disables C++ exceptions by default, while this standalone
+# benchmark collector deliberately uses exceptions to propagate measurement and
+# fixture failures to its top-level error reporter.
+kde_target_enable_exceptions(efficiencycollector PRIVATE)
+
 thothpad_configure_test(efficiencycollector)
 set_tests_properties(efficiencycollector PROPERTIES
     LABELS "benchmark;native-efficiency"
