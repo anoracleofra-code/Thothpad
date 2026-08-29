@@ -623,6 +623,20 @@ QJsonObject StoryIntelligenceController::activeCharacter() const
     return {};
 }
 
+QString StoryIntelligenceController::currentStoryContextHash() const
+{
+    QJsonObject context;
+    context.insert(QStringLiteral("project_root"), m_projectRoot);
+    context.insert(QStringLiteral("scene_context"),
+                   m_metadata.value(QStringLiteral("scene_context")).toObject());
+    context.insert(QStringLiteral("characters"),
+                   m_metadata.value(QStringLiteral("characters")).toArray());
+    context.insert(QStringLiteral("active_character_id"), m_widget->activeCharacterId());
+    return QString::fromLatin1(QCryptographicHash::hash(
+        QJsonDocument(context).toJson(QJsonDocument::Compact),
+        QCryptographicHash::Sha256).toHex());
+}
+
 void StoryIntelligenceController::appendHistory(
     const QString &role,
     const QString &content,
@@ -827,9 +841,12 @@ void StoryIntelligenceController::dispatchPendingChat(const QString &apiKey)
     }
 
     // Text-changing tools may have completed in a previous tool round, so the
-    // current revision/document are sampled again for every model turn.
+    // current revision/document/context are sampled again for every model turn.
+    const QJsonObject persona = activeCharacter();
     m_pendingChat.revision = m_revision;
     m_pendingChat.documentPath = currentDocumentPath();
+    m_pendingChat.storyContextHash = currentStoryContextHash();
+    m_pendingChat.speaker = persona.value(QStringLiteral("name")).toString();
 
     QJsonObject storyPayload;
     storyPayload.insert(QStringLiteral("kind"), QStringLiteral("story_intelligence_v1"));
@@ -844,7 +861,7 @@ void StoryIntelligenceController::dispatchPendingChat(const QString &apiKey)
                         m_metadata.value(QStringLiteral("scene_context")).toObject());
     storyPayload.insert(QStringLiteral("characters"),
                         m_metadata.value(QStringLiteral("characters")).toArray());
-    storyPayload.insert(QStringLiteral("active_character"), activeCharacter());
+    storyPayload.insert(QStringLiteral("active_character"), persona);
     storyPayload.insert(QStringLiteral("history"), history);
     storyPayload.insert(QStringLiteral("tool_round"), m_pendingChat.toolRound);
     storyPayload.insert(QStringLiteral("tool_results"), m_pendingChat.toolResults);
@@ -1199,21 +1216,27 @@ void StoryIntelligenceController::handleResponse(
         m_revision,
         m_pendingChat.documentPath,
         currentDocumentPath());
+    const bool staleStoryContext = m_pendingChat.storyContextHash != currentStoryContextHash();
 
-    if (!toolCalls.isEmpty() && m_harness && staleDocumentContext) {
+    if (!toolCalls.isEmpty() && m_harness && (staleDocumentContext || staleStoryContext)) {
         QJsonObject staleStory = story;
         staleStory.remove(QStringLiteral("tool_calls"));
         staleStory.remove(QStringLiteral("annotations"));
         staleStory.insert(
             QStringLiteral("message"),
-            tr("The manuscript changed while AI was responding, so no requested ThothPad tools were run. Resend the message if you still want those actions."));
+            tr("The manuscript or Story Intelligence context changed while AI was responding, so no requested ThothPad tools were run. Resend the message if you still want those actions."));
         finishChatTurn(staleStory, result);
         return;
     }
 
+    QJsonObject guardedStory = story;
+    if (staleStoryContext) {
+        guardedStory.remove(QStringLiteral("annotations"));
+    }
+
     if (!toolCalls.isEmpty() && m_harness) {
         if (m_pendingChat.toolRound >= MaximumToolRounds) {
-            QJsonObject limitedStory = story;
+            QJsonObject limitedStory = guardedStory;
             QString message = limitedStory.value(QStringLiteral("message")).toString().trimmed();
             if (message.isEmpty()) {
                 message = tr("I reached ThothPad's tool-round safety limit before completing every requested operation.");
@@ -1238,7 +1261,7 @@ void StoryIntelligenceController::handleResponse(
         return;
     }
 
-    finishChatTurn(story, result);
+    finishChatTurn(guardedStory, result);
 }
 
 void StoryIntelligenceController::finishChatTurn(
@@ -1253,8 +1276,7 @@ void StoryIntelligenceController::finishChatTurn(
         message = tr("Story Intelligence completed the turn without a text response.");
     }
 
-    const QJsonObject persona = activeCharacter();
-    const QString speaker = persona.value(QStringLiteral("name")).toString();
+    const QString speaker = m_pendingChat.speaker;
     m_widget->appendChatMessage(QStringLiteral("assistant"), message, speaker);
     appendHistory(QStringLiteral("assistant"), message, speaker);
 
