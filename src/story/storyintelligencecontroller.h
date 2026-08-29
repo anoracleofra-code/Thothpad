@@ -77,6 +77,8 @@ private:
         QString credentialId;
         QString apiKey;
         QString documentPath;
+        QString storyContextHash;
+        QString speaker;
         QJsonArray toolResults;
         PendingAsyncTool asyncTool;
         int revision = -1;
@@ -94,6 +96,7 @@ private:
     bool saveProjectMetadata(QString *errorMessage = nullptr) const;
     QString metadataPath() const;
     QJsonObject activeCharacter() const;
+    QString currentStoryContextHash() const;
     void applyAnnotations(const QJsonArray &annotations, int responseRevision);
     void refreshAnnotationPresentation();
     QJsonObject defaultMetadata() const;
