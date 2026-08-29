@@ -193,12 +193,17 @@ void DocumentActivityTracker::transactionApplied(const QJsonObject &transaction)
     if (m_agentMutationDepth > 0) {
         --m_agentMutationDepth;
     }
+    m_shadowText = m_editor->toPlainText();
+    m_lastSettledHash = transaction.value(QStringLiteral("after_sha256")).toString(textHash(m_shadowText));
+
+    if (transaction.value(QStringLiteral("no_change")).toBool()) {
+        return;
+    }
+
     m_recentAgentTransactions.append(transaction);
     while (m_recentAgentTransactions.size() > MaximumTrackedTransactions) {
         m_recentAgentTransactions.removeAt(0);
     }
-    m_shadowText = m_editor->toPlainText();
-    m_lastSettledHash = transaction.value(QStringLiteral("after_sha256")).toString(textHash(m_shadowText));
 
     QJsonObject event;
     event.insert(QStringLiteral("type"), QStringLiteral("AGENT_TRANSACTION_APPLIED"));
@@ -283,5 +288,4 @@ QJsonArray DocumentActivityTracker::recentEvents(int limit) const
         result.append(m_events.at(index));
     }
     return result;
-}
 }
