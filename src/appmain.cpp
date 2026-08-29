@@ -84,6 +84,18 @@ void installStoryIntelligence(ghostwriter::MainWindow *window)
     auto *controller = new ghostwriter::StoryIntelligenceController(
         editor, widget, engine, credentials, dock);
     controller->setToolServices(harness, transactions, activity);
+    QObject::connect(
+        controller,
+        &ghostwriter::StoryIntelligenceController::projectRootChanged,
+        dock,
+        [transactions, activity, lastRoot = QString()](const QString &root) mutable {
+            if (root == lastRoot) {
+                return;
+            }
+            lastRoot = root;
+            transactions->resetForContext();
+            activity->resetForContext();
+        });
     controller->start();
 
     // Keep the native services discoverable under the Story Intelligence dock
@@ -297,7 +309,7 @@ int main(int argc, char *argv[])
         QCoreApplication::translate("main",
             "UberWriter (now Apostrophe) developer, for providing inspiration"),
         QString(),
-        "https://www.wolfvollprecht.de");
+        "https://github.com/gottcode/focuswriter");
     aboutData.addCredit(QCoreApplication::translate("main", "Other Contributors"),
         QCoreApplication::translate("main",
             "Everyone who provided translations, documentation, bug fixes, or new features over the years"),
