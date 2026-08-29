@@ -1194,8 +1194,11 @@ void StoryIntelligenceController::handleResponse(
     const QJsonObject result = response.value(QStringLiteral("result")).toObject();
     const QJsonObject story = result.value(QStringLiteral("story_intelligence")).toObject();
     const QJsonArray toolCalls = story.value(QStringLiteral("tool_calls")).toArray();
-    const bool staleDocumentContext = m_pendingChat.revision != m_revision
-        || m_pendingChat.documentPath != currentDocumentPath();
+    const bool staleDocumentContext = !StoryToolHarness::modelDocumentContextCurrent(
+        m_pendingChat.revision,
+        m_revision,
+        m_pendingChat.documentPath,
+        currentDocumentPath());
 
     if (!toolCalls.isEmpty() && m_harness && staleDocumentContext) {
         QJsonObject staleStory = story;
