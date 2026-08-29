@@ -40,6 +40,15 @@ public:
     bool inTransaction() const;
 
     /**
+     * Drop operation-specific in-memory history when Story Intelligence moves
+     * to a different project. Durable recovery checkpoints remain on disk.
+     */
+    void resetForContext()
+    {
+        m_recentTransactions = {};
+    }
+
+    /**
      * Applies exact UTF-16 replacements. Each array item must contain
      * start_utf16, end_utf16, expected and replacement. Targets are validated
      * against the current document before any write occurs.
