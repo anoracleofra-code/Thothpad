@@ -177,16 +177,51 @@ jobs:
           craft_root="$RUNNER_TEMP/CraftRoot"
           source "$craft_root/craft/craftenv.sh"
           cd "$GITHUB_WORKSPACE"
+
+          annotate_failure() {
+            local title="$1"
+            local log="$2"
+            local summary
+            summary="$(grep -E 'CMake Error|FAILED:|fatal error:|(^|[^A-Za-z])error:|undefined reference|ld: |ninja: error|[0-9]+% tests passed|The following tests FAILED' "$log" | tail -n 12 | tr '\n' ' ' || true)"
+            if [[ -z "$summary" ]]; then
+              summary="$(tail -n 20 "$log" | tr '\n' ' ')"
+            fi
+            summary="${summary//'%'/'%25'}"
+            summary="${summary//$'\r'/'%0D'}"
+            summary="${summary//$'\n'/'%0A'}"
+            echo "::error title=${title}::${summary}"
+          }
+
+          run_logged() {
+            local title="$1"
+            local log="$2"
+            shift 2
+            set +e
+            "$@" 2>&1 | tee "$log"
+            local status=${PIPESTATUS[0]}
+            set -e
+            if (( status != 0 )); then
+              annotate_failure "$title" "$log"
+              return "$status"
+            fi
+          }
+
           for variant in Core Full; do
             slug="$(printf '%s' "$variant" | tr '[:upper:]' '[:lower:]')"
             build="build-native-pr-$slug"
-            cmake -S . -B "$build" -G Ninja \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DBUILD_TESTING=ON \
-              -DTHOTHPAD_PACKAGE_VARIANT="$variant" \
-              -DTHOTHPAD_BUNDLE_ENGINE=OFF
-            cmake --build "$build"
-            ctest --test-dir "$build" --output-on-failure
+            configure_log="$RUNNER_TEMP/linux-${slug}-configure.log"
+            build_log="$RUNNER_TEMP/linux-${slug}-build.log"
+            test_log="$RUNNER_TEMP/linux-${slug}-test.log"
+            run_logged "Ubuntu ${variant} configure failed" "$configure_log" \
+              cmake -S . -B "$build" -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DBUILD_TESTING=ON \
+                -DTHOTHPAD_PACKAGE_VARIANT="$variant" \
+                -DTHOTHPAD_BUNDLE_ENGINE=OFF
+            run_logged "Ubuntu ${variant} build failed" "$build_log" \
+              cmake --build "$build"
+            run_logged "Ubuntu ${variant} tests failed" "$test_log" \
+              ctest --test-dir "$build" --output-on-failure
           done
 
   macos:
@@ -241,14 +276,49 @@ jobs:
           craft_root="$RUNNER_TEMP/CraftRoot"
           source "$craft_root/craft/craftenv.sh"
           cd "$GITHUB_WORKSPACE"
+
+          annotate_failure() {
+            local title="$1"
+            local log="$2"
+            local summary
+            summary="$(grep -E 'CMake Error|FAILED:|fatal error:|(^|[^A-Za-z])error:|undefined reference|ld: |ninja: error|[0-9]+% tests passed|The following tests FAILED' "$log" | tail -n 12 | tr '\n' ' ' || true)"
+            if [[ -z "$summary" ]]; then
+              summary="$(tail -n 20 "$log" | tr '\n' ' ')"
+            fi
+            summary="${summary//'%'/'%25'}"
+            summary="${summary//$'\r'/'%0D'}"
+            summary="${summary//$'\n'/'%0A'}"
+            echo "::error title=${title}::${summary}"
+          }
+
+          run_logged() {
+            local title="$1"
+            local log="$2"
+            shift 2
+            set +e
+            "$@" 2>&1 | tee "$log"
+            local status=${PIPESTATUS[0]}
+            set -e
+            if (( status != 0 )); then
+              annotate_failure "$title" "$log"
+              return "$status"
+            fi
+          }
+
           for variant in Core Full; do
             slug="$(printf '%s' "$variant" | tr '[:upper:]' '[:lower:]')"
             build="build-native-pr-$slug"
-            cmake -S . -B "$build" -G Ninja \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DBUILD_TESTING=ON \
-              -DTHOTHPAD_PACKAGE_VARIANT="$variant" \
-              -DTHOTHPAD_BUNDLE_ENGINE=OFF
-            cmake --build "$build"
-            ctest --test-dir "$build" --output-on-failure
+            configure_log="$RUNNER_TEMP/macos-${slug}-configure.log"
+            build_log="$RUNNER_TEMP/macos-${slug}-build.log"
+            test_log="$RUNNER_TEMP/macos-${slug}-test.log"
+            run_logged "macOS ${variant} configure failed" "$configure_log" \
+              cmake -S . -B "$build" -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DBUILD_TESTING=ON \
+                -DTHOTHPAD_PACKAGE_VARIANT="$variant" \
+                -DTHOTHPAD_BUNDLE_ENGINE=OFF
+            run_logged "macOS ${variant} build failed" "$build_log" \
+              cmake --build "$build"
+            run_logged "macOS ${variant} tests failed" "$test_log" \
+              ctest --test-dir "$build" --output-on-failure
           done
