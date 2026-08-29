@@ -7,6 +7,7 @@
 #include <QAbstractButton>
 #include <QAbstractItemModel>
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QFrame>
 #include <QLabel>
@@ -52,7 +53,7 @@ private slots:
     void lensColorsUseCompactSwatches();
     void advancedControlsStayInMenus();
     void narrowLayoutKeepsControlsInsideViewport();
-    void shortLayoutScrollsVertically();
+    void sidebarKeepsListsCompactWithoutOuterScrolling();
     void partOfSpeechLensesUseConciseLabels();
     void selectedLensShowsOnlyOrderedOccurrences();
     void largeLensLoadsSuggestionsInPages();
@@ -116,17 +117,34 @@ void ProseAwarenessWidgetTest::continuityNotesStayOutOfTheSidebar()
     QCOMPARE(widget.lockedFacts(), QStringList({QStringLiteral("Lazan keeps the brass monocle")}));
 }
 
-void ProseAwarenessWidgetTest::shortLayoutScrollsVertically()
+void ProseAwarenessWidgetTest::sidebarKeepsListsCompactWithoutOuterScrolling()
 {
     ProseAwarenessWidget widget;
-    widget.resize(320, 600);
+    widget.resize(320, 1200);
     widget.show();
     QTest::qWait(50);
 
-    auto *scrollArea = widget.findChild<QScrollArea *>(QStringLiteral("proseAwarenessScrollArea"));
-    QVERIFY(scrollArea);
-    QVERIFY(scrollArea->verticalScrollBar()->maximum() > 0);
-    QCOMPARE(scrollArea->horizontalScrollBar()->maximum(), 0);
+    QVERIFY(!widget.findChild<QScrollArea *>(QStringLiteral("proseAwarenessScrollArea")));
+
+    QTreeWidget *lensTree = nullptr;
+    for (QTreeWidget *tree : widget.findChildren<QTreeWidget *>()) {
+        if (tree->accessibleName() == QStringLiteral("Prose lenses")) {
+            lensTree = tree;
+            break;
+        }
+    }
+    QListView *findingView = findFindingView(widget);
+    QVERIFY(lensTree);
+    QVERIFY(findingView);
+    QCOMPARE(lensTree->height(), 322);
+    QCOMPARE(findingView->height(), 210);
+    QCOMPARE(lensTree->verticalScrollBarPolicy(), Qt::ScrollBarAsNeeded);
+    QCOMPARE(findingView->verticalScrollBarPolicy(), Qt::ScrollBarAsNeeded);
+
+    const int findingsTop = findingView->mapTo(&widget, QPoint(0, 0)).y();
+    lensTree->topLevelItem(1)->setCheckState(0, Qt::Unchecked);
+    QCoreApplication::processEvents();
+    QCOMPARE(findingView->mapTo(&widget, QPoint(0, 0)).y(), findingsTop);
 }
 
 void ProseAwarenessWidgetTest::programmaticLensUpdatesDoNotEmitUserChanges()
@@ -709,10 +727,6 @@ void ProseAwarenessWidgetTest::destructiveActionsStayTogetherAndEmitScope()
     QSignalSpy deleteSpy(&widget, &ProseAwarenessWidget::deleteRequested);
     QSignalSpy undoSpy(&widget, &ProseAwarenessWidget::undoRequested);
     QSignalSpy deleteAllSpy(&widget, &ProseAwarenessWidget::deleteAllRequested);
-    auto *scrollArea = widget.findChild<QScrollArea *>(QStringLiteral("proseAwarenessScrollArea"));
-    QVERIFY(scrollArea);
-    scrollArea->ensureWidgetVisible(deleteButton);
-    QTest::qWait(25);
     QTest::mouseClick(deleteButton, Qt::LeftButton);
     QTest::mouseClick(undoButton, Qt::LeftButton);
     QCOMPARE(deleteSpy.count(), 1);

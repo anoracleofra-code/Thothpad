@@ -27,8 +27,6 @@
 #include <QPalette>
 #include <QPlainTextEdit>
 #include <QPushButton>
-#include <QResizeEvent>
-#include <QScrollArea>
 #include <QSet>
 #include <QShortcut>
 #include <QSignalBlocker>
@@ -88,21 +86,6 @@ public:
         painter->setPen(foreground);
         painter->drawText(badgeRect, Qt::AlignCenter, text);
         painter->restore();
-    }
-};
-
-class SidebarScrollArea final : public QScrollArea
-{
-public:
-    using QScrollArea::QScrollArea;
-
-protected:
-    void resizeEvent(QResizeEvent *event) override
-    {
-        QScrollArea::resizeEvent(event);
-        if (widget()) {
-            widget()->setFixedWidth(viewport()->width());
-        }
     }
 };
 
@@ -440,6 +423,7 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     m_categoryTree->setRootIsDecorated(false);
     m_categoryTree->setUniformRowHeights(true);
     m_categoryTree->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_categoryTree->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     m_categoryTree->setMinimumWidth(0);
     m_categoryTree->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     m_categoryTree->setItemDelegateForColumn(1, new LensCountDelegate(m_categoryTree));
@@ -448,11 +432,9 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     // Match the redesign's lens card.  The additional engine lenses
     // remain available through the card's own scrollbar instead of pushing the
     // observations and actions below the fold.
-    // Ten compact primary rows fit without leaving a dead band below Grammar.
-    // Repetition and Grammar stay visible next to the other primaries: their
-    // findings render by default, so invisible toggles read as bugs.
-    // Advanced lenses remain available through the Tools toggle and tree scroll.
-    m_categoryTree->setFixedHeight(358);
+    // Keep nine primary lenses visible. The navigator itself scrolls for the
+    // remaining lens, while the surrounding sidebar stays fixed in place.
+    m_categoryTree->setFixedHeight(322);
     m_categoryTree->setObjectName(QStringLiteral("proseAwarenessCategoryTree"));
     m_categoryTree->setAccessibleName(tr("Prose lenses"));
     m_categoryTree->setAccessibleDescription(tr("Check lenses to enable them. Open the context menu for color, timing, and decoration choices."));
@@ -504,9 +486,10 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     m_findingView->setTextElideMode(Qt::ElideRight);
     m_findingView->setMinimumWidth(0);
     m_findingView->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-    // Keep the six-row observation viewport used by the redesign.  The outer
-    // sidebar scroll area handles shorter windows and any expanded detail card.
-    m_findingView->setFixedHeight(252);
+    m_findingView->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    // Keep five observations visible; additional matches scroll inside this
+    // list so the selected-observation actions stay in the static sidebar.
+    m_findingView->setFixedHeight(210);
     m_findingView->setObjectName(QStringLiteral("proseAwarenessFindingView"));
     m_findingView->setAccessibleName(tr("Prose observations"));
 
@@ -677,12 +660,6 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     findingsLayout->addWidget(detailsSurface);
     layout->addWidget(findingsSurface);
 
-    auto *scrollArea = new SidebarScrollArea(this);
-    scrollArea->setObjectName(QStringLiteral("proseAwarenessScrollArea"));
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setFrameShape(QFrame::NoFrame);
-    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scrollArea->setWidget(content);
     auto *outerLayout = new QVBoxLayout(this);
     outerLayout->setContentsMargins(0, 0, 0, 0);
     outerLayout->setSpacing(0);
@@ -695,7 +672,7 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     headerSurfaceLayout->setContentsMargins(16, 14, 16, 14);
     headerSurfaceLayout->addLayout(header);
     outerLayout->addWidget(headerSurface);
-    outerLayout->addWidget(scrollArea, 1);
+    outerLayout->addWidget(content, 1);
     connect(editProfileAction, &QAction::triggered, m_profileEditButton, &QPushButton::click);
     connect(importProfileAction, &QAction::triggered, m_profileImportButton, &QPushButton::click);
     connect(exportProfileAction, &QAction::triggered, m_profileExportButton, &QPushButton::click);
