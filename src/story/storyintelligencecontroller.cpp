@@ -190,28 +190,6 @@ StoryIntelligenceController::StoryIntelligenceController(
     connect(m_editor->document(), &QTextDocument::contentsChange, this, [this](int, int, int) {
         ++m_revision;
     });
-    if (auto *document = qobject_cast<MarkdownDocument *>(m_editor->document())) {
-        connect(document, &MarkdownDocument::filePathChanged, this, [this]() {
-            ++m_revision;
-            const bool hadPendingTurn = !m_chatRequestId.isEmpty()
-                || m_pendingChat.waitingForCredential
-                || m_pendingChat.asyncTool.active
-                || !m_pendingChat.prompt.isEmpty();
-            if (!m_chatRequestId.isEmpty()) {
-                m_engine->cancel(m_chatRequestId);
-                m_chatRequestId.clear();
-            }
-            resetPendingChat();
-            m_widget->setBusy(false);
-            m_editor->textFormatOverlayController()->clearChannel(StoryOverlayChannel);
-            m_annotations = {};
-            m_widget->setAnnotations({});
-            if (hadPendingTurn) {
-                m_widget->setStatusMessage(
-                    tr("Document changed; the previous Story Intelligence turn was discarded."));
-            }
-        });
-    }
 }
 
 void StoryIntelligenceController::setToolServices(
@@ -851,6 +829,7 @@ void StoryIntelligenceController::dispatchPendingChat(const QString &apiKey)
     // Text-changing tools may have completed in a previous tool round, so the
     // current revision/document are sampled again for every model turn.
     m_pendingChat.revision = m_revision;
+    m_pendingChat.documentPath = currentDocumentPath();
 
     QJsonObject storyPayload;
     storyPayload.insert(QStringLiteral("kind"), QStringLiteral("story_intelligence_v1"));
@@ -858,7 +837,7 @@ void StoryIntelligenceController::dispatchPendingChat(const QString &apiKey)
     storyPayload.insert(QStringLiteral("document"), m_editor->toPlainText());
     // document_path/project_root are consumed only by the local engine's
     // retrieval layer. build_story_messages does not forward them to the model.
-    storyPayload.insert(QStringLiteral("document_path"), currentDocumentPath());
+    storyPayload.insert(QStringLiteral("document_path"), m_pendingChat.documentPath);
     storyPayload.insert(QStringLiteral("document_revision"), m_pendingChat.revision);
     storyPayload.insert(QStringLiteral("project_root"), m_projectRoot);
     storyPayload.insert(QStringLiteral("scene_context"),
@@ -1215,6 +1194,19 @@ void StoryIntelligenceController::handleResponse(
     const QJsonObject result = response.value(QStringLiteral("result")).toObject();
     const QJsonObject story = result.value(QStringLiteral("story_intelligence")).toObject();
     const QJsonArray toolCalls = story.value(QStringLiteral("tool_calls")).toArray();
+    const bool staleDocumentContext = m_pendingChat.revision != m_revision
+        || m_pendingChat.documentPath != currentDocumentPath();
+
+    if (!toolCalls.isEmpty() && m_harness && staleDocumentContext) {
+        QJsonObject staleStory = story;
+        staleStory.remove(QStringLiteral("tool_calls"));
+        staleStory.remove(QStringLiteral("annotations"));
+        staleStory.insert(
+            QStringLiteral("message"),
+            tr("The manuscript changed while AI was responding, so no requested ThothPad tools were run. Resend the message if you still want those actions."));
+        finishChatTurn(staleStory, result);
+        return;
+    }
 
     if (!toolCalls.isEmpty() && m_harness) {
         if (m_pendingChat.toolRound >= MaximumToolRounds) {
