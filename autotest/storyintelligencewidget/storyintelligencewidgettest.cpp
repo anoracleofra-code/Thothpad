@@ -11,6 +11,7 @@
 #include <QTest>
 
 #include "../../src/story/storyintelligencewidget.h"
+#include "../../src/story/storytoolharness.h"
 
 using namespace ghostwriter;
 
@@ -22,6 +23,8 @@ private slots:
     void goToEmitsExactAnnotationRange();
     void activityCardEmitsOperationSpecificUndo();
     void activityCardWithoutOperationHasNoUndoButton();
+    void currentModelRevisionAllowsMutation();
+    void staleModelRevisionRejectsMutation();
 };
 
 namespace
@@ -89,6 +92,17 @@ void StoryIntelligenceWidgetTest::activityCardWithoutOperationHasNoUndoButton()
         QStringLiteral("Fresh findings are available"));
 
     QVERIFY(!buttonWithText(widget, QStringLiteral("Undo AI edit")));
+}
+
+void StoryIntelligenceWidgetTest::currentModelRevisionAllowsMutation()
+{
+    QVERIFY(StoryToolHarness::mutationRevisionCurrent(12, 12));
+}
+
+void StoryIntelligenceWidgetTest::staleModelRevisionRejectsMutation()
+{
+    QVERIFY(!StoryToolHarness::mutationRevisionCurrent(12, 13));
+    QVERIFY(!StoryToolHarness::mutationRevisionCurrent(-1, 0));
 }
 
 QTEST_MAIN(StoryIntelligenceWidgetTest)
