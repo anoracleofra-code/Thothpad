@@ -190,6 +190,28 @@ StoryIntelligenceController::StoryIntelligenceController(
     connect(m_editor->document(), &QTextDocument::contentsChange, this, [this](int, int, int) {
         ++m_revision;
     });
+    if (auto *document = qobject_cast<MarkdownDocument *>(m_editor->document())) {
+        connect(document, &MarkdownDocument::filePathChanged, this, [this]() {
+            ++m_revision;
+            const bool hadPendingTurn = !m_chatRequestId.isEmpty()
+                || m_pendingChat.waitingForCredential
+                || m_pendingChat.asyncTool.active
+                || !m_pendingChat.prompt.isEmpty();
+            if (!m_chatRequestId.isEmpty()) {
+                m_engine->cancel(m_chatRequestId);
+                m_chatRequestId.clear();
+            }
+            resetPendingChat();
+            m_widget->setBusy(false);
+            m_editor->textFormatOverlayController()->clearChannel(StoryOverlayChannel);
+            m_annotations = {};
+            m_widget->setAnnotations({});
+            if (hadPendingTurn) {
+                m_widget->setStatusMessage(
+                    tr("Document changed; the previous Story Intelligence turn was discarded."));
+            }
+        });
+    }
 }
 
 void StoryIntelligenceController::setToolServices(
