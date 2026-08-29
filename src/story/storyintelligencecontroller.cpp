@@ -331,7 +331,16 @@ void StoryIntelligenceController::loadProject(const QString &root)
         m_widget->setStatusMessage(tr("Project folder is unavailable."));
         return;
     }
-    m_projectRoot = QDir::cleanPath(canonical);
+    const QString nextProjectRoot = QDir::cleanPath(canonical);
+    if (nextProjectRoot != m_projectRoot) {
+        if (!m_chatRequestId.isEmpty()) {
+            m_engine->cancel(m_chatRequestId);
+            m_chatRequestId.clear();
+        }
+        resetPendingChat();
+        m_widget->setBusy(false);
+    }
+    m_projectRoot = nextProjectRoot;
     QSettings().setValue(QStringLiteral("story/projectRoot"), m_projectRoot);
     if (m_transactions) {
         m_transactions->setProjectRoot(m_projectRoot);
