@@ -33,6 +33,7 @@ public:
         AgentEditTransactionManager *transactions,
         QObject *parent = nullptr);
 
+    void resetForContext();
     QJsonArray recentEvents(int limit = 24) const;
     void noteSuggestionDecision(
         const QString &type,
