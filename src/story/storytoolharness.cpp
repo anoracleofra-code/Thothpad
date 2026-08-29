@@ -813,3 +813,4 @@ QJsonObject StoryToolHarness::execute(
     emit toolExecuted(toolId, result);
     return result;
 }
+} // namespace ghostwriter
