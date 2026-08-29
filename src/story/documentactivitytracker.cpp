@@ -60,6 +60,16 @@ DocumentActivityTracker::DocumentActivityTracker(
             this, &DocumentActivityTracker::detectUndoRedo);
 }
 
+void DocumentActivityTracker::resetForContext()
+{
+    m_hashTimer.stop();
+    m_events = {};
+    m_recentAgentTransactions = {};
+    m_agentMutationDepth = 0;
+    m_shadowText = m_editor->toPlainText();
+    m_lastSettledHash = textHash(m_shadowText);
+}
+
 QString DocumentActivityTracker::textHash(const QString &text)
 {
     return QString::fromLatin1(
