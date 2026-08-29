@@ -87,7 +87,18 @@ set_package_properties(KF${KF_MAJOR_VERSION}DocTools PROPERTIES DESCRIPTION
 )
 
 set(CMARK_TESTS OFF)
+if(APPLE)
+    # KDECMakeSettings enables CMAKE_MACOSX_BUNDLE for application targets.
+    # The vendored cmark-gfm executable is a CLI helper, not an app bundle;
+    # keep its upstream RUNTIME install rule valid under CMake 4 (CMP0006).
+    set(_THOTHPAD_CMAKE_MACOSX_BUNDLE "${CMAKE_MACOSX_BUNDLE}")
+    set(CMAKE_MACOSX_BUNDLE OFF)
+endif()
 add_subdirectory(3rdparty/cmark-gfm EXCLUDE_FROM_ALL)
+if(APPLE)
+    set(CMAKE_MACOSX_BUNDLE "${_THOTHPAD_CMAKE_MACOSX_BUNDLE}")
+    unset(_THOTHPAD_CMAKE_MACOSX_BUNDLE)
+endif()
 add_subdirectory(src)
 
 if(KF${QT_MAJOR_VERSION}DocTools_FOUND)
