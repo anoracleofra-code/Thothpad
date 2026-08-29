@@ -145,7 +145,8 @@ void installStoryIntelligence(ghostwriter::MainWindow *window)
         &ghostwriter::AgentEditTransactionManager::transactionApplied,
         dock,
         [widget](const QJsonObject &transaction) {
-            if (!transaction.value(QStringLiteral("ok")).toBool()) {
+            if (!transaction.value(QStringLiteral("ok")).toBool()
+                || transaction.value(QStringLiteral("no_change")).toBool()) {
                 return;
             }
             const QString operationId = transaction.value(QStringLiteral("operation_id")).toString();
