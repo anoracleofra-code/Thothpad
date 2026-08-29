@@ -289,3 +289,4 @@ QJsonArray DocumentActivityTracker::recentEvents(int limit) const
     }
     return result;
 }
+}
