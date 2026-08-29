@@ -412,6 +412,7 @@ QJsonObject AgentEditTransactionManager::runEditorCommand(
 
     QTextCursor editBlock(m_editor->document());
     editBlock.beginEditBlock();
+#if defined(__cpp_exceptions) || defined(_CPPUNWIND)
     try {
         command();
     } catch (const std::exception &exception) {
@@ -433,6 +434,9 @@ QJsonObject AgentEditTransactionManager::runEditorCommand(
         emit transactionFailed(failed);
         return failed;
     }
+#else
+    command();
+#endif
     editBlock.endEditBlock();
     m_inTransaction = false;
 
@@ -518,7 +522,7 @@ QJsonArray AgentEditTransactionManager::recentTransactions(int limit) const
 {
     const int boundedLimit = std::max(0, std::min(limit, MaximumRecentTransactions));
     QJsonArray result;
-    const int start = std::max(0, m_recentTransactions.size() - boundedLimit);
+    const int start = std::max(0, static_cast<int>(m_recentTransactions.size()) - boundedLimit);
     for (int index = start; index < m_recentTransactions.size(); ++index) {
         result.append(m_recentTransactions.at(index));
     }
