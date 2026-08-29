@@ -926,7 +926,7 @@ bool StoryIntelligenceController::authorizeTool(
 
     QString summary = arguments.value(QStringLiteral("summary")).toString().trimmed();
     if (toolId == QStringLiteral("apply_objective_grammar_fixes") && m_harness) {
-        const QJsonObject prose = m_harness->snapshot().value(QStringLiteral("prose")).toObject();
+        const QJsonObject prose = m_harness->proseSnapshot();
         const int reported = prose.value(QStringLiteral("counts")).toObject()
                                  .value(QStringLiteral("grammar_mechanics")).toInt();
         int deterministic = 0;
@@ -1035,8 +1035,7 @@ void StoryIntelligenceController::finishPendingTool(bool completed, const QStrin
         } else if (wait.waitKind == QStringLiteral("category_hydration")) {
             nativeResult.insert(QStringLiteral("category"), wait.category);
         }
-        nativeResult.insert(QStringLiteral("prose"),
-                            m_harness->snapshot().value(QStringLiteral("prose")));
+        nativeResult.insert(QStringLiteral("prose"), m_harness->proseSnapshot());
         toolResult.insert(QStringLiteral("result"), modelSafeToolResult(nativeResult));
     } else {
         toolResult.insert(QStringLiteral("error"),
