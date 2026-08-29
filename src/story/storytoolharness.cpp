@@ -308,6 +308,7 @@ QJsonObject StoryToolHarness::proseState(int findingLimit) const
 
 QJsonObject StoryToolHarness::snapshot() const
 {
+    m_modelDocumentRevision = m_editor->document()->revision();
     QJsonObject result;
     result.insert(QStringLiteral("app"), appState());
     result.insert(QStringLiteral("editor"), editorState());
@@ -707,6 +708,20 @@ QJsonObject StoryToolHarness::execute(
 {
     QJsonObject result;
 
+    const bool manuscriptMutation = allowBoundedEdits || allowBulkEdits;
+    const int currentRevision = m_editor->document()->revision();
+    if (manuscriptMutation
+        && !mutationRevisionCurrent(m_modelDocumentRevision, currentRevision)) {
+        result = failure(
+            tr("The manuscript changed after Story Intelligence read it. Re-read the current document before making a manuscript change."),
+            QStringLiteral("stale_document_revision"));
+        result.insert(QStringLiteral("expected_revision"), m_modelDocumentRevision);
+        result.insert(QStringLiteral("current_revision"), currentRevision);
+        result.insert(QStringLiteral("tool_id"), toolId);
+        emit toolExecuted(toolId, result);
+        return result;
+    }
+
     if (toolId == QStringLiteral("get_app_state")) {
         result = success(appState());
     } else if (toolId == QStringLiteral("get_editor_state")) {
@@ -797,5 +812,4 @@ QJsonObject StoryToolHarness::execute(
     result.insert(QStringLiteral("tool_id"), toolId);
     emit toolExecuted(toolId, result);
     return result;
-}
 }
