@@ -60,6 +60,22 @@ public:
     }
 
     /**
+     * Any native tool call returned by the model must still target the exact
+     * document context that was exposed for that model turn. This prevents a
+     * late response from acting on a different manuscript after navigation,
+     * while keeping harmless text-only responses non-destructive.
+     */
+    static bool modelDocumentContextCurrent(
+        int exposedRevision,
+        int currentRevision,
+        const QString &exposedPath,
+        const QString &currentPath)
+    {
+        return mutationRevisionCurrent(exposedRevision, currentRevision)
+            && exposedPath == currentPath;
+    }
+
+    /**
      * Native-only progress state used by StoryIntelligenceController to resume
      * asynchronous tool rounds. This object is deliberately not inserted into
      * the model prompt.
