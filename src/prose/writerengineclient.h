@@ -67,6 +67,7 @@ private:
     qsizetype m_bufferOffset = 0;
     QHash<QString, QString> m_pendingOperations;
     QHash<QString, qint64> m_deadlines;
+    QSet<QString> m_timedOutRequests;
     QTimer m_deadlineTimer;
     QString m_enginePath;
     bool m_ready = false;
