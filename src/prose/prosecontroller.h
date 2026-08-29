@@ -103,6 +103,11 @@ struct AgentProseSnapshotContract {
     {
         return snapshotAvailable && categoryKnown;
     }
+
+    static bool analysisResponseCurrent(int requestRevision, int responseRevision, int currentRevision)
+    {
+        return requestRevision == currentRevision && responseRevision == currentRevision;
+    }
 };
 
 class ProseController : public QObject
