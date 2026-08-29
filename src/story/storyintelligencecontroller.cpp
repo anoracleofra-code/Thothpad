@@ -488,6 +488,7 @@ void StoryIntelligenceController::editSceneContext()
     m_metadata.insert(QStringLiteral("scene_context"), next);
     QString error;
     if (!saveProjectMetadata(&error)) {
+        loadProjectMetadata();
         MessageBoxHelper::warning(m_widget, tr("Scene context not saved"), error);
         return;
     }
@@ -539,6 +540,7 @@ void StoryIntelligenceController::addCharacter()
     m_metadata.insert(QStringLiteral("characters"), characters);
     QString error;
     if (!saveProjectMetadata(&error)) {
+        loadProjectMetadata();
         MessageBoxHelper::warning(m_widget, tr("Character not saved"), error);
         return;
     }
@@ -601,6 +603,7 @@ void StoryIntelligenceController::editCharacters()
     m_metadata.insert(QStringLiteral("characters"), characters);
     QString error;
     if (!saveProjectMetadata(&error)) {
+        loadProjectMetadata();
         MessageBoxHelper::warning(m_widget, tr("Character not saved"), error);
         return;
     }
