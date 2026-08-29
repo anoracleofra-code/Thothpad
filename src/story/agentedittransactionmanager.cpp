@@ -447,6 +447,7 @@ QJsonObject AgentEditTransactionManager::runEditorCommand(
         record.insert(QStringLiteral("no_change"), true);
         record.insert(QStringLiteral("after_revision"), m_editor->document()->revision());
         record.insert(QStringLiteral("after_sha256"), afterHash);
+        emit transactionApplied(record);
         return record;
     }
 
@@ -527,5 +528,4 @@ QJsonArray AgentEditTransactionManager::recentTransactions(int limit) const
         result.append(m_recentTransactions.at(index));
     }
     return result;
-}
 }
