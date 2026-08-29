@@ -50,6 +50,16 @@ public:
     QJsonObject snapshot() const;
 
     /**
+     * Mutation tools are only valid against the manuscript revision exposed
+     * to the model. Any intervening human or native edit forces a fresh model
+     * turn before Story Intelligence may mutate the document.
+     */
+    static bool mutationRevisionCurrent(int exposedRevision, int currentRevision)
+    {
+        return exposedRevision >= 0 && exposedRevision == currentRevision;
+    }
+
+    /**
      * Native-only progress state used by StoryIntelligenceController to resume
      * asynchronous tool rounds. This object is deliberately not inserted into
      * the model prompt.
@@ -89,6 +99,7 @@ private:
     ProseAwarenessWidget *m_proseWidget;
     AgentEditTransactionManager *m_transactions;
     KActionCollection *m_actions;
+    mutable int m_modelDocumentRevision = -1;
 };
 }
 
