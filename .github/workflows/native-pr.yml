@@ -59,7 +59,7 @@ jobs:
           # globally. Craft explicitly warns that sh/gcc/g++/cpp from those
           # trees contaminate an MSVC ABI and can make Autotools packages pick
           # C:\mingw64 tools. Preserve only the host facilities Craft actually
-          # needs until craftenv.ps1 installs its controlled environment.
+          # needs until Craft creates its controlled child-process environment.
           $pythonExe = (Get-Command python.exe).Source
           $pwshExe = (Get-Command pwsh.exe).Source
           Invoke-Logged "Install bootstrap tools" {
@@ -124,87 +124,67 @@ jobs:
           if ($settings -notmatch '(?m)^\s*ABI\s*=\s*windows-cl-msvc2022-x86_64\s*$') {
             throw "Craft selected an unexpected Windows ABI.`n$settings"
           }
-          if (-not (Test-Path C:\CraftRoot\craft\craftenv.ps1)) {
-            throw "Craft bootstrap did not complete; craftenv.ps1 is missing."
+          $craftPy = "C:\CraftRoot\craft\bin\craft.py"
+          if (-not (Test-Path $craftPy)) {
+            throw "Craft bootstrap did not complete; craft.py is missing."
           }
-          "==> Craft bootstrap validated: settings, ABI, and craftenv.ps1 present" |
+          "==> Craft bootstrap validated: settings, ABI, and craft.py present" |
             Tee-Object -FilePath $bootstrapLog -Append
 
-          # craftenv.ps1 is an upstream environment loader. It invokes native
-          # Python helpers that intentionally emit status text on stderr while
-          # being dot-sourced. Do not impose either PowerShell Error-stream or
-          # native-command Stop semantics inside that loader; restore both
-          # immediately afterward for every Craft package install we own.
-          $savedErrorActionPreference = $ErrorActionPreference
-          $savedNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
-          try {
-            $ErrorActionPreference = "Continue"
-            $PSNativeCommandUseErrorActionPreference = $false
-            "==> Load Craft environment" | Tee-Object -FilePath $bootstrapLog -Append
-            . C:\CraftRoot\craft\craftenv.ps1
-          } finally {
-            $ErrorActionPreference = $savedErrorActionPreference
-            $PSNativeCommandUseErrorActionPreference = $savedNativeErrorPreference
+          # Do not dot-source craftenv.ps1 in GitHub's parent PowerShell.
+          # CraftBootstrap itself invokes craft.py with this exact Python
+          # interpreter, and craft.py initializes CraftSetupHelper inside its
+          # own process. Keep that environment isolated and let the CLI own it.
+          Invoke-Logged "Craft extra-cmake-modules" {
+            & $pythonExe $craftPy kde/frameworks/extra-cmake-modules
           }
-
-          if (-not $env:CraftRoot) {
-            throw "craftenv.ps1 did not establish CraftRoot."
+          Invoke-Logged "Craft sonnet" {
+            & $pythonExe $craftPy kde/frameworks/tier1/sonnet
           }
-          $expectedCraftRoot = (Resolve-Path C:\CraftRoot\craft).Path
-          $actualCraftRoot = (Resolve-Path $env:CraftRoot).Path
-          if ($actualCraftRoot -ne $expectedCraftRoot) {
-            throw "craftenv.ps1 established unexpected CraftRoot '$env:CraftRoot'; expected '$expectedCraftRoot'."
+          Invoke-Logged "Craft kconfigwidgets" {
+            & $pythonExe $craftPy kde/frameworks/tier3/kconfigwidgets
           }
-          if (-not $env:CRAFT_PYTHON -or -not (Test-Path $env:CRAFT_PYTHON)) {
-            throw "craftenv.ps1 did not establish a usable CRAFT_PYTHON."
+          Invoke-Logged "Craft kxmlgui" {
+            & $pythonExe $craftPy kde/frameworks/tier3/kxmlgui
           }
-          if (-not (Get-Command craft -CommandType Function -ErrorAction SilentlyContinue)) {
-            throw "craftenv.ps1 completed without exposing the global craft function."
+          Invoke-Logged "Craft qtkeychain" {
+            & $pythonExe $craftPy qt-libs/qtkeychain
           }
-          "Craft environment ready: CraftRoot=$env:CraftRoot; CRAFT_PYTHON=$env:CRAFT_PYTHON" |
-            Tee-Object -FilePath $bootstrapLog -Append
-
-          Invoke-Logged "Craft extra-cmake-modules" { craft kde/frameworks/extra-cmake-modules }
-          Invoke-Logged "Craft sonnet" { craft kde/frameworks/tier1/sonnet }
-          Invoke-Logged "Craft kconfigwidgets" { craft kde/frameworks/tier3/kconfigwidgets }
-          Invoke-Logged "Craft kxmlgui" { craft kde/frameworks/tier3/kxmlgui }
-          Invoke-Logged "Craft qtkeychain" { craft qt-libs/qtkeychain }
-          Invoke-Logged "Craft qtsvg" { craft libs/qt/qtsvg }
-          Invoke-Logged "Craft qtwebchannel" { craft libs/qt/qtwebchannel }
-          Invoke-Logged "Craft qtwebengine" { craft libs/qt/qtwebengine }
+          Invoke-Logged "Craft qtsvg" {
+            & $pythonExe $craftPy libs/qt/qtsvg
+          }
+          Invoke-Logged "Craft qtwebchannel" {
+            & $pythonExe $craftPy libs/qt/qtwebchannel
+          }
+          Invoke-Logged "Craft qtwebengine" {
+            & $pythonExe $craftPy libs/qt/qtwebengine
+          }
       - name: Configure, build, and test Core + Full
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $true
           $bootstrapLog = Join-Path $env:RUNNER_TEMP "windows-bootstrap.log"
-          $savedErrorActionPreference = $ErrorActionPreference
-          $savedNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
-          try {
-            $ErrorActionPreference = "Continue"
-            $PSNativeCommandUseErrorActionPreference = $false
-            "==> Reload Craft environment for build/test" | Tee-Object -FilePath $bootstrapLog -Append
-            . C:\CraftRoot\craft\craftenv.ps1
-          } finally {
-            $ErrorActionPreference = $savedErrorActionPreference
-            $PSNativeCommandUseErrorActionPreference = $savedNativeErrorPreference
-          }
-          if (-not $env:CraftRoot -or -not $env:CRAFT_PYTHON) {
-            throw "Craft environment reload did not establish CraftRoot and CRAFT_PYTHON."
-          }
-          if (-not (Get-Command craft -CommandType Function -ErrorAction SilentlyContinue)) {
-            throw "Craft environment reload did not expose the global craft function."
+          $pythonExe = (Get-Command python.exe).Source
+          $pwshExe = (Get-Command pwsh.exe).Source
+          $craftPy = "C:\CraftRoot\craft\bin\craft.py"
+          if (-not (Test-Path $craftPy)) {
+            throw "Craft CLI is unavailable for build/test."
           }
 
-          # Upstream craftenv.ps1 intentionally changes directory to CraftRoot.
-          # Return to the checkout before using relative CMake source/build paths.
+          # craft.py --run is Craft's supported child-process launcher. The
+          # driver receives the complete MSVC/Qt/KF environment without
+          # mutating, clearing, or changing directory in this parent shell.
+          $driver = Join-Path $env:RUNNER_TEMP "windows-native-driver.ps1"
+          @'
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           Set-Location $env:GITHUB_WORKSPACE
-          "Windows native build working directory: $(Get-Location)" |
-            Tee-Object -FilePath $bootstrapLog -Append
-
+          Write-Host "Windows native build working directory: $(Get-Location)"
           $env:QT_QPA_PLATFORM = "offscreen"
           $env:QT_PLUGIN_PATH = "C:\CraftRoot\plugins"
           $env:QT_QPA_PLATFORM_PLUGIN_PATH = "C:\CraftRoot\plugins\platforms"
+
           foreach ($variant in @("Core", "Full")) {
             $slug = $variant.ToLowerInvariant()
             $build = "build-native-pr-$slug"
@@ -216,6 +196,11 @@ jobs:
             cmake --build $build --config Release
             ctest --test-dir $build -C Release --output-on-failure
           }
+          '@ | Set-Content -Path $driver -Encoding utf8
+
+          "==> Launch Windows native build inside Craft environment" |
+            Tee-Object -FilePath $bootstrapLog -Append
+          & $pythonExe $craftPy --run $pwshExe -NoProfile -ExecutionPolicy Bypass -File $driver
       - name: Upload native failure logs
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
