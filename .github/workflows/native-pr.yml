@@ -127,8 +127,39 @@ jobs:
           if (-not (Test-Path C:\CraftRoot\craft\craftenv.ps1)) {
             throw "Craft bootstrap did not complete; craftenv.ps1 is missing."
           }
+          "==> Craft bootstrap validated: settings, ABI, and craftenv.ps1 present" |
+            Tee-Object -FilePath $bootstrapLog -Append
 
-          . C:\CraftRoot\craft\craftenv.ps1
+          # craftenv.ps1 is an upstream environment loader. It invokes native
+          # Python helpers while being dot-sourced. Do not impose PowerShell's
+          # native-command Stop semantics inside that loader; restore them
+          # immediately afterward for every Craft package install we own.
+          $savedNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
+          try {
+            $PSNativeCommandUseErrorActionPreference = $false
+            "==> Load Craft environment" | Tee-Object -FilePath $bootstrapLog -Append
+            . C:\CraftRoot\craft\craftenv.ps1
+          } finally {
+            $PSNativeCommandUseErrorActionPreference = $savedNativeErrorPreference
+          }
+
+          if (-not $env:CraftRoot) {
+            throw "craftenv.ps1 did not establish CraftRoot."
+          }
+          $expectedCraftRoot = (Resolve-Path C:\CraftRoot\craft).Path
+          $actualCraftRoot = (Resolve-Path $env:CraftRoot).Path
+          if ($actualCraftRoot -ne $expectedCraftRoot) {
+            throw "craftenv.ps1 established unexpected CraftRoot '$env:CraftRoot'; expected '$expectedCraftRoot'."
+          }
+          if (-not $env:CRAFT_PYTHON -or -not (Test-Path $env:CRAFT_PYTHON)) {
+            throw "craftenv.ps1 did not establish a usable CRAFT_PYTHON."
+          }
+          if (-not (Get-Command craft -CommandType Function -ErrorAction SilentlyContinue)) {
+            throw "craftenv.ps1 completed without exposing the global craft function."
+          }
+          "Craft environment ready: CraftRoot=$env:CraftRoot; CRAFT_PYTHON=$env:CRAFT_PYTHON" |
+            Tee-Object -FilePath $bootstrapLog -Append
+
           Invoke-Logged "Craft extra-cmake-modules" { craft kde/frameworks/extra-cmake-modules }
           Invoke-Logged "Craft sonnet" { craft kde/frameworks/tier1/sonnet }
           Invoke-Logged "Craft kconfigwidgets" { craft kde/frameworks/tier3/kconfigwidgets }
@@ -141,7 +172,29 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          . C:\CraftRoot\craft\craftenv.ps1
+          $PSNativeCommandUseErrorActionPreference = $true
+          $bootstrapLog = Join-Path $env:RUNNER_TEMP "windows-bootstrap.log"
+          $savedNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
+          try {
+            $PSNativeCommandUseErrorActionPreference = $false
+            "==> Reload Craft environment for build/test" | Tee-Object -FilePath $bootstrapLog -Append
+            . C:\CraftRoot\craft\craftenv.ps1
+          } finally {
+            $PSNativeCommandUseErrorActionPreference = $savedNativeErrorPreference
+          }
+          if (-not $env:CraftRoot -or -not $env:CRAFT_PYTHON) {
+            throw "Craft environment reload did not establish CraftRoot and CRAFT_PYTHON."
+          }
+          if (-not (Get-Command craft -CommandType Function -ErrorAction SilentlyContinue)) {
+            throw "Craft environment reload did not expose the global craft function."
+          }
+
+          # Upstream craftenv.ps1 intentionally changes directory to CraftRoot.
+          # Return to the checkout before using relative CMake source/build paths.
+          Set-Location $env:GITHUB_WORKSPACE
+          "Windows native build working directory: $(Get-Location)" |
+            Tee-Object -FilePath $bootstrapLog -Append
+
           $env:QT_QPA_PLATFORM = "offscreen"
           $env:QT_PLUGIN_PATH = "C:\CraftRoot\plugins"
           $env:QT_QPA_PLATFORM_PLUGIN_PATH = "C:\CraftRoot\plugins\platforms"
