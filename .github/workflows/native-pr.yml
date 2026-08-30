@@ -131,15 +131,19 @@ jobs:
             Tee-Object -FilePath $bootstrapLog -Append
 
           # craftenv.ps1 is an upstream environment loader. It invokes native
-          # Python helpers while being dot-sourced. Do not impose PowerShell's
-          # native-command Stop semantics inside that loader; restore them
+          # Python helpers that intentionally emit status text on stderr while
+          # being dot-sourced. Do not impose either PowerShell Error-stream or
+          # native-command Stop semantics inside that loader; restore both
           # immediately afterward for every Craft package install we own.
+          $savedErrorActionPreference = $ErrorActionPreference
           $savedNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
           try {
+            $ErrorActionPreference = "Continue"
             $PSNativeCommandUseErrorActionPreference = $false
             "==> Load Craft environment" | Tee-Object -FilePath $bootstrapLog -Append
             . C:\CraftRoot\craft\craftenv.ps1
           } finally {
+            $ErrorActionPreference = $savedErrorActionPreference
             $PSNativeCommandUseErrorActionPreference = $savedNativeErrorPreference
           }
 
@@ -174,12 +178,15 @@ jobs:
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $true
           $bootstrapLog = Join-Path $env:RUNNER_TEMP "windows-bootstrap.log"
+          $savedErrorActionPreference = $ErrorActionPreference
           $savedNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
           try {
+            $ErrorActionPreference = "Continue"
             $PSNativeCommandUseErrorActionPreference = $false
             "==> Reload Craft environment for build/test" | Tee-Object -FilePath $bootstrapLog -Append
             . C:\CraftRoot\craft\craftenv.ps1
           } finally {
+            $ErrorActionPreference = $savedErrorActionPreference
             $PSNativeCommandUseErrorActionPreference = $savedNativeErrorPreference
           }
           if (-not $env:CraftRoot -or -not $env:CRAFT_PYTHON) {
