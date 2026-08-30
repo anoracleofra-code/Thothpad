@@ -94,8 +94,30 @@ jobs:
           $craftCommit = $lock.craft.core_commit
           $bootstrap = Join-Path $env:RUNNER_TEMP "CraftBootstrap.py"
           Invoke-WebRequest "$env:CRAFT_BOOTSTRAP_ROOT/$craftCommit/setup/CraftBootstrap.py" -OutFile $bootstrap
+
+          # Craft's pinned gettext 0.22.3 recipe installs win-iconv first, but
+          # GNU's Autoconf library probe does not recognize the MSVC .lib and
+          # consequently drops iconv from the final gettextlib link. Keep the
+          # pinned Craft source and apply only the missing gettext link input.
+          # --localDev makes CraftBootstrap consume this deterministic patched
+          # copy instead of fetching a second, unpatched copy of the same SHA.
+          $craftArchive = Join-Path $env:RUNNER_TEMP "craft-$craftCommit.zip"
+          $craftExtract = Join-Path $env:RUNNER_TEMP "craft-$craftCommit-source"
+          Invoke-WebRequest "https://github.com/KDE/craft/archive/$craftCommit.zip" -OutFile $craftArchive
+          Expand-Archive -Path $craftArchive -DestinationPath $craftExtract
+          $craftSource = Join-Path $craftExtract "craft-$craftCommit"
+          $gettextRecipe = Join-Path $craftSource "blueprints\libs\gettext\gettext.py"
+          $recipe = Get-Content $gettextRecipe -Raw
+          $needle = "            self.subinfo.options.useShadowBuild = False"
+          $replacement = "            self.subinfo.options.configure.args += [`"LIBS=-liconv`"]`n$needle"
+          $patchedRecipe = $recipe.Replace($needle, $replacement)
+          if ($patchedRecipe -eq $recipe) {
+            throw "Pinned Craft gettext recipe changed; refusing to apply the MSVC iconv workaround blindly."
+          }
+          Set-Content -Path $gettextRecipe -Value $patchedRecipe -NoNewline
+
           Invoke-Logged "Bootstrap Craft $craftCommit" {
-            & $pythonExe $bootstrap --prefix C:\CraftRoot --branch $craftCommit --use-defaults
+            & $pythonExe $bootstrap --prefix C:\CraftRoot --branch $craftCommit --localDev $craftSource --use-defaults
           }
 
           $settings = Get-Content C:\CraftRoot\etc\CraftSettings.ini -Raw
