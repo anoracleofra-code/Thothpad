@@ -167,6 +167,29 @@ jobs:
           $bootstrapLog = Join-Path $env:RUNNER_TEMP "windows-bootstrap.log"
           $pythonExe = (Get-Command python.exe).Source
           $pwshExe = (Get-Command pwsh.exe).Source
+
+          # Each Actions step starts a fresh PowerShell process, so repeat the
+          # same host PATH fence used during bootstrap before Craft initializes
+          # its MSVC environment for the child build process.
+          $pythonDir = Split-Path $pythonExe
+          $pythonScripts = Join-Path $pythonDir "Scripts"
+          $gitCmd = "C:\Program Files\Git\cmd"
+          $pwshDir = Split-Path $pwshExe
+          $env:PATH = @(
+            $pythonDir,
+            $pythonScripts,
+            $gitCmd,
+            $pwshDir,
+            "$env:SystemRoot\System32",
+            "$env:SystemRoot",
+            "$env:SystemRoot\System32\Wbem"
+          ) -join ";"
+          foreach ($forbidden in @("sh.exe", "gcc.exe", "g++.exe", "cpp.exe")) {
+            if (Get-Command $forbidden -ErrorAction SilentlyContinue) {
+              throw "Hosted PATH sanitization failed before Craft child launch: $forbidden is still visible."
+            }
+          }
+
           $craftPy = "C:\CraftRoot\craft\bin\craft.py"
           if (-not (Test-Path $craftPy)) {
             throw "Craft CLI is unavailable for build/test."
