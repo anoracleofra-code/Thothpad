@@ -38,7 +38,30 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11.9"
-      - name: Bootstrap KDE Craft and native dependencies
+      # Keep the expensive toolchain in two layers. A failed dependency build
+      # can resume from the much smaller Craft-core cache, while ordinary
+      # source changes restore the complete native dependency cache.
+      - name: Restore Windows Craft dependencies
+        id: windows-craft-deps-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            C:\CraftRoot
+            !C:\CraftRoot\build
+            !C:\CraftRoot\download
+          key: windows-craft-deps-v1-${{ hashFiles('packaging/toolchain-lock.json', '.github/workflows/native-pr.yml') }}
+      - name: Restore Windows Craft core
+        if: steps.windows-craft-deps-cache.outputs.cache-hit != 'true'
+        id: windows-craft-core-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            C:\CraftRoot
+            !C:\CraftRoot\build
+            !C:\CraftRoot\download
+          key: windows-craft-core-v1-${{ hashFiles('packaging/toolchain-lock.json', '.github/workflows/native-pr.yml') }}
+      - name: Bootstrap KDE Craft core
+        if: steps.windows-craft-deps-cache.outputs.cache-hit != 'true' && steps.windows-craft-core-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -116,10 +139,10 @@ jobs:
           }
 
           # The pinned recipe is missing a comma between these two configure
-          # cache arguments. Python therefore concatenates them and drops the
-          # printf %n guard that gettext documents as required for MSVC.
-          # Without the guard, the installed msgfmt crashes while GLib builds
-          # its translations (Windows status 0xC0000409).
+          # cache arguments. Preserve the intended MSVC printf %n guard even
+          # though GLib translations are separately disabled below: the
+          # source-built msgfmt still crashes on hosted Windows after this
+          # guard is restored (Windows status 0xC0000409).
           $printfGuardNeedle = '                "ac_cv_func_memmove=yes"'
           $printfGuardReplacement = '                "ac_cv_func_memmove=yes",'
           $guardedRecipe = $patchedRecipe.Replace($printfGuardNeedle, $printfGuardReplacement)
@@ -157,11 +180,79 @@ jobs:
           }
           "==> Craft bootstrap validated: settings, ABI, and craft.py present" |
             Tee-Object -FilePath $bootstrapLog -Append
+      - name: Save Windows Craft core
+        if: steps.windows-craft-deps-cache.outputs.cache-hit != 'true' && steps.windows-craft-core-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            C:\CraftRoot
+            !C:\CraftRoot\build
+            !C:\CraftRoot\download
+          key: ${{ steps.windows-craft-core-cache.outputs.cache-primary-key }}
+      - name: Install Windows Craft native dependencies
+        if: steps.windows-craft-deps-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          $bootstrapLog = Join-Path $env:RUNNER_TEMP "windows-bootstrap.log"
+
+          function Invoke-Logged {
+            param(
+              [Parameter(Mandatory = $true)][string]$Label,
+              [Parameter(Mandatory = $true)][scriptblock]$Action
+            )
+            "==> $Label" | Tee-Object -FilePath $bootstrapLog -Append
+            & $Action 2>&1 | Tee-Object -FilePath $bootstrapLog -Append
+          }
+
+          $pythonExe = (Get-Command python.exe).Source
+          $pwshExe = (Get-Command pwsh.exe).Source
+          $pythonDir = Split-Path $pythonExe
+          $env:PATH = @(
+            $pythonDir,
+            (Join-Path $pythonDir "Scripts"),
+            "C:\Program Files\Git\cmd",
+            (Split-Path $pwshExe),
+            "$env:SystemRoot\System32",
+            "$env:SystemRoot",
+            "$env:SystemRoot\System32\Wbem"
+          ) -join ";"
+          New-Item -ItemType Directory -Force -Path "C:\_" | Out-Null
+
+          $lock = Get-Content packaging/toolchain-lock.json | ConvertFrom-Json
+          $blueprintsCommit = $lock.craft.blueprints_commit
+          $blueprints = "C:\CraftRoot\etc\blueprints\locations\craft-blueprints-kde"
+          if (-not (Test-Path (Join-Path $blueprints ".git"))) {
+            throw "Craft blueprints checkout is missing after core bootstrap."
+          }
+          & git.exe -C $blueprints checkout --detach $blueprintsCommit
+          if ((& git.exe -C $blueprints rev-parse HEAD) -ne $blueprintsCommit) {
+            throw "Craft blueprints did not resolve to the locked commit."
+          }
+
+          # GLib's translated diagnostics are not consumed by ThothPad's PR
+          # build. Disable only that optional build output so its Meson build
+          # never launches Craft's crashing source-built msgfmt. Release
+          # packaging remains unchanged and continues to include translations.
+          $glibRecipe = Join-Path $blueprints "libs\glib\glib.py"
+          $glib = Get-Content $glibRecipe -Raw
+          $glibNeedle = 'self.subinfo.options.configure.args += ["--wrap-mode=nodownload", "-Dgtk_doc=false", "-Dinstalled_tests=false", "-Dman=false"]'
+          $glibReplacement = 'self.subinfo.options.configure.args += ["--wrap-mode=nodownload", "-Dgtk_doc=false", "-Dinstalled_tests=false", "-Dman=false", "-Dnls=disabled"]'
+          $patchedGlib = $glib.Replace($glibNeedle, $glibReplacement)
+          if ($patchedGlib -eq $glib) {
+            throw "Pinned Craft GLib recipe changed; refusing to disable PR-build NLS blindly."
+          }
+          Set-Content -Path $glibRecipe -Value $patchedGlib -NoNewline
+          & $pythonExe -m py_compile $glibRecipe
+
+          $craftPy = "C:\CraftRoot\craft\bin\craft.py"
+          if (-not (Test-Path $craftPy)) {
+            throw "Craft CLI is unavailable for dependency installation."
+          }
 
           # Do not dot-source craftenv.ps1 in GitHub's parent PowerShell.
-          # CraftBootstrap itself invokes craft.py with this exact Python
-          # interpreter, and craft.py initializes CraftSetupHelper inside its
-          # own process. Keep that environment isolated and let the CLI own it.
+          # craft.py initializes CraftSetupHelper inside its own process.
           Invoke-Logged "Craft extra-cmake-modules" {
             & $pythonExe $craftPy kde/frameworks/extra-cmake-modules
           }
@@ -186,6 +277,15 @@ jobs:
           Invoke-Logged "Craft qtwebengine" {
             & $pythonExe $craftPy libs/qt/qtwebengine
           }
+      - name: Save Windows Craft dependencies
+        if: steps.windows-craft-deps-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            C:\CraftRoot
+            !C:\CraftRoot\build
+            !C:\CraftRoot\download
+          key: ${{ steps.windows-craft-deps-cache.outputs.cache-primary-key }}
       - name: Configure, build, and test Core + Full
         shell: pwsh
         run: |
