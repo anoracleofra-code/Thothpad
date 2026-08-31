@@ -45,25 +45,29 @@ class NativePrWorkflowTest(unittest.TestCase):
             "hashFiles('packaging/toolchain-lock.json', '.github/workflows/native-pr.yml')",
             workflow,
         )
-        self.assertIn("windows-craft-deps-v1-", workflow)
-        self.assertIn("windows-craft-glib-v1-", workflow)
+        self.assertIn("windows-craft-deps-v3-relwithdebinfo-", workflow)
+        self.assertIn("windows-craft-glib-v2-relwithdebinfo-", workflow)
         self.assertIn("windows-craft-core-v1-", workflow)
 
-    def test_windows_craft_blueprints_are_pinned_and_glib_nls_is_disabled(self) -> None:
+    def test_windows_craft_uses_pinned_relwithdebinfo_binary_cache(self) -> None:
         workflow = self.workflow()
 
         self.assertIn("$blueprintsCommit = $lock.craft.blueprints_commit", workflow)
         self.assertIn('checkout --detach $blueprintsCommit', workflow)
-        self.assertIn('"-Dnls=disabled"', workflow)
-        self.assertIn("Pinned Craft GLib recipe changed", workflow)
         self.assertIn("DriveLetter = Z:/", workflow)
+        self.assertIn("BuildType = RelWithDebInfo", workflow)
+        self.assertIn("FailOnCacheMiss = True", workflow)
+        self.assertIn("is unavailable in the configured binary cache", workflow)
+        self.assertIn("$craftPy --use-cache libs/glib", workflow)
+        self.assertNotIn("--resolve-deps all --fetch-binary", workflow)
+        self.assertNotIn('"-Dnls=disabled"', workflow)
         self.assertLess(
-            workflow.index('Invoke-Logged "Craft glib probe"'),
+            workflow.index('Invoke-Logged "Craft cached GLib graph"'),
             workflow.index("Save Windows Craft GLib checkpoint"),
         )
         self.assertLess(
-            workflow.index('Invoke-Logged "Craft glib probe"'),
-            workflow.index('Invoke-Logged "Craft extra-cmake-modules"'),
+            workflow.index('Invoke-Logged "Craft cached GLib graph"'),
+            workflow.index('Invoke-Logged "Craft cached extra-cmake-modules graph"'),
         )
 
     def test_windows_gettext_patch_restores_printf_n_guard(self) -> None:

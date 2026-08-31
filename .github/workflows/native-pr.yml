@@ -32,7 +32,7 @@ jobs:
   windows:
     name: Windows native (Core + Full)
     runs-on: windows-2022
-    timeout-minutes: 90
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -49,9 +49,7 @@ jobs:
             C:\CraftRoot
             !C:\CraftRoot\build
             !C:\CraftRoot\download
-          key: windows-craft-deps-v2-${{ hashFiles('packaging/toolchain-lock.json') }}
-          restore-keys: |
-            windows-craft-deps-v1-
+          key: windows-craft-deps-v3-relwithdebinfo-${{ hashFiles('packaging/toolchain-lock.json') }}
       - name: Restore Windows Craft GLib checkpoint
         if: steps.windows-craft-deps-cache.outputs.cache-matched-key == ''
         id: windows-craft-glib-cache
@@ -61,7 +59,7 @@ jobs:
             C:\CraftRoot
             !C:\CraftRoot\build
             !C:\CraftRoot\download
-          key: windows-craft-glib-v1-${{ hashFiles('packaging/toolchain-lock.json') }}
+          key: windows-craft-glib-v2-relwithdebinfo-${{ hashFiles('packaging/toolchain-lock.json') }}
       - name: Restore Windows Craft core
         if: steps.windows-craft-deps-cache.outputs.cache-matched-key == '' && steps.windows-craft-glib-cache.outputs.cache-matched-key == ''
         id: windows-craft-core-cache
@@ -254,7 +252,55 @@ jobs:
           } else {
             throw "CraftSettings.ini has no ShortPath DriveLetter template."
           }
+          if ($settings -notmatch '(?m)^\s*BuildType\s*=.*$') {
+            throw "CraftSettings.ini has no Compile BuildType setting."
+          }
+          $settings = [regex]::Replace(
+            $settings,
+            '(?m)^\s*BuildType\s*=.*$',
+            'BuildType = RelWithDebInfo'
+          )
+          if ($settings -match '(?m)^\s*FailOnCacheMiss\s*=.*$') {
+            $settings = [regex]::Replace(
+              $settings,
+              '(?m)^\s*FailOnCacheMiss\s*=.*$',
+              'FailOnCacheMiss = True'
+            )
+          } elseif ($settings -match '(?m)^\s*\[Packager\]\s*$') {
+            $settings = [regex]::Replace(
+              $settings,
+              '(?m)^\s*\[Packager\]\s*$',
+              "[Packager]`nFailOnCacheMiss = True"
+            )
+          } else {
+            throw "CraftSettings.ini has no Packager section."
+          }
           Set-Content -Path $settingsPath -Value $settings -NoNewline
+
+          # Pinned Craft normally falls back to a source build after a binary
+          # cache miss. CI must fail immediately instead of compiling Qt/LLVM.
+          $craftCommandsPath = "C:\CraftRoot\craft\bin\CraftCommands.py"
+          $craftCommands = Get-Content $craftCommandsPath -Raw
+          $cacheFallbackPattern = '(?m)^            if CraftCore\.settings\.getboolean\("Packager", "UseCache", "False"\):\r?\n                if doExec\(package, "fetch-binary"\):\r?\n                    return True\r?$'
+          $cacheFallbackReplacement = @'
+            if CraftCore.settings.getboolean("Packager", "UseCache", "False"):
+                if doExec(package, "fetch-binary"):
+                    return True
+                if CraftCore.settings.getboolean("Packager", "FailOnCacheMiss", False):
+                    CraftCore.log.error(f"{package} is unavailable in the configured binary cache")
+                    return False
+          '@
+          $patchedCraftCommands = [regex]::Replace(
+            $craftCommands,
+            $cacheFallbackPattern,
+            $cacheFallbackReplacement,
+            1
+          )
+          if ($patchedCraftCommands -eq $craftCommands) {
+            throw "Pinned Craft cache-fallback implementation changed."
+          }
+          Set-Content -Path $craftCommandsPath -Value $patchedCraftCommands -NoNewline
+          & $pythonExe -m py_compile $craftCommandsPath
 
           $lock = Get-Content packaging/toolchain-lock.json | ConvertFrom-Json
           $blueprintsCommit = $lock.craft.blueprints_commit
@@ -267,32 +313,16 @@ jobs:
             throw "Craft blueprints did not resolve to the locked commit."
           }
 
-          # GLib's translated diagnostics are not consumed by ThothPad's PR
-          # build. Disable only that optional build output so its Meson build
-          # never launches Craft's crashing source-built msgfmt. Release
-          # packaging remains unchanged and continues to include translations.
-          $glibRecipe = Join-Path $blueprints "libs\glib\glib.py"
-          $glib = Get-Content $glibRecipe -Raw
-          $glibNeedle = 'self.subinfo.options.configure.args += ["--wrap-mode=nodownload", "-Dgtk_doc=false", "-Dinstalled_tests=false", "-Dman=false"]'
-          $glibReplacement = 'self.subinfo.options.configure.args += ["--wrap-mode=nodownload", "-Dgtk_doc=false", "-Dinstalled_tests=false", "-Dman=false", "-Dnls=disabled"]'
-          $patchedGlib = $glib.Replace($glibNeedle, $glibReplacement)
-          if ($patchedGlib -eq $glib) {
-            throw "Pinned Craft GLib recipe changed; refusing to disable PR-build NLS blindly."
-          }
-          Set-Content -Path $glibRecipe -Value $patchedGlib -NoNewline
-          & $pythonExe -m py_compile $glibRecipe
-
           $craftPy = "C:\CraftRoot\craft\bin\craft.py"
           if (-not (Test-Path $craftPy)) {
             throw "Craft CLI is unavailable for dependency installation."
           }
 
-          # Do not dot-source craftenv.ps1 in GitHub's parent PowerShell.
-          # craft.py initializes CraftSetupHelper inside its own process.
-          # Build GLib first so the previously failing gettext path is
-          # validated before the rest of the dependency graph.
-          Invoke-Logged "Craft glib probe" {
-            & $pythonExe $craftPy libs/glib
+          # Download and install the GLib graph from KDE's published
+          # RelWithDebInfo cache. The pinned-Craft guard above turns any miss
+          # into an immediate failure instead of a source build.
+          Invoke-Logged "Craft cached GLib graph" {
+            & $pythonExe $craftPy --use-cache libs/glib
           }
       - name: Save Windows Craft GLib checkpoint
         if: steps.windows-craft-deps-cache.outputs.cache-matched-key == '' && steps.windows-craft-glib-cache.outputs.cache-matched-key == ''
@@ -339,6 +369,12 @@ jobs:
           if ($settings -notmatch '(?m)^\s*DriveLetter\s*=\s*Z:/\s*$') {
             throw "Craft short-path drive was not preserved by the restored checkpoint."
           }
+          if ($settings -notmatch '(?m)^\s*BuildType\s*=\s*RelWithDebInfo\s*$') {
+            throw "Craft RelWithDebInfo cache lane was not preserved by the restored checkpoint."
+          }
+          if ($settings -notmatch '(?m)^\s*FailOnCacheMiss\s*=\s*True\s*$') {
+            throw "Craft binary-cache-only guard was not preserved by the restored checkpoint."
+          }
 
           $lock = Get-Content packaging/toolchain-lock.json | ConvertFrom-Json
           $blueprintsCommit = $lock.craft.blueprints_commit
@@ -353,29 +389,31 @@ jobs:
             throw "Craft CLI is unavailable for dependency installation."
           }
 
-          Invoke-Logged "Craft extra-cmake-modules" {
-            & $pythonExe $craftPy kde/frameworks/extra-cmake-modules
+          # Every invocation is binary-only across the target's dependency
+          # graph. A missing KDE cache artifact fails this step immediately.
+          Invoke-Logged "Craft cached extra-cmake-modules graph" {
+            & $pythonExe $craftPy --use-cache kde/frameworks/extra-cmake-modules
           }
-          Invoke-Logged "Craft sonnet" {
-            & $pythonExe $craftPy kde/frameworks/tier1/sonnet
+          Invoke-Logged "Craft cached sonnet graph" {
+            & $pythonExe $craftPy --use-cache kde/frameworks/tier1/sonnet
           }
-          Invoke-Logged "Craft kconfigwidgets" {
-            & $pythonExe $craftPy kde/frameworks/tier3/kconfigwidgets
+          Invoke-Logged "Craft cached kconfigwidgets graph" {
+            & $pythonExe $craftPy --use-cache kde/frameworks/tier3/kconfigwidgets
           }
-          Invoke-Logged "Craft kxmlgui" {
-            & $pythonExe $craftPy kde/frameworks/tier3/kxmlgui
+          Invoke-Logged "Craft cached kxmlgui graph" {
+            & $pythonExe $craftPy --use-cache kde/frameworks/tier3/kxmlgui
           }
-          Invoke-Logged "Craft qtkeychain" {
-            & $pythonExe $craftPy qt-libs/qtkeychain
+          Invoke-Logged "Craft cached qtkeychain graph" {
+            & $pythonExe $craftPy --use-cache qt-libs/qtkeychain
           }
-          Invoke-Logged "Craft qtsvg" {
-            & $pythonExe $craftPy libs/qt/qtsvg
+          Invoke-Logged "Craft cached qtsvg graph" {
+            & $pythonExe $craftPy --use-cache libs/qt/qtsvg
           }
-          Invoke-Logged "Craft qtwebchannel" {
-            & $pythonExe $craftPy libs/qt/qtwebchannel
+          Invoke-Logged "Craft cached qtwebchannel graph" {
+            & $pythonExe $craftPy --use-cache libs/qt/qtwebchannel
           }
-          Invoke-Logged "Craft qtwebengine" {
-            & $pythonExe $craftPy libs/qt/qtwebengine
+          Invoke-Logged "Craft cached qtwebengine graph" {
+            & $pythonExe $craftPy --use-cache libs/qt/qtwebengine
           }
       - name: Save Windows Craft dependencies
         if: steps.windows-craft-deps-cache.outputs.cache-hit != 'true'
