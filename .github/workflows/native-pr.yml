@@ -49,7 +49,9 @@ jobs:
             C:\CraftRoot
             !C:\CraftRoot\build
             !C:\CraftRoot\download
-          key: windows-craft-deps-v1-${{ hashFiles('packaging/toolchain-lock.json', '.github/workflows/native-pr.yml') }}
+          key: windows-craft-deps-v2-${{ hashFiles('packaging/toolchain-lock.json') }}
+          restore-keys: |
+            windows-craft-deps-v1-
       - name: Restore Windows Craft core
         if: steps.windows-craft-deps-cache.outputs.cache-hit != 'true'
         id: windows-craft-core-cache
@@ -59,7 +61,9 @@ jobs:
             C:\CraftRoot
             !C:\CraftRoot\build
             !C:\CraftRoot\download
-          key: windows-craft-core-v1-${{ hashFiles('packaging/toolchain-lock.json', '.github/workflows/native-pr.yml') }}
+          key: windows-craft-core-v2-${{ hashFiles('packaging/toolchain-lock.json') }}
+          restore-keys: |
+            windows-craft-core-v1-
       - name: Bootstrap KDE Craft core
         if: steps.windows-craft-deps-cache.outputs.cache-hit != 'true' && steps.windows-craft-core-cache.outputs.cache-hit != 'true'
         shell: pwsh
@@ -253,6 +257,11 @@ jobs:
 
           # Do not dot-source craftenv.ps1 in GitHub's parent PowerShell.
           # craft.py initializes CraftSetupHelper inside its own process.
+          # Build GLib first so the previously failing gettext path is
+          # validated before the rest of the dependency graph.
+          Invoke-Logged "Craft glib probe" {
+            & $pythonExe $craftPy libs/glib
+          }
           Invoke-Logged "Craft extra-cmake-modules" {
             & $pythonExe $craftPy kde/frameworks/extra-cmake-modules
           }

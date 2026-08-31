@@ -27,6 +27,13 @@ class NativePrWorkflowTest(unittest.TestCase):
             "if: steps.windows-craft-deps-cache.outputs.cache-hit != 'true'",
             workflow,
         )
+        self.assertIn("hashFiles('packaging/toolchain-lock.json')", workflow)
+        self.assertNotIn(
+            "hashFiles('packaging/toolchain-lock.json', '.github/workflows/native-pr.yml')",
+            workflow,
+        )
+        self.assertIn("windows-craft-deps-v1-", workflow)
+        self.assertIn("windows-craft-core-v1-", workflow)
 
     def test_windows_craft_blueprints_are_pinned_and_glib_nls_is_disabled(self) -> None:
         workflow = self.workflow()
@@ -35,6 +42,10 @@ class NativePrWorkflowTest(unittest.TestCase):
         self.assertIn('checkout --detach $blueprintsCommit', workflow)
         self.assertIn('"-Dnls=disabled"', workflow)
         self.assertIn("Pinned Craft GLib recipe changed", workflow)
+        self.assertLess(
+            workflow.index('Invoke-Logged "Craft glib probe"'),
+            workflow.index('Invoke-Logged "Craft extra-cmake-modules"'),
+        )
 
     def test_windows_gettext_patch_restores_printf_n_guard(self) -> None:
         workflow = self.workflow()
