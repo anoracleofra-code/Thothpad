@@ -53,7 +53,7 @@ jobs:
           restore-keys: |
             windows-craft-deps-v1-
       - name: Restore Windows Craft core
-        if: steps.windows-craft-deps-cache.outputs.cache-hit != 'true'
+        if: steps.windows-craft-deps-cache.outputs.cache-matched-key == ''
         id: windows-craft-core-cache
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -65,7 +65,7 @@ jobs:
           restore-keys: |
             windows-craft-core-v1-
       - name: Bootstrap KDE Craft core
-        if: steps.windows-craft-deps-cache.outputs.cache-hit != 'true' && steps.windows-craft-core-cache.outputs.cache-hit != 'true'
+        if: steps.windows-craft-deps-cache.outputs.cache-matched-key == '' && steps.windows-craft-core-cache.outputs.cache-matched-key == ''
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -185,7 +185,7 @@ jobs:
           "==> Craft bootstrap validated: settings, ABI, and craft.py present" |
             Tee-Object -FilePath $bootstrapLog -Append
       - name: Save Windows Craft core
-        if: steps.windows-craft-deps-cache.outputs.cache-hit != 'true' && steps.windows-craft-core-cache.outputs.cache-hit != 'true'
+        if: steps.windows-craft-deps-cache.outputs.cache-matched-key == '' && steps.windows-craft-core-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |

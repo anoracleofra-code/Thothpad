@@ -27,6 +27,14 @@ class NativePrWorkflowTest(unittest.TestCase):
             "if: steps.windows-craft-deps-cache.outputs.cache-hit != 'true'",
             workflow,
         )
+        self.assertIn(
+            "if: steps.windows-craft-deps-cache.outputs.cache-matched-key == ''",
+            workflow,
+        )
+        self.assertIn(
+            "steps.windows-craft-core-cache.outputs.cache-matched-key == ''",
+            workflow,
+        )
         self.assertIn("hashFiles('packaging/toolchain-lock.json')", workflow)
         self.assertNotIn(
             "hashFiles('packaging/toolchain-lock.json', '.github/workflows/native-pr.yml')",
