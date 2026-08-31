@@ -478,11 +478,16 @@ jobs:
           foreach ($variant in @("Core", "Full")) {
             $slug = $variant.ToLowerInvariant()
             $build = "build-native-pr-$slug"
-            cmake -S . -B $build -G Ninja `
-              -DCMAKE_BUILD_TYPE=Release `
-              -DBUILD_TESTING=ON `
-              -DTHOTHPAD_PACKAGE_VARIANT=$variant `
-              -DTHOTHPAD_BUNDLE_ENGINE=OFF
+            $configureArgs = @(
+              "-S", ".",
+              "-B", $build,
+              "-G", "Ninja",
+              "-DCMAKE_BUILD_TYPE=Release",
+              "-DBUILD_TESTING=ON",
+              "-DTHOTHPAD_PACKAGE_VARIANT:STRING=$variant",
+              "-DTHOTHPAD_BUNDLE_ENGINE=OFF"
+            )
+            & cmake @configureArgs
             cmake --build $build --config Release
             ctest --test-dir $build -C Release --output-on-failure
           }

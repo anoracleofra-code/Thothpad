@@ -61,6 +61,8 @@ class NativePrWorkflowTest(unittest.TestCase):
         self.assertIn("from Package.VirtualPackageBase import VirtualPackageBase", workflow)
         self.assertIn("if not isinstance(package.instance, VirtualPackageBase):", workflow)
         self.assertIn("is unavailable in the configured binary cache", workflow)
+        self.assertIn('"-DTHOTHPAD_PACKAGE_VARIANT:STRING=$variant"', workflow)
+        self.assertNotIn("-DTHOTHPAD_PACKAGE_VARIANT=$variant `", workflow)
         self.assertIn("$craftPy --use-cache libs/glib", workflow)
         self.assertNotIn("--resolve-deps all --fetch-binary", workflow)
         self.assertNotIn('"-Dnls=disabled"', workflow)
