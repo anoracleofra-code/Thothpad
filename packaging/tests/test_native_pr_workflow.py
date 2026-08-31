@@ -46,7 +46,8 @@ class NativePrWorkflowTest(unittest.TestCase):
             workflow,
         )
         self.assertIn("windows-craft-deps-v3-relwithdebinfo-", workflow)
-        self.assertIn("windows-craft-glib-v2-relwithdebinfo-", workflow)
+        self.assertIn("windows-craft-glib-v3-relwithdebinfo-", workflow)
+        self.assertNotIn("windows-craft-glib-v2-relwithdebinfo-", workflow)
         self.assertIn("windows-craft-core-v1-", workflow)
 
     def test_windows_craft_uses_pinned_relwithdebinfo_binary_cache(self) -> None:

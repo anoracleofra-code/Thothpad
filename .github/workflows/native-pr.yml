@@ -59,7 +59,7 @@ jobs:
             C:\CraftRoot
             !C:\CraftRoot\build
             !C:\CraftRoot\download
-          key: windows-craft-glib-v2-relwithdebinfo-${{ hashFiles('packaging/toolchain-lock.json') }}
+          key: windows-craft-glib-v3-relwithdebinfo-${{ hashFiles('packaging/toolchain-lock.json') }}
       - name: Restore Windows Craft core
         if: steps.windows-craft-deps-cache.outputs.cache-matched-key == '' && steps.windows-craft-glib-cache.outputs.cache-matched-key == ''
         id: windows-craft-core-cache
