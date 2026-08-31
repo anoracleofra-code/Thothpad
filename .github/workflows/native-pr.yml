@@ -114,6 +114,19 @@ jobs:
           if ($patchedRecipe -eq $recipe) {
             throw "Pinned Craft gettext recipe changed; refusing to apply the MSVC iconv workaround blindly."
           }
+
+          # The pinned recipe is missing a comma between these two configure
+          # cache arguments. Python therefore concatenates them and drops the
+          # printf %n guard that gettext documents as required for MSVC.
+          # Without the guard, the installed msgfmt crashes while GLib builds
+          # its translations (Windows status 0xC0000409).
+          $printfGuardNeedle = '                "ac_cv_func_memmove=yes"'
+          $printfGuardReplacement = '                "ac_cv_func_memmove=yes",'
+          $guardedRecipe = $patchedRecipe.Replace($printfGuardNeedle, $printfGuardReplacement)
+          if ($guardedRecipe -eq $patchedRecipe) {
+            throw "Pinned Craft gettext recipe still concatenates the MSVC printf guard."
+          }
+          $patchedRecipe = $guardedRecipe
           Set-Content -Path $gettextRecipe -Value $patchedRecipe -NoNewline
 
           # Craft's pinned liblzma 5.2.3 recipe still points to a legacy
