@@ -13,10 +13,11 @@ from backend import config
 from backend.validation import bounded_int as _bounded_int
 
 OPENAI_KINDS = {"openai_compatible", "openai", "openrouter", "lmstudio", "llama_cpp"}
-SUPPORTED_KINDS = OPENAI_KINDS | {"anthropic", "ollama"}
+SUPPORTED_KINDS = OPENAI_KINDS | {"anthropic", "ollama", "gemini"}
 DEFAULT_ENDPOINTS = {
     "anthropic": "https://api.anthropic.com/v1",
     "ollama": "http://127.0.0.1:11434/api",
+    "gemini": "https://generativelanguage.googleapis.com/v1beta",
 }
 
 
@@ -58,7 +59,7 @@ def _provider(provider_config: dict[str, Any] | None) -> dict[str, Any]:
     kind = str(merged.get("provider", "openai_compatible"))
     if kind in DEFAULT_ENDPOINTS and not supplied.get("base_url"):
         merged["base_url"] = DEFAULT_ENDPOINTS[kind]
-    if kind in {"anthropic", "ollama"} and "api_key" not in supplied:
+    if kind in {"anthropic", "ollama", "gemini"} and "api_key" not in supplied:
         merged["api_key"] = ""
     return merged
 
@@ -174,6 +175,29 @@ def _anthropic_messages(messages: list[dict[str, str]]) -> tuple[str, list[dict[
     return "\n\n".join(system_parts), conversation
 
 
+def _gemini_messages(
+    messages: list[dict[str, str]],
+) -> tuple[str, list[dict[str, Any]]]:
+    system_parts: list[str] = []
+    contents: list[dict[str, Any]] = []
+    for message in messages:
+        role = message.get("role")
+        content = str(message.get("content", ""))
+        if role == "system":
+            system_parts.append(content)
+            continue
+        if role not in {"user", "assistant"} or not content:
+            continue
+        gemini_role = "user" if role == "user" else "model"
+        if contents and contents[-1].get("role") == gemini_role:
+            parts = contents[-1].get("parts")
+            if isinstance(parts, list):
+                parts.append({"text": content})
+                continue
+        contents.append({"role": gemini_role, "parts": [{"text": content}]})
+    return "\n\n".join(system_parts), contents
+
+
 def complete_chat(
     messages: list[dict[str, str]],
     provider_config: dict[str, Any] | None = None,
@@ -215,6 +239,43 @@ def complete_chat(
                 str(block.get("text", ""))
                 for block in blocks
                 if isinstance(block, dict) and block.get("type") == "text"
+            )
+        elif kind == "gemini":
+            system, contents = _gemini_messages(messages)
+            if not contents:
+                raise ValueError("Gemini request requires at least one user/assistant message")
+            payload = {
+                "contents": contents,
+                "generationConfig": {
+                    "temperature": temperature,
+                    "maxOutputTokens": max_tokens,
+                },
+            }
+            if system:
+                payload["systemInstruction"] = {"parts": [{"text": system}]}
+            model_path = urllib.parse.quote(model.strip(), safe="")
+            data = _request_json(
+                _endpoint(base_url, f"/models/{model_path}:generateContent"),
+                payload,
+                {"x-goog-api-key": api_key},
+                timeout,
+            )
+            candidates = data.get("candidates")
+            if not isinstance(candidates, list) or not candidates:
+                raise ValueError("response did not contain Gemini candidates")
+            first = candidates[0]
+            if not isinstance(first, dict):
+                raise ValueError("Gemini candidate was not an object")
+            response_content = first.get("content")
+            if not isinstance(response_content, dict):
+                raise ValueError("Gemini candidate did not contain content")
+            parts = response_content.get("parts")
+            if not isinstance(parts, list):
+                raise ValueError("Gemini candidate did not contain content.parts")
+            text = "".join(
+                str(part.get("text", ""))
+                for part in parts
+                if isinstance(part, dict) and isinstance(part.get("text"), str)
             )
         elif kind == "ollama":
             payload = {

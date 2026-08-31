@@ -32,31 +32,83 @@ jobs:
   windows:
     name: Windows native (Core + Full)
     runs-on: windows-2022
-    timeout-minutes: 90
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11.9"
-      - name: Bootstrap KDE Craft and native dependencies
+      # Keep the expensive toolchain in three layers. A failed dependency build
+      # can resume from Craft core or the validated GLib checkpoint, while
+      # ordinary source changes restore the complete native dependency cache.
+      - name: Restore Windows Craft dependencies
+        id: windows-craft-deps-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            C:\CraftRoot
+            !C:\CraftRoot\build
+            !C:\CraftRoot\download
+          key: windows-craft-deps-v3-relwithdebinfo-${{ hashFiles('packaging/toolchain-lock.json') }}
+      - name: Restore Windows Craft GLib checkpoint
+        if: steps.windows-craft-deps-cache.outputs.cache-matched-key == ''
+        id: windows-craft-glib-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            C:\CraftRoot
+            !C:\CraftRoot\build
+            !C:\CraftRoot\download
+          key: windows-craft-glib-v3-relwithdebinfo-${{ hashFiles('packaging/toolchain-lock.json') }}
+      - name: Restore Windows Craft core
+        if: steps.windows-craft-deps-cache.outputs.cache-matched-key == '' && steps.windows-craft-glib-cache.outputs.cache-matched-key == ''
+        id: windows-craft-core-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            C:\CraftRoot
+            !C:\CraftRoot\build
+            !C:\CraftRoot\download
+          key: windows-craft-core-v2-${{ hashFiles('packaging/toolchain-lock.json') }}
+          restore-keys: |
+            windows-craft-core-v1-
+      - name: Bootstrap KDE Craft core
+        if: steps.windows-craft-deps-cache.outputs.cache-matched-key == '' && steps.windows-craft-glib-cache.outputs.cache-matched-key == '' && steps.windows-craft-core-cache.outputs.cache-matched-key == ''
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          $bootstrapLog = Join-Path $env:RUNNER_TEMP "windows-bootstrap.log"
+          "Windows native bootstrap started: $(Get-Date -Format o)" | Set-Content -Path $bootstrapLog
+
+          function Invoke-Logged {
+            param(
+              [Parameter(Mandatory = $true)][string]$Label,
+              [Parameter(Mandatory = $true)][scriptblock]$Action
+            )
+            "==> $Label" | Tee-Object -FilePath $bootstrapLog -Append
+            & $Action 2>&1 | Tee-Object -FilePath $bootstrapLog -Append
+          }
 
           # GitHub's Windows image exposes Git-Bash and a separate MinGW tree
           # globally. Craft explicitly warns that sh/gcc/g++/cpp from those
           # trees contaminate an MSVC ABI and can make Autotools packages pick
           # C:\mingw64 tools. Preserve only the host facilities Craft actually
-          # needs until craftenv.ps1 installs its controlled environment.
+          # needs until Craft creates its controlled child-process environment.
           $pythonExe = (Get-Command python.exe).Source
-          & $pythonExe -m pip install --disable-pip-version-check certifi cmake==4.3.2 ninja==1.13.0
+          $pwshExe = (Get-Command pwsh.exe).Source
+          Invoke-Logged "Install bootstrap tools" {
+            & $pythonExe -m pip install --disable-pip-version-check certifi cmake==4.3.2 ninja==1.13.0
+          }
           $pythonDir = Split-Path $pythonExe
           $pythonScripts = Join-Path $pythonDir "Scripts"
           $gitCmd = "C:\Program Files\Git\cmd"
+          $pwshDir = Split-Path $pwshExe
           $env:PATH = @(
             $pythonDir,
             $pythonScripts,
             $gitCmd,
+            $pwshDir,
             "$env:SystemRoot\System32",
             "$env:SystemRoot",
             "$env:SystemRoot\System32\Wbem"
@@ -69,49 +121,389 @@ jobs:
           if (-not (Get-Command git.exe -ErrorAction SilentlyContinue)) {
             throw "git.exe is unavailable after hosted PATH sanitization."
           }
+          if (-not (Get-Command pwsh.exe -ErrorAction SilentlyContinue)) {
+            throw "pwsh.exe is unavailable after hosted PATH sanitization."
+          }
 
           $lock = Get-Content packaging/toolchain-lock.json | ConvertFrom-Json
           $craftCommit = $lock.craft.core_commit
           $bootstrap = Join-Path $env:RUNNER_TEMP "CraftBootstrap.py"
           Invoke-WebRequest "$env:CRAFT_BOOTSTRAP_ROOT/$craftCommit/setup/CraftBootstrap.py" -OutFile $bootstrap
-          & $pythonExe $bootstrap --prefix C:\CraftRoot --branch $craftCommit --use-defaults
+
+          # Craft's pinned gettext 0.22.3 recipe installs win-iconv first, but
+          # GNU's Autoconf library probe does not recognize the MSVC .lib and
+          # consequently drops iconv from the final gettextlib link. Keep the
+          # pinned Craft source and apply only the missing gettext link input.
+          # --localDev makes CraftBootstrap consume this deterministic patched
+          # copy instead of fetching a second, unpatched copy of the same SHA.
+          $craftArchive = Join-Path $env:RUNNER_TEMP "craft-$craftCommit.zip"
+          $craftExtract = Join-Path $env:RUNNER_TEMP "craft-$craftCommit-source"
+          Invoke-WebRequest "https://github.com/KDE/craft/archive/$craftCommit.zip" -OutFile $craftArchive
+          Expand-Archive -Path $craftArchive -DestinationPath $craftExtract
+          $craftSource = Join-Path $craftExtract "craft-$craftCommit"
+          $gettextRecipe = Join-Path $craftSource "blueprints\libs\gettext\gettext.py"
+          $recipe = Get-Content $gettextRecipe -Raw
+          $needle = "            self.subinfo.options.useShadowBuild = False"
+          $replacement = "            self.subinfo.options.configure.args += [`"LIBS=-liconv`"]`n$needle"
+          $patchedRecipe = $recipe.Replace($needle, $replacement)
+          if ($patchedRecipe -eq $recipe) {
+            throw "Pinned Craft gettext recipe changed; refusing to apply the MSVC iconv workaround blindly."
+          }
+
+          # The pinned recipe is missing a comma between these two configure
+          # cache arguments. Preserve the intended MSVC printf %n guard even
+          # though GLib translations are separately disabled below: the
+          # source-built msgfmt still crashes on hosted Windows after this
+          # guard is restored (Windows status 0xC0000409).
+          $printfGuardNeedle = '                "ac_cv_func_memmove=yes"'
+          $printfGuardReplacement = '                "ac_cv_func_memmove=yes",'
+          $guardedRecipe = $patchedRecipe.Replace($printfGuardNeedle, $printfGuardReplacement)
+          if ($guardedRecipe -eq $patchedRecipe) {
+            throw "Pinned Craft gettext recipe still concatenates the MSVC printf guard."
+          }
+          $patchedRecipe = $guardedRecipe
+          Set-Content -Path $gettextRecipe -Value $patchedRecipe -NoNewline
+
+          # Craft's pinned liblzma 5.2.3 recipe still points to a legacy
+          # tukaani.org HTTP endpoint that GitHub's Windows runner cannot
+          # reliably reach. Redirect only the transport to SourceForge; the
+          # recipe's existing SHA-256 still authenticates the exact tarball.
+          $liblzmaRecipe = Join-Path $craftSource "blueprints\libs\liblzma\liblzma.py"
+          $liblzma = Get-Content $liblzmaRecipe -Raw
+          $liblzmaNeedle = '            self.targets[ver] = f"http://tukaani.org/xz/xz-{ver}.tar.xz"'
+          $liblzmaReplacement = '            self.targets[ver] = f"https://downloads.sourceforge.net/project/lzmautils/xz-{ver}.tar.xz"'
+          $patchedLiblzma = $liblzma.Replace($liblzmaNeedle, $liblzmaReplacement)
+          if ($patchedLiblzma -eq $liblzma) {
+            throw "Pinned Craft liblzma recipe changed; refusing to redirect the 5.2.3 source blindly."
+          }
+          Set-Content -Path $liblzmaRecipe -Value $patchedLiblzma -NoNewline
+
+          Invoke-Logged "Bootstrap Craft $craftCommit" {
+            & $pythonExe $bootstrap --prefix C:\CraftRoot --branch $craftCommit --localDev $craftSource --use-defaults
+          }
 
           $settings = Get-Content C:\CraftRoot\etc\CraftSettings.ini -Raw
           if ($settings -notmatch '(?m)^\s*ABI\s*=\s*windows-cl-msvc2022-x86_64\s*$') {
             throw "Craft selected an unexpected Windows ABI.`n$settings"
           }
-          if (-not (Test-Path C:\CraftRoot\craft\craftenv.ps1)) {
-            throw "Craft bootstrap did not complete; craftenv.ps1 is missing."
+          $craftPy = "C:\CraftRoot\craft\bin\craft.py"
+          if (-not (Test-Path $craftPy)) {
+            throw "Craft bootstrap did not complete; craft.py is missing."
+          }
+          "==> Craft bootstrap validated: settings, ABI, and craft.py present" |
+            Tee-Object -FilePath $bootstrapLog -Append
+      - name: Save Windows Craft core
+        if: steps.windows-craft-deps-cache.outputs.cache-matched-key == '' && steps.windows-craft-glib-cache.outputs.cache-matched-key == '' && steps.windows-craft-core-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            C:\CraftRoot
+            !C:\CraftRoot\build
+            !C:\CraftRoot\download
+          key: ${{ steps.windows-craft-core-cache.outputs.cache-primary-key }}
+      - name: Build Windows Craft GLib checkpoint
+        if: steps.windows-craft-deps-cache.outputs.cache-matched-key == '' && steps.windows-craft-glib-cache.outputs.cache-matched-key == ''
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          $bootstrapLog = Join-Path $env:RUNNER_TEMP "windows-bootstrap.log"
+
+          function Invoke-Logged {
+            param(
+              [Parameter(Mandatory = $true)][string]$Label,
+              [Parameter(Mandatory = $true)][scriptblock]$Action
+            )
+            "==> $Label" | Tee-Object -FilePath $bootstrapLog -Append
+            & $Action 2>&1 | Tee-Object -FilePath $bootstrapLog -Append
           }
 
-          . C:\CraftRoot\craft\craftenv.ps1
-          craft kde/frameworks/extra-cmake-modules
-          craft kde/frameworks/tier1/sonnet
-          craft kde/frameworks/tier3/kconfigwidgets
-          craft kde/frameworks/tier3/kxmlgui
-          craft qt-libs/qtkeychain
-          craft libs/qt/qtsvg
-          craft libs/qt/qtwebchannel
-          craft libs/qt/qtwebengine
+          $pythonExe = (Get-Command python.exe).Source
+          $pwshExe = (Get-Command pwsh.exe).Source
+          $pythonDir = Split-Path $pythonExe
+          $env:PATH = @(
+            $pythonDir,
+            (Join-Path $pythonDir "Scripts"),
+            "C:\Program Files\Git\cmd",
+            (Split-Path $pwshExe),
+            "$env:SystemRoot\System32",
+            "$env:SystemRoot",
+            "$env:SystemRoot\System32\Wbem"
+          ) -join ";"
+          New-Item -ItemType Directory -Force -Path "C:\_" | Out-Null
+
+          # QtBase explicitly requests Craft's subst-drive short-path mode.
+          # The noninteractive bootstrap leaves this sample setting commented,
+          # so make the runner-safe drive deterministic before any source build.
+          $settingsPath = "C:\CraftRoot\etc\CraftSettings.ini"
+          $settings = Get-Content $settingsPath -Raw
+          if ($settings -match '(?m)^\s*DriveLetter\s*=.*$') {
+            $settings = [regex]::Replace(
+              $settings,
+              '(?m)^\s*DriveLetter\s*=.*$',
+              'DriveLetter = Z:/'
+            )
+          } elseif ($settings -match '(?m)^\s*#\s*DriveLetter\s*=.*$') {
+            $settings = [regex]::Replace(
+              $settings,
+              '(?m)^\s*#\s*DriveLetter\s*=.*$',
+              'DriveLetter = Z:/'
+            )
+          } else {
+            throw "CraftSettings.ini has no ShortPath DriveLetter template."
+          }
+          if ($settings -notmatch '(?m)^\s*BuildType\s*=.*$') {
+            throw "CraftSettings.ini has no Compile BuildType setting."
+          }
+          $settings = [regex]::Replace(
+            $settings,
+            '(?m)^\s*BuildType\s*=.*$',
+            'BuildType = RelWithDebInfo'
+          )
+          if ($settings -match '(?m)^\s*FailOnCacheMiss\s*=.*$') {
+            $settings = [regex]::Replace(
+              $settings,
+              '(?m)^\s*FailOnCacheMiss\s*=.*$',
+              'FailOnCacheMiss = True'
+            )
+          } elseif ($settings -match '(?m)^\s*\[Packager\]\s*$') {
+            $settings = [regex]::Replace(
+              $settings,
+              '(?m)^\s*\[Packager\]\s*$',
+              "[Packager]`nFailOnCacheMiss = True"
+            )
+          } else {
+            throw "CraftSettings.ini has no Packager section."
+          }
+          Set-Content -Path $settingsPath -Value $settings -NoNewline
+
+          # Pinned Craft normally falls back to a source build after a binary
+          # cache miss. CI must fail immediately instead of compiling Qt/LLVM.
+          $craftCommandsPath = "C:\CraftRoot\craft\bin\CraftCommands.py"
+          $craftCommands = Get-Content $craftCommandsPath -Raw
+          $cacheFallbackPattern = '(?m)^            if CraftCore\.settings\.getboolean\("Packager", "UseCache", "False"\):\r?\n                if doExec\(package, "fetch-binary"\):\r?\n                    return True\r?$'
+          $cacheFallbackReplacement = @'
+                      if CraftCore.settings.getboolean("Packager", "UseCache", "False"):
+                          if doExec(package, "fetch-binary"):
+                              return True
+                          if CraftCore.settings.getboolean("Packager", "FailOnCacheMiss", False):
+                              from Package.VirtualPackageBase import VirtualPackageBase
+                              if not isinstance(package.instance, VirtualPackageBase):
+                                  CraftCore.log.error(f"{package} is unavailable in the configured binary cache")
+                                  return False
+          '@
+          $patchedCraftCommands = [regex]::Replace(
+            $craftCommands,
+            $cacheFallbackPattern,
+            $cacheFallbackReplacement,
+            1
+          )
+          if ($patchedCraftCommands -eq $craftCommands) {
+            throw "Pinned Craft cache-fallback implementation changed."
+          }
+          Set-Content -Path $craftCommandsPath -Value $patchedCraftCommands -NoNewline
+          & $pythonExe -m py_compile $craftCommandsPath
+
+          $lock = Get-Content packaging/toolchain-lock.json | ConvertFrom-Json
+          $blueprintsCommit = $lock.craft.blueprints_commit
+          $blueprints = "C:\CraftRoot\etc\blueprints\locations\craft-blueprints-kde"
+          if (-not (Test-Path (Join-Path $blueprints ".git"))) {
+            throw "Craft blueprints checkout is missing after core bootstrap."
+          }
+          & git.exe -C $blueprints checkout --detach $blueprintsCommit
+          if ((& git.exe -C $blueprints rev-parse HEAD) -ne $blueprintsCommit) {
+            throw "Craft blueprints did not resolve to the locked commit."
+          }
+
+          $craftPy = "C:\CraftRoot\craft\bin\craft.py"
+          if (-not (Test-Path $craftPy)) {
+            throw "Craft CLI is unavailable for dependency installation."
+          }
+
+          # Download and install the GLib graph from KDE's published
+          # RelWithDebInfo cache. The pinned-Craft guard above turns any miss
+          # into an immediate failure instead of a source build.
+          Invoke-Logged "Craft cached GLib graph" {
+            & $pythonExe $craftPy --use-cache libs/glib
+          }
+      - name: Save Windows Craft GLib checkpoint
+        if: steps.windows-craft-deps-cache.outputs.cache-matched-key == '' && steps.windows-craft-glib-cache.outputs.cache-matched-key == ''
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            C:\CraftRoot
+            !C:\CraftRoot\build
+            !C:\CraftRoot\download
+          key: ${{ steps.windows-craft-glib-cache.outputs.cache-primary-key }}
+      - name: Install remaining Windows Craft native dependencies
+        if: steps.windows-craft-deps-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          $bootstrapLog = Join-Path $env:RUNNER_TEMP "windows-bootstrap.log"
+
+          function Invoke-Logged {
+            param(
+              [Parameter(Mandatory = $true)][string]$Label,
+              [Parameter(Mandatory = $true)][scriptblock]$Action
+            )
+            "==> $Label" | Tee-Object -FilePath $bootstrapLog -Append
+            & $Action 2>&1 | Tee-Object -FilePath $bootstrapLog -Append
+          }
+
+          $pythonExe = (Get-Command python.exe).Source
+          $pwshExe = (Get-Command pwsh.exe).Source
+          $pythonDir = Split-Path $pythonExe
+          $env:PATH = @(
+            $pythonDir,
+            (Join-Path $pythonDir "Scripts"),
+            "C:\Program Files\Git\cmd",
+            (Split-Path $pwshExe),
+            "$env:SystemRoot\System32",
+            "$env:SystemRoot",
+            "$env:SystemRoot\System32\Wbem"
+          ) -join ";"
+          New-Item -ItemType Directory -Force -Path "C:\_" | Out-Null
+
+          $settingsPath = "C:\CraftRoot\etc\CraftSettings.ini"
+          $settings = Get-Content $settingsPath -Raw
+          if ($settings -notmatch '(?m)^\s*DriveLetter\s*=\s*Z:/\s*$') {
+            throw "Craft short-path drive was not preserved by the restored checkpoint."
+          }
+          if ($settings -notmatch '(?m)^\s*BuildType\s*=\s*RelWithDebInfo\s*$') {
+            throw "Craft RelWithDebInfo cache lane was not preserved by the restored checkpoint."
+          }
+          if ($settings -notmatch '(?m)^\s*FailOnCacheMiss\s*=\s*True\s*$') {
+            throw "Craft binary-cache-only guard was not preserved by the restored checkpoint."
+          }
+
+          $lock = Get-Content packaging/toolchain-lock.json | ConvertFrom-Json
+          $blueprintsCommit = $lock.craft.blueprints_commit
+          $blueprints = "C:\CraftRoot\etc\blueprints\locations\craft-blueprints-kde"
+          & git.exe -C $blueprints checkout --detach $blueprintsCommit
+          if ((& git.exe -C $blueprints rev-parse HEAD) -ne $blueprintsCommit) {
+            throw "Craft blueprints did not resolve to the locked commit."
+          }
+
+          $craftPy = "C:\CraftRoot\craft\bin\craft.py"
+          if (-not (Test-Path $craftPy)) {
+            throw "Craft CLI is unavailable for dependency installation."
+          }
+
+          # Every invocation is binary-only across the target's dependency
+          # graph. A missing KDE cache artifact fails this step immediately.
+          Invoke-Logged "Craft cached extra-cmake-modules graph" {
+            & $pythonExe $craftPy --use-cache kde/frameworks/extra-cmake-modules
+          }
+          Invoke-Logged "Craft cached sonnet graph" {
+            & $pythonExe $craftPy --use-cache kde/frameworks/tier1/sonnet
+          }
+          Invoke-Logged "Craft cached kconfigwidgets graph" {
+            & $pythonExe $craftPy --use-cache kde/frameworks/tier3/kconfigwidgets
+          }
+          Invoke-Logged "Craft cached kxmlgui graph" {
+            & $pythonExe $craftPy --use-cache kde/frameworks/tier3/kxmlgui
+          }
+          Invoke-Logged "Craft cached qtkeychain graph" {
+            & $pythonExe $craftPy --use-cache qt-libs/qtkeychain
+          }
+          Invoke-Logged "Craft cached qtsvg graph" {
+            & $pythonExe $craftPy --use-cache libs/qt/qtsvg
+          }
+          Invoke-Logged "Craft cached qtwebchannel graph" {
+            & $pythonExe $craftPy --use-cache libs/qt/qtwebchannel
+          }
+          Invoke-Logged "Craft cached qtwebengine graph" {
+            & $pythonExe $craftPy --use-cache libs/qt/qtwebengine
+          }
+      - name: Save Windows Craft dependencies
+        if: steps.windows-craft-deps-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            C:\CraftRoot
+            !C:\CraftRoot\build
+            !C:\CraftRoot\download
+          key: ${{ steps.windows-craft-deps-cache.outputs.cache-primary-key }}
       - name: Configure, build, and test Core + Full
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          . C:\CraftRoot\craft\craftenv.ps1
+          $PSNativeCommandUseErrorActionPreference = $true
+          $bootstrapLog = Join-Path $env:RUNNER_TEMP "windows-bootstrap.log"
+          $pythonExe = (Get-Command python.exe).Source
+          $pwshExe = (Get-Command pwsh.exe).Source
+
+          # Each Actions step starts a fresh PowerShell process, so repeat the
+          # same host PATH fence used during bootstrap before Craft initializes
+          # its MSVC environment for the child build process.
+          $pythonDir = Split-Path $pythonExe
+          $pythonScripts = Join-Path $pythonDir "Scripts"
+          $gitCmd = "C:\Program Files\Git\cmd"
+          $pwshDir = Split-Path $pwshExe
+          $env:PATH = @(
+            $pythonDir,
+            $pythonScripts,
+            $gitCmd,
+            $pwshDir,
+            "$env:SystemRoot\System32",
+            "$env:SystemRoot",
+            "$env:SystemRoot\System32\Wbem"
+          ) -join ";"
+          foreach ($forbidden in @("sh.exe", "gcc.exe", "g++.exe", "cpp.exe")) {
+            if (Get-Command $forbidden -ErrorAction SilentlyContinue) {
+              throw "Hosted PATH sanitization failed before Craft child launch: $forbidden is still visible."
+            }
+          }
+
+          $craftPy = "C:\CraftRoot\craft\bin\craft.py"
+          if (-not (Test-Path $craftPy)) {
+            throw "Craft CLI is unavailable for build/test."
+          }
+
+          # craft.py --run is Craft's supported child-process launcher. The
+          # driver receives the complete MSVC/Qt/KF environment without
+          # mutating, clearing, or changing directory in this parent shell.
+          $driver = Join-Path $env:RUNNER_TEMP "windows-native-driver.ps1"
+          @'
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          Set-Location $env:GITHUB_WORKSPACE
+          Write-Host "Windows native build working directory: $(Get-Location)"
           $env:QT_QPA_PLATFORM = "offscreen"
           $env:QT_PLUGIN_PATH = "C:\CraftRoot\plugins"
           $env:QT_QPA_PLATFORM_PLUGIN_PATH = "C:\CraftRoot\plugins\platforms"
+
           foreach ($variant in @("Core", "Full")) {
             $slug = $variant.ToLowerInvariant()
             $build = "build-native-pr-$slug"
-            cmake -S . -B $build -G Ninja `
-              -DCMAKE_BUILD_TYPE=Release `
-              -DBUILD_TESTING=ON `
-              -DTHOTHPAD_PACKAGE_VARIANT=$variant `
-              -DTHOTHPAD_BUNDLE_ENGINE=OFF
+            $configureArgs = @(
+              "-S", ".",
+              "-B", $build,
+              "-G", "Ninja",
+              "-DCMAKE_BUILD_TYPE=Release",
+              "-DBUILD_TESTING=ON",
+              "-DTHOTHPAD_PACKAGE_VARIANT:STRING=$variant",
+              "-DTHOTHPAD_BUNDLE_ENGINE=OFF"
+            )
+            & cmake @configureArgs
             cmake --build $build --config Release
             ctest --test-dir $build -C Release --output-on-failure
           }
+          '@ | Set-Content -Path $driver -Encoding utf8
+
+          "==> Launch Windows native build inside Craft environment" |
+            Tee-Object -FilePath $bootstrapLog -Append
+          & $pythonExe $craftPy --run $pwshExe -NoProfile -ExecutionPolicy Bypass -File $driver
+      - name: Upload native failure logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-windows-failure-logs
+          path: ${{ runner.temp }}/windows-*.log
+          if-no-files-found: warn
+          retention-days: 3
 
   linux:
     name: Ubuntu native (Core + Full)
@@ -126,6 +518,12 @@ jobs:
         shell: bash
         run: |
           set -eo pipefail
+
+          # Qt6Gui's CMake package still resolves the host OpenGL development
+          # interface even when Qt itself comes from Craft. QtWebEngine also
+          # links the host Opus runtime on Ubuntu.
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgl1-mesa-dev libopus0
 
           # GitHub-hosted desktop runners also ship Android SDKs. Craft's
           # bootstrap uses the mere presence of ANDROID_SDK_ROOT to decide it
@@ -170,17 +568,64 @@ jobs:
           unset ANDROID_SDK_ROOT ANDROID_HOME ANDROID_NDK_ROOT ANDROID_NDK_HOME || true
           craft_root="$RUNNER_TEMP/CraftRoot"
           source "$craft_root/craft/craftenv.sh"
+          cd "$GITHUB_WORKSPACE"
+
+          annotate_failure() {
+            local title="$1"
+            local log="$2"
+            local summary
+            summary="$(grep -E 'CMake Error|FAILED:|fatal error:|(^|[^A-Za-z])error:|undefined reference|ld: |ninja: error|[0-9]+% tests passed|The following tests FAILED' "$log" | tail -n 12 | tr '\n' ' ' || true)"
+            if [[ -z "$summary" ]]; then
+              summary="$(tail -n 20 "$log" | tr '\n' ' ')"
+            fi
+            summary="${summary//'%'/'%25'}"
+            summary="${summary//$'\r'/'%0D'}"
+            summary="${summary//$'\n'/'%0A'}"
+            echo "::error title=${title}::${summary}"
+          }
+
+          run_logged() {
+            local title="$1"
+            local log="$2"
+            shift 2
+            set +e
+            "$@" 2>&1 | tee "$log"
+            local status=${PIPESTATUS[0]}
+            set -e
+            if (( status != 0 )); then
+              annotate_failure "$title" "$log"
+              return "$status"
+            fi
+          }
+
           for variant in Core Full; do
             slug="$(printf '%s' "$variant" | tr '[:upper:]' '[:lower:]')"
             build="build-native-pr-$slug"
-            cmake -S . -B "$build" -G Ninja \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DBUILD_TESTING=ON \
-              -DTHOTHPAD_PACKAGE_VARIANT="$variant" \
-              -DTHOTHPAD_BUNDLE_ENGINE=OFF
-            cmake --build "$build"
-            ctest --test-dir "$build" --output-on-failure
+            configure_log="$RUNNER_TEMP/linux-${slug}-configure.log"
+            build_log="$RUNNER_TEMP/linux-${slug}-build.log"
+            test_log="$RUNNER_TEMP/linux-${slug}-test.log"
+            run_logged "Ubuntu ${variant} configure failed" "$configure_log" \
+              cmake -S . -B "$build" -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DBUILD_TESTING=ON \
+                -DTHOTHPAD_PACKAGE_VARIANT="$variant" \
+                -DTHOTHPAD_BUNDLE_ENGINE=OFF
+            run_logged "Ubuntu ${variant} build failed" "$build_log" \
+              cmake --build "$build"
+            run_logged "Ubuntu ${variant} tests failed" "$test_log" \
+              ctest --test-dir "$build" --output-on-failure
           done
+      - name: Upload native failure logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-linux-failure-logs
+          path: |
+            ${{ runner.temp }}/linux-*-configure.log
+            ${{ runner.temp }}/linux-*-build.log
+            ${{ runner.temp }}/linux-*-test.log
+          if-no-files-found: warn
+          retention-days: 3
 
   macos:
     name: macOS native (Core + Full)
@@ -233,14 +678,61 @@ jobs:
           unset ANDROID_SDK_ROOT ANDROID_HOME ANDROID_NDK_ROOT ANDROID_NDK_HOME || true
           craft_root="$RUNNER_TEMP/CraftRoot"
           source "$craft_root/craft/craftenv.sh"
+          cd "$GITHUB_WORKSPACE"
+
+          annotate_failure() {
+            local title="$1"
+            local log="$2"
+            local summary
+            summary="$(grep -E 'CMake Error|FAILED:|fatal error:|(^|[^A-Za-z])error:|undefined reference|ld: |ninja: error|[0-9]+% tests passed|The following tests FAILED' "$log" | tail -n 12 | tr '\n' ' ' || true)"
+            if [[ -z "$summary" ]]; then
+              summary="$(tail -n 20 "$log" | tr '\n' ' ')"
+            fi
+            summary="${summary//'%'/'%25'}"
+            summary="${summary//$'\r'/'%0D'}"
+            summary="${summary//$'\n'/'%0A'}"
+            echo "::error title=${title}::${summary}"
+          }
+
+          run_logged() {
+            local title="$1"
+            local log="$2"
+            shift 2
+            set +e
+            "$@" 2>&1 | tee "$log"
+            local status=${PIPESTATUS[0]}
+            set -e
+            if (( status != 0 )); then
+              annotate_failure "$title" "$log"
+              return "$status"
+            fi
+          }
+
           for variant in Core Full; do
             slug="$(printf '%s' "$variant" | tr '[:upper:]' '[:lower:]')"
             build="build-native-pr-$slug"
-            cmake -S . -B "$build" -G Ninja \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DBUILD_TESTING=ON \
-              -DTHOTHPAD_PACKAGE_VARIANT="$variant" \
-              -DTHOTHPAD_BUNDLE_ENGINE=OFF
-            cmake --build "$build"
-            ctest --test-dir "$build" --output-on-failure
+            configure_log="$RUNNER_TEMP/macos-${slug}-configure.log"
+            build_log="$RUNNER_TEMP/macos-${slug}-build.log"
+            test_log="$RUNNER_TEMP/macos-${slug}-test.log"
+            run_logged "macOS ${variant} configure failed" "$configure_log" \
+              cmake -S . -B "$build" -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DBUILD_TESTING=ON \
+                -DTHOTHPAD_PACKAGE_VARIANT="$variant" \
+                -DTHOTHPAD_BUNDLE_ENGINE=OFF
+            run_logged "macOS ${variant} build failed" "$build_log" \
+              cmake --build "$build"
+            run_logged "macOS ${variant} tests failed" "$test_log" \
+              ctest --test-dir "$build" --output-on-failure
           done
+      - name: Upload native failure logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-macos-failure-logs
+          path: |
+            ${{ runner.temp }}/macos-*-configure.log
+            ${{ runner.temp }}/macos-*-build.log
+            ${{ runner.temp }}/macos-*-test.log
+          if-no-files-found: warn
+          retention-days: 3

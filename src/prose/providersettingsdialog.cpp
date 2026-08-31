@@ -17,6 +17,32 @@
 #include <QVBoxLayout>
 namespace ghostwriter
 {
+namespace
+{
+QString defaultEndpoint(const QString &provider)
+{
+    if (provider == QStringLiteral("gemini")) {
+        return QStringLiteral("https://generativelanguage.googleapis.com/v1beta");
+    }
+    if (provider == QStringLiteral("openai")) {
+        return QStringLiteral("https://api.openai.com/v1");
+    }
+    if (provider == QStringLiteral("openrouter")) {
+        return QStringLiteral("https://openrouter.ai/api/v1");
+    }
+    if (provider == QStringLiteral("anthropic")) {
+        return QStringLiteral("https://api.anthropic.com/v1");
+    }
+    if (provider == QStringLiteral("ollama")) {
+        return QStringLiteral("http://127.0.0.1:11434/api");
+    }
+    if (provider == QStringLiteral("llama_cpp")) {
+        return QStringLiteral("http://127.0.0.1:8080/v1");
+    }
+    return QStringLiteral("http://127.0.0.1:1234/v1");
+}
+}
+
 ProviderSettingsDialog::ProviderSettingsDialog(
     CredentialStore *credentials,
     QWidget *parent)
@@ -32,6 +58,7 @@ ProviderSettingsDialog::ProviderSettingsDialog(
     , m_timeout(new QSpinBox(this))
 {
     setWindowTitle(tr("Model Settings"));
+    m_provider->addItem(tr("Google Gemini"), QStringLiteral("gemini"));
     m_provider->addItem(tr("OpenAI compatible"), QStringLiteral("openai_compatible"));
     m_provider->addItem(tr("OpenAI"), QStringLiteral("openai"));
     m_provider->addItem(tr("OpenRouter"), QStringLiteral("openrouter"));
@@ -63,12 +90,21 @@ ProviderSettingsDialog::ProviderSettingsDialog(
     auto *layout = new QVBoxLayout(this);
     layout->addLayout(form);
     layout->addWidget(buttons);
+
+    connect(m_provider, QOverload<int>::of(&QComboBox::activated), this, [this](int) {
+        const QString provider = m_provider->currentData().toString();
+        m_endpoint->setText(defaultEndpoint(provider));
+        if (provider == QStringLiteral("gemini") && (m_model->text().isEmpty() || m_model->text() == QStringLiteral("local-model"))) {
+            m_model->setText(QStringLiteral("gemini-2.5-flash"));
+        }
+    });
+
     connect(m_credentials, &CredentialStore::written, this,
         [this](const QString &credentialId) {
             if (credentialId == m_pendingCredentialId) {
-                m_pendingCredentialId.clear();
                 m_apiKey->clear();
                 saveNonSecretSettings();
+                m_pendingCredentialId.clear();
                 QDialog::accept();
             }
         });
@@ -90,13 +126,17 @@ void ProviderSettingsDialog::loadSettings()
     const int providerIndex = m_provider->findData(provider);
     m_provider->setCurrentIndex(providerIndex < 0 ? 0 : providerIndex);
     m_endpoint->setText(settings.value(
-        QStringLiteral("endpoint"), QStringLiteral("http://127.0.0.1:1234/v1")).toString());
+        QStringLiteral("endpoint"), defaultEndpoint(provider)).toString());
     m_model->setText(settings.value(QStringLiteral("model"), QStringLiteral("local-model")).toString());
     m_temperature->setValue(settings.value(QStringLiteral("temperature"), 0.7).toDouble());
     m_maxTokens->setValue(settings.value(QStringLiteral("max_tokens"), 4096).toInt());
     m_passes->setValue(settings.value(QStringLiteral("passes"), 1).toInt());
     m_timeout->setValue(settings.value(QStringLiteral("timeout"), 180).toInt());
+    const QString savedCredentialId = settings.value(QStringLiteral("credential_id")).toString();
     settings.endGroup();
+    if (!savedCredentialId.isEmpty() && savedCredentialId == credentialId()) {
+        m_apiKey->setPlaceholderText(tr("Secure key configured · enter a new key to replace it"));
+    }
 }
 bool ProviderSettingsDialog::endpointIsAllowed() const
 {
@@ -148,6 +188,7 @@ void ProviderSettingsDialog::saveNonSecretSettings()
 {
     QSettings settings;
     settings.beginGroup(QStringLiteral("prose/provider"));
+    const QString previousCredentialId = settings.value(QStringLiteral("credential_id")).toString();
     settings.setValue(QStringLiteral("provider"), m_provider->currentData().toString());
     settings.setValue(QStringLiteral("endpoint"), m_endpoint->text().trimmed());
     settings.setValue(QStringLiteral("model"), m_model->text().trimmed());
@@ -155,6 +196,14 @@ void ProviderSettingsDialog::saveNonSecretSettings()
     settings.setValue(QStringLiteral("max_tokens"), m_maxTokens->value());
     settings.setValue(QStringLiteral("passes"), m_passes->value());
     settings.setValue(QStringLiteral("timeout"), m_timeout->value());
+    const QString currentCredentialId = credentialId();
+    if (!m_pendingCredentialId.isEmpty()) {
+        settings.setValue(QStringLiteral("credential_id"), m_pendingCredentialId);
+    } else if (previousCredentialId != currentCredentialId) {
+        // Credentials are origin/model scoped. Never imply that a key saved for
+        // one endpoint or model applies to a different identity.
+        settings.remove(QStringLiteral("credential_id"));
+    }
     settings.endGroup();
 }
 QJsonObject ProviderSettingsDialog::nonSecretSettings() const

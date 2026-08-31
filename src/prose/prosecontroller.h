@@ -88,6 +88,28 @@ struct ReportOverlaySuppressionState {
     }
 };
 
+struct AgentProseSnapshotContract {
+    static bool snapshotAvailable(const QString &analysisId)
+    {
+        return !analysisId.isEmpty();
+    }
+
+    static bool categoryHydrated(bool snapshotAvailable, bool categoryKnown, bool categoryLoaded)
+    {
+        return snapshotAvailable && categoryKnown && categoryLoaded;
+    }
+
+    static bool categoryCanHydrate(bool snapshotAvailable, bool categoryKnown)
+    {
+        return snapshotAvailable && categoryKnown;
+    }
+
+    static bool analysisResponseCurrent(int requestRevision, int responseRevision, int currentRevision)
+    {
+        return requestRevision == currentRevision && responseRevision == currentRevision;
+    }
+};
+
 class ProseController : public QObject
 {
     Q_OBJECT
@@ -99,6 +121,52 @@ public:
     void reviewDocument();
     void reviewSelection();
     void reviewFolder();
+
+    /**
+     * Story Intelligence uses this local-only review path instead of the
+     * interactive Grammar Settings path. It always uses the bundled/local
+     * automatic grammar configuration, never silently escalating an agent
+     * tool call into a cloud grammar request.
+     */
+    void reviewDocumentForAgent()
+    {
+        requestAnalysis(true, true, true, automaticGrammarSettings(), false);
+    }
+
+    /**
+     * Read-only progress adapters for Story Intelligence. A model never sees
+     * these members directly; the native harness turns them into bounded tool
+     * completion facts. A new full-document snapshot gets a fresh analysis ID.
+     */
+    quint64 analysisGenerationSnapshot() const { return m_analysisPrepGeneration; }
+    QString analysisIdSnapshot() const { return m_analysisId; }
+    int revisionSnapshotForAgent() const { return m_revision; }
+    bool hasAnalysisSnapshotForAgent() const { return AgentProseSnapshotContract::snapshotAvailable(m_analysisId); }
+
+    bool categoryKnownForAgent(const QString &category) const
+    {
+        return !analyzersForCategory(category).isEmpty();
+    }
+
+    bool categoryHydratedForAgent(const QString &category) const
+    {
+        return AgentProseSnapshotContract::categoryHydrated(
+            hasAnalysisSnapshotForAgent(),
+            categoryKnownForAgent(category),
+            m_snapshotLoadedCategories.contains(category));
+    }
+
+    bool hydrateCategoryForAgent(const QString &category)
+    {
+        if (!AgentProseSnapshotContract::categoryCanHydrate(
+                hasAnalysisSnapshotForAgent(), categoryKnownForAgent(category))) {
+            return false;
+        }
+        if (!m_snapshotLoadedCategories.contains(category)) {
+            prioritizeSnapshotCategory(category);
+        }
+        return true;
+    }
 
 signals:
     /**

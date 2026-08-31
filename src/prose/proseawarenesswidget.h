@@ -49,6 +49,16 @@ public:
     QString categoryLabel(const QString &category) const;
     QString categoryFindingLabel(const QString &category) const;
     QString categoryDescription(const QString &category) const;
+
+    /**
+     * Read-only state adapters used by Story Intelligence's native tool
+     * harness. These return copies so the agent path cannot mutate Prose
+     * Awareness presentation or diagnostic state behind the widget's back.
+     */
+    QHash<QString, int> categoryCountsSnapshot() const { return m_categoryCounts; }
+    QList<ProseDiagnostic> diagnosticsSnapshot() const { return m_diagnostics; }
+    bool engineReadySnapshot() const { return m_engineReady; }
+
     void setMode(Mode mode);
     void setProfiles(const QStringList &profiles, const QString &selected);
     void setCategoryState(const QString &category, bool enabled, const QColor &color);
