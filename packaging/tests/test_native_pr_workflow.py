@@ -21,6 +21,7 @@ class NativePrWorkflowTest(unittest.TestCase):
 
         self.assertIn("uses: actions/cache/restore@", workflow)
         self.assertIn("id: windows-craft-deps-cache", workflow)
+        self.assertIn("id: windows-craft-glib-cache", workflow)
         self.assertIn("id: windows-craft-core-cache", workflow)
         self.assertIn("uses: actions/cache/save@", workflow)
         self.assertIn(
@@ -29,6 +30,10 @@ class NativePrWorkflowTest(unittest.TestCase):
         )
         self.assertIn(
             "if: steps.windows-craft-deps-cache.outputs.cache-matched-key == ''",
+            workflow,
+        )
+        self.assertIn(
+            "steps.windows-craft-glib-cache.outputs.cache-matched-key == ''",
             workflow,
         )
         self.assertIn(
@@ -41,6 +46,7 @@ class NativePrWorkflowTest(unittest.TestCase):
             workflow,
         )
         self.assertIn("windows-craft-deps-v1-", workflow)
+        self.assertIn("windows-craft-glib-v1-", workflow)
         self.assertIn("windows-craft-core-v1-", workflow)
 
     def test_windows_craft_blueprints_are_pinned_and_glib_nls_is_disabled(self) -> None:
@@ -50,6 +56,11 @@ class NativePrWorkflowTest(unittest.TestCase):
         self.assertIn('checkout --detach $blueprintsCommit', workflow)
         self.assertIn('"-Dnls=disabled"', workflow)
         self.assertIn("Pinned Craft GLib recipe changed", workflow)
+        self.assertIn("DriveLetter = Z:/", workflow)
+        self.assertLess(
+            workflow.index('Invoke-Logged "Craft glib probe"'),
+            workflow.index("Save Windows Craft GLib checkpoint"),
+        )
         self.assertLess(
             workflow.index('Invoke-Logged "Craft glib probe"'),
             workflow.index('Invoke-Logged "Craft extra-cmake-modules"'),
