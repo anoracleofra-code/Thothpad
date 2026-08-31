@@ -287,8 +287,10 @@ jobs:
                           if doExec(package, "fetch-binary"):
                               return True
                           if CraftCore.settings.getboolean("Packager", "FailOnCacheMiss", False):
-                              CraftCore.log.error(f"{package} is unavailable in the configured binary cache")
-                              return False
+                              from Package.VirtualPackageBase import VirtualPackageBase
+                              if not isinstance(package.instance, VirtualPackageBase):
+                                  CraftCore.log.error(f"{package} is unavailable in the configured binary cache")
+                                  return False
           '@
           $patchedCraftCommands = [regex]::Replace(
             $craftCommands,

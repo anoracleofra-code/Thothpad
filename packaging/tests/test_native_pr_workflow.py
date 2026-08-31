@@ -57,6 +57,8 @@ class NativePrWorkflowTest(unittest.TestCase):
         self.assertIn("DriveLetter = Z:/", workflow)
         self.assertIn("BuildType = RelWithDebInfo", workflow)
         self.assertIn("FailOnCacheMiss = True", workflow)
+        self.assertIn("from Package.VirtualPackageBase import VirtualPackageBase", workflow)
+        self.assertIn("if not isinstance(package.instance, VirtualPackageBase):", workflow)
         self.assertIn("is unavailable in the configured binary cache", workflow)
         self.assertIn("$craftPy --use-cache libs/glib", workflow)
         self.assertNotIn("--resolve-deps all --fetch-binary", workflow)
