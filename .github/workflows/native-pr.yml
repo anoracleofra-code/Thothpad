@@ -116,6 +116,20 @@ jobs:
           }
           Set-Content -Path $gettextRecipe -Value $patchedRecipe -NoNewline
 
+          # Craft's pinned liblzma 5.2.3 recipe still points to a legacy
+          # tukaani.org HTTP endpoint that GitHub's Windows runner cannot
+          # reliably reach. Redirect only the transport to SourceForge; the
+          # recipe's existing SHA-256 still authenticates the exact tarball.
+          $liblzmaRecipe = Join-Path $craftSource "blueprints\libs\liblzma\liblzma.py"
+          $liblzma = Get-Content $liblzmaRecipe -Raw
+          $liblzmaNeedle = '            self.targets[ver] = f"http://tukaani.org/xz/xz-{ver}.tar.xz"'
+          $liblzmaReplacement = '            self.targets[ver] = f"https://downloads.sourceforge.net/project/lzmautils/xz-{ver}.tar.xz"'
+          $patchedLiblzma = $liblzma.Replace($liblzmaNeedle, $liblzmaReplacement)
+          if ($patchedLiblzma -eq $liblzma) {
+            throw "Pinned Craft liblzma recipe changed; refusing to redirect the 5.2.3 source blindly."
+          }
+          Set-Content -Path $liblzmaRecipe -Value $patchedLiblzma -NoNewline
+
           Invoke-Logged "Bootstrap Craft $craftCommit" {
             & $pythonExe $bootstrap --prefix C:\CraftRoot --branch $craftCommit --localDev $craftSource --use-defaults
           }
