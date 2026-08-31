@@ -177,18 +177,21 @@ if(THOTHPAD_PACKAGE_VARIANT STREQUAL "Full")
     )
 endif()
 
-# Ship Sonnet's hunspell client plugin and spell dictionaries next to the app
-# so development builds spell-check like packaged releases. The Craft layout
-# is Windows-specific: Linux/macOS dev setups provide these through system
-# packages, so this stays a no-op there.
+# Ship the available Sonnet client plugin and optional spell dictionaries next
+# to the app so development builds spell-check like packaged releases. Craft's
+# Windows binary cache provides the native ISpellChecker plugin, while local
+# source builds may provide Hunspell instead.
 if(WIN32 AND TARGET KF${KF_MAJOR_VERSION}::SonnetCore)
     add_custom_command(TARGET thothpad POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "$<TARGET_FILE_DIR:KF${KF_MAJOR_VERSION}::SonnetCore>/../plugins/kf6/sonnet/sonnet_hunspell.dll"
-                "$<TARGET_FILE_DIR:thothpad>/plugins/kf6/sonnet/sonnet_hunspell.dll"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "$<TARGET_FILE_DIR:KF${KF_MAJOR_VERSION}::SonnetCore>/data/hunspell"
-                "$<TARGET_FILE_DIR:thothpad>/data/hunspell"
+        COMMAND ${CMAKE_COMMAND}
+                "-DTHOTHPAD_COPY_SOURCE=$<TARGET_FILE_DIR:KF${KF_MAJOR_VERSION}::SonnetCore>/../plugins/kf6/sonnet"
+                "-DTHOTHPAD_COPY_DESTINATION=$<TARGET_FILE_DIR:thothpad>/plugins/kf6/sonnet"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/copydirectoryifexists.cmake"
+        COMMAND ${CMAKE_COMMAND}
+                "-DTHOTHPAD_COPY_SOURCE=$<TARGET_FILE_DIR:KF${KF_MAJOR_VERSION}::SonnetCore>/data/hunspell"
+                "-DTHOTHPAD_COPY_DESTINATION=$<TARGET_FILE_DIR:thothpad>/data/hunspell"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/copydirectoryifexists.cmake"
+        VERBATIM
     )
 endif()
 
