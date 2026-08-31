@@ -283,12 +283,12 @@ jobs:
           $craftCommands = Get-Content $craftCommandsPath -Raw
           $cacheFallbackPattern = '(?m)^            if CraftCore\.settings\.getboolean\("Packager", "UseCache", "False"\):\r?\n                if doExec\(package, "fetch-binary"\):\r?\n                    return True\r?$'
           $cacheFallbackReplacement = @'
-            if CraftCore.settings.getboolean("Packager", "UseCache", "False"):
-                if doExec(package, "fetch-binary"):
-                    return True
-                if CraftCore.settings.getboolean("Packager", "FailOnCacheMiss", False):
-                    CraftCore.log.error(f"{package} is unavailable in the configured binary cache")
-                    return False
+                      if CraftCore.settings.getboolean("Packager", "UseCache", "False"):
+                          if doExec(package, "fetch-binary"):
+                              return True
+                          if CraftCore.settings.getboolean("Packager", "FailOnCacheMiss", False):
+                              CraftCore.log.error(f"{package} is unavailable in the configured binary cache")
+                              return False
           '@
           $patchedCraftCommands = [regex]::Replace(
             $craftCommands,
