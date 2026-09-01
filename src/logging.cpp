@@ -16,6 +16,7 @@ void logMessage(QtMsgType type, const QMessageLogContext &context, const QString
 {
     FILE *dest = stdout;
     QMessageLogContext shortContext(context.file, context.line, context.function, context.category);
+    QByteArray filePathUtf8;
 
     if ((QtFatalMsg == type) || (QtCriticalMsg == type) || (QtWarningMsg == type)) {
         dest = stderr;
@@ -40,7 +41,8 @@ void logMessage(QtMsgType type, const QMessageLogContext &context, const QString
             filePath = filePath.right(filePath.length() - (srcDirIndex + offset));
         }
 
-        shortContext.file = filePath.toUtf8().data();
+        filePathUtf8 = filePath.toUtf8();
+        shortContext.file = filePathUtf8.constData();
     }
 
     QTextStream stream(dest);

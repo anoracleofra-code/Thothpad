@@ -33,13 +33,9 @@ MarkdownNode::MarkdownNode() :
     ;
 }
 
-MarkdownNode::MarkdownNode
-(
-    cmark_node *node
-)
+MarkdownNode::MarkdownNode(cmark_node *node)
+    : MarkdownNode()
 {
-    MarkdownNode();
-
     if (NULL == node) {
         return;
     }
