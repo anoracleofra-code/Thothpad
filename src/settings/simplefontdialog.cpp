@@ -42,9 +42,8 @@ public:
 };
 
 SimpleFontDialog::SimpleFontDialog(QWidget *parent)
-    : d_ptr(new SimpleFontDialogPrivate())
+    : SimpleFontDialog(QFont(), parent)
 {
-    SimpleFontDialog(QFont(), parent);
 }
 
 SimpleFontDialog::SimpleFontDialog(const QFont &initial, QWidget *parent)
