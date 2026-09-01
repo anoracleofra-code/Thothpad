@@ -63,6 +63,11 @@ public:
     // Hash of the text that produced the currently rendered HTML; a matching
     // hash skips the export entirely.
     QByteArray lastRenderedTextHash;
+    // Hash of the text currently being exported by the worker.  It is
+    // captured on the GUI thread at dispatch time and committed to
+    // lastRenderedTextHash only after the export finished successfully,
+    // so a failed export never marks its text as rendered.
+    QByteArray pendingTextHash;
     PreviewProxy *proxy;
     QString baseUrl;
     QRegularExpression headingTagExp;
@@ -241,7 +246,7 @@ void HtmlPreviewPrivate::updatePreviewNow()
             setHtmlContent("");
         } else if (nullptr != exporter) {
             if (!currentText.isNull() && !currentText.isEmpty()) {
-                lastRenderedTextHash = hash;
+                pendingTextHash = hash;
                 updateInProgress = true;
                 QFuture<QString> future = QtConcurrent::run(&HtmlPreviewPrivate::exportToHtml, currentText, exporter);
                 futureWatcher->setFuture(future);
@@ -266,7 +271,11 @@ void HtmlPreview::setHtmlExporter(Exporter *exporter)
     Q_D(HtmlPreview);
 
     d->exporter = exporter;
+    // Clear both hashes: the completed-render hash so the new exporter
+    // re-renders, and the in-flight hash so a worker finishing after this
+    // call cannot mark the (old-exporter) result as current.
     d->lastRenderedTextHash.clear();
+    d->pendingTextHash.clear();
     d->setHtmlContent("");
     d->proxy->setMathEnabled(d->exporter->supportsMath());
     updatePreview();
@@ -291,6 +300,12 @@ void HtmlPreviewPrivate::onHtmlReady()
     Q_Q(HtmlPreview);
     
     setHtmlContent(futureWatcher->result());
+
+    // The export finished successfully (any exception thrown by the
+    // worker would have propagated out of result() above, skipping this
+    // commit), so it is now safe to mark the text as rendered.
+    lastRenderedTextHash = pendingTextHash;
+
     updateInProgress = false;
 
     if (updateAgain) {
@@ -351,26 +366,22 @@ QString HtmlPreviewPrivate::exportToHtml
 {
     QString html;
 
-    // Enable smart typography for preview, if available for the exporter.
-    bool smartTypographyEnabled = exporter->smartTypographyEnabled();
-    exporter->setSmartTypographyEnabled(true);
-
 #ifdef THOTHPAD_INSTRUMENTATION
     QElapsedTimer exportTimer;
     exportTimer.start();
 #endif
 
-    // Export to HTML.
-    exporter->exportToHtml(text, html);
+    // Export to HTML.  Smart typography is enabled per call for the
+    // preview.  Note: do not toggle Exporter::setSmartTypographyEnabled()
+    // here; this method runs on a worker thread while the GUI thread uses
+    // the same Exporter instance, and mutating (or reading and restoring)
+    // its shared state from this thread races with GUI-thread use.
+    //
+    exporter->exportToHtml(text, html, true);
 
 #ifdef THOTHPAD_INSTRUMENTATION
     ProseInstrumentation::instance()->recordPreviewExport(exportTimer.elapsed());
 #endif
-
-    // Put smart typography setting back to the way it was before
-    // so that the last setting used during document export is remembered.
-    //
-    exporter->setSmartTypographyEnabled(smartTypographyEnabled);
 
     return html;
 }

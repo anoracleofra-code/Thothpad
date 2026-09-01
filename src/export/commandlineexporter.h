@@ -85,9 +85,12 @@ public:
 
     /**
      * Exports the given text to html, returning the HTML in the html
-     * parameter for use in the Live HTML Preview.
+     * parameter for use in the Live HTML Preview.  The
+     * smartTypographyEnabled parameter decides whether the command
+     * line's smart typography argument is expanded for enabling or
+     * disabling smart typography.
      */
-    void exportToHtml(const QString &text, QString &html) override;
+    void exportToHtml(const QString &text, QString &html, bool smartTypographyEnabled) override;
 
     /**
      * Exports the given text to the given format and output file path.

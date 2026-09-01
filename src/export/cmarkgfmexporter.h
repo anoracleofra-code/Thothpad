@@ -29,9 +29,10 @@ public:
 
     /**
      * Exports the given Markdown text to HTML, setting the html parameter
-     * to have the HTML output.
+     * to have the HTML output.  Pass in true for smartTypographyEnabled to
+     * render with smart typography enabled.
      */
-    void exportToHtml(const QString &text, QString &html) override;
+    void exportToHtml(const QString &text, QString &html, bool smartTypographyEnabled) override;
 
     /**
      * Exports the given Markdown text to the given export format and
