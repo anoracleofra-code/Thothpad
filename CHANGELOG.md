@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+* The vacuous single-persistent-session test for Harper's segmented analysis now asserts session identity, per-segment request counts, and global offset stitching; it previously passed without testing anything. (It also runs without the built Harper binary by mocking at the session boundary.)
 * The backup-location error dialog displayed a literal "%d" instead of the failing path.
 * The document outline now repopulates when the background parse completes (previously it stayed stale until the next edit), and a dangling signal connection during teardown was removed.
 * Development builds deploy the Sonnet hunspell plugin and en_US dictionaries automatically, restoring spell checking in non-packaged builds.
