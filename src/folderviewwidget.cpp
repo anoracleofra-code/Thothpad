@@ -97,8 +97,18 @@ void FolderViewWidget::setupConnections()
 {
     Q_D(FolderViewWidget);
 
+    // The view does not take ownership of a selection model installed
+    // with setSelectionModel(); the old one must be deleted by the caller.
+    // Delete it only after the new one is installed, since the view (and
+    // its signals) still reference the old model until then.
+    QItemSelectionModel *oldSelectionModel = this->selectionModel();
+
     QItemSelectionModel *selectionModel = new QItemSelectionModel(d->folderModel, this);
     this->setSelectionModel(selectionModel);
+
+    if (nullptr != oldSelectionModel) {
+        delete oldSelectionModel;
+    }
 
     this->connect
     (

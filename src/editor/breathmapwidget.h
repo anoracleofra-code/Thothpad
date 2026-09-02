@@ -6,6 +6,7 @@
 #define BREATH_MAP_WIDGET_H
 
 #include <QTextDocument>
+#include <QTimer>
 #include <QVector>
 #include <QWidget>
 
@@ -53,11 +54,14 @@ public:
 
 protected:
     void paintEvent(QPaintEvent *event) override;
+    void showEvent(QShowEvent *event) override;
 
 private:
     QTextDocument *document = nullptr;
     QVector<int> sentenceWords;
     bool monotonyRun = false;
+    QTimer *debounce = nullptr;
+    QMetaObject::Connection contentsChangeConnection;
 };
 } // namespace ghostwriter
 

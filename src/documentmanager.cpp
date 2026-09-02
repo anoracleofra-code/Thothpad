@@ -159,8 +159,7 @@ DocumentManager::DocumentManager
     d->autoSaveEnabled = false;
     d->documentModifiedNotifVisible = false;
 
-    d->draftLocation =
-        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    d->draftLocation = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + QStringLiteral("/ThothPad/Drafts");
 
     d->fileWatcher = new QFileSystemWatcher(this);
     d->document = (MarkdownDocument *) editor->document();

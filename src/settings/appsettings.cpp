@@ -61,6 +61,7 @@ constexpr auto GW_PREVIEW_CODE_FONT_KEY{"Preview/codeFont"};
 constexpr auto THOTHPAD_DEFAULTS_VERSION_KEY{"Application/thothpadDefaultsVersion"};
 constexpr int THOTHPAD_DEFAULTS_VERSION = 1;
 constexpr auto GW_BACKUP_LOCATION_KEY{"Backup/location"};
+constexpr auto GW_DRAFT_LOCATION_KEY{"Draft/location"};
 }
 
 class AppSettingsPrivate
@@ -725,9 +726,8 @@ AppSettings::AppSettings()
         }
     }
 
-    d->draftLocation =
-        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    
+    d->draftLocation = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + QStringLiteral("/ThothPad/Drafts");
+
     d->themeDirectoryPath =
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
         + "/themes";
@@ -837,6 +837,35 @@ AppSettings::AppSettings()
     }
 
     qInfo() << "Backup files will be stored in" << d->backupLocation;
+
+    // Load the draft location, honoring an explicitly configured value.
+    // The default changed from the Documents root to a dedicated
+    // "ThothPad/Drafts" subfolder; only apply the default when the key is
+    // unset so a user's explicit choice survives upgrades. A configured
+    // draft location that has become invalid falls back to the default.
+    const QString defaultDraftLocation = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + QStringLiteral("/ThothPad/Drafts");
+
+    d->draftLocation = appSettings.value(constants::GW_DRAFT_LOCATION_KEY, defaultDraftLocation).toString();
+
+    if (d->draftLocation.isEmpty()) {
+        d->draftLocation = defaultDraftLocation;
+    }
+
+    QFileInfo draftDirInfo(d->draftLocation);
+    d->draftLocation = draftDirInfo.absoluteFilePath();
+
+    if (draftDirInfo.exists()) {
+        if (!draftDirInfo.isDir()) {
+            qCritical() << "Draft file location must be a directory:" << d->draftLocation;
+            d->draftLocation = defaultDraftLocation;
+        } else if (!draftDirInfo.isWritable()) {
+            qCritical() << "Draft file location is not writeable:" << d->draftLocation;
+            d->draftLocation = defaultDraftLocation;
+        }
+    } else if (!QDir(d->draftLocation).mkpath(d->draftLocation)) {
+        qCritical() << "Could not create draft file directory:" << d->draftLocation;
+        d->draftLocation = defaultDraftLocation;
+    }
 
     if ((d->tabWidth < MIN_TAB_WIDTH) || (d->tabWidth > MAX_TAB_WIDTH)) {
         d->tabWidth = DEFAULT_TAB_WIDTH;
