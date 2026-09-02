@@ -30,9 +30,12 @@ public:
     /**
      * Exports the given Markdown text to HTML, setting the html parameter
      * to have the HTML output.  Pass in true for smartTypographyEnabled to
-     * render with smart typography enabled.
+     * render with smart typography enabled.  Pass in true for safeMode to
+     * escape raw HTML and strip dangerous URLs (live preview of untrusted
+     * files); the default false preserves raw HTML for deliberate exports
+     * of the user's own document.
      */
-    void exportToHtml(const QString &text, QString &html, bool smartTypographyEnabled) override;
+    void exportToHtml(const QString &text, QString &html, bool smartTypographyEnabled, bool safeMode = false) override;
 
     /**
      * Exports the given Markdown text to the given export format and

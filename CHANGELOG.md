@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+* Hardened the live HTML preview against hostile Markdown files. The preview now renders cmark-gfm output in safe mode, so raw HTML (including event-handler attributes like `onerror=`), `javascript:`/`vbscript:`/`file:`/non-image `data:` link targets, meta-refresh redirects, and iframe/script markup in an untrusted document are escaped or stripped instead of executing. Deliberate exports (HTML file export, "Copy as HTML") still preserve the document's own raw HTML. The preview web page additionally rejects all navigations except re-displays of its internal wrapper page and hands link clicks to the system browser, closing scripted- and redirect-based navigation of the preview (which had file:// access) to remote or local URLs.
+
 ### Added
 
 * Repetition pairs now highlight **both** occurrences of close word repeats, on the live lane and in snapshot reports; the earlier occurrence shifts correctly with edits.

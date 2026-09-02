@@ -60,10 +60,11 @@ bool Exporter::supportsUserOptions() const {
     return m_userOptionsSupported;
 }
 
-void Exporter::exportToHtml(const QString &text, QString &html, bool smartTypographyEnabled)
+void Exporter::exportToHtml(const QString &text, QString &html, bool smartTypographyEnabled, bool safeMode)
 {
     Q_UNUSED(text)
     Q_UNUSED(smartTypographyEnabled)
+    Q_UNUSED(safeMode)
 
     html = QString("<center><b style='color: red'>") +
            QObject::tr("Export to HTML is not supported with this processor.") +

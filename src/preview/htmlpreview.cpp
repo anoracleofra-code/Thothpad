@@ -377,7 +377,12 @@ QString HtmlPreviewPrivate::exportToHtml
     // the same Exporter instance, and mutating (or reading and restoring)
     // its shared state from this thread races with GUI-thread use.
     //
-    exporter->exportToHtml(text, html, true);
+    // Safe mode is always on for the live preview: it renders whatever
+    // document is open, including untrusted files, so raw HTML must be
+    // escaped and dangerous URLs stripped.  Deliberate exports (file
+    // export, "Copy as HTML") use their own call sites without safe mode.
+    //
+    exporter->exportToHtml(text, html, true, true);
 
 #ifdef THOTHPAD_INSTRUMENTATION
     ProseInstrumentation::instance()->recordPreviewExport(exportTimer.elapsed());
