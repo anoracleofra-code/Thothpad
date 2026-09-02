@@ -38,6 +38,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+* Removed the dead duplicate Windows process-supervision helpers and protocol header constants from the engine sidecar; the live implementations in `backend.process_supervisor` and `backend.protocol` are now the single source.
+* Deleted the superseded unguarded `run_story_intelligence` entry point from `backend.story_intelligence`; the pipeline only ever routes Story Intelligence turns through the sanitized boundary in `backend.story_runtime`.
+* Saved-run Markdown reports render "No flags." again for analyses with zero findings (the old header-length check could never fire after the report header grew).
+* The MCP `prose_rewrite` tool now validates `passes` and `mode` exactly like the desktop sidecar: JSON booleans and fractional pass counts are rejected, and only supported rewrite modes are accepted.
+* The engine sidecar rejects client requests for internal-only operations (such as `dispose_document_snapshots`) with `invalid_request`; the internal snapshot-disposal path after `dispose_document` continues to work unchanged.
+* The engine README's protocol version (1.2) and the README/agent-setup MCP tool lists now match the eleven tools the MCP server actually exposes, with a regression test pinning them.
 * The vacuous single-persistent-session test for Harper's segmented analysis now asserts session identity, per-segment request counts, and global offset stitching; it previously passed without testing anything. (It also runs without the built Harper binary by mocking at the session boundary.)
 * The backup-location error dialog displayed a literal "%d" instead of the failing path.
 * The document outline now repopulates when the background parse completes (previously it stayed stale until the next edit), and a dangling signal connection during teardown was removed.

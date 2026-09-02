@@ -271,6 +271,51 @@ def test_dispose_document_keeps_report_worker_and_harper_warm(monkeypatch, tmp_p
     assert worker.stopped is False
 
 
+def test_dispatch_rejects_client_calls_to_internal_operations():
+    with pytest.raises(ValueError, match="reserved for internal use"):
+        dispatch(request("dispose_document_snapshots"))
+
+
+def test_internal_operation_reaches_client_as_invalid_request(monkeypatch, tmp_path):
+    from backend import config
+
+    monkeypatch.setattr(config, "ANALYSIS_CACHE_DB", tmp_path / "analysis.sqlite3")
+
+    class IdleWorker:
+        def __init__(self):
+            self.stopped = False
+
+        def is_running(self):
+            return False
+
+        def stop(self):
+            self.stopped = True
+
+    worker = IdleWorker()
+    value = request("dispose_document_snapshots")
+    value["request_id"] = "internal-op-rejected"
+    writer = io.BytesIO()
+    server = SidecarServer(io.BytesIO(), writer)
+    server._report_worker = worker
+    server._accept(value)
+    deadline = time.monotonic() + 5
+    while not writer.getvalue() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    response = read_frame(io.BytesIO(writer.getvalue()))
+    assert response is not None
+    assert response["ok"] is False
+    assert response["error"]["code"] == "invalid_request"
+    assert "reserved for internal use" in response["error"]["message"]
+
+
+def test_internal_dispatch_still_handles_snapshot_disposal(monkeypatch, tmp_path):
+    from backend import config
+
+    monkeypatch.setattr(config, "ANALYSIS_CACHE_DB", tmp_path / "analysis.sqlite3")
+    result = dispatch(request("dispose_document_snapshots"), internal=True)
+    assert result == {"document_id": "document-1", "disposed_analyses": 0}
+
+
 def test_dispose_analysis_with_released_worker_does_not_respawn(monkeypatch, tmp_path):
     from backend import config
 

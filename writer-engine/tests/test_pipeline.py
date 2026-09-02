@@ -43,6 +43,20 @@ def test_explicit_run_artifacts_are_owner_only_on_unix(tmp_path, monkeypatch):
     assert all(stat.S_IMODE(path.stat().st_mode) == 0o600 for path in run_dir.iterdir())
 
 
+def test_zero_flag_report_renders_no_flags_marker(tmp_path, monkeypatch):
+    import backend.storage as storage
+    from backend import config
+
+    monkeypatch.setattr(config, "RUNS_DIR", tmp_path)
+    monkeypatch.setattr(storage, "DB_PATH", tmp_path / "runs.sqlite3")
+    report = run_pipeline(RunRequest(text="A clean sentence.", mode="diagnose", persist=True))
+    assert not any(
+        flag for analyzer in report["analysis_after"] for flag in analyzer["flags"]
+    )
+    markdown = storage.report_to_markdown(report)
+    assert "No flags." in markdown
+
+
 def test_compare_reports_delta():
     report = compare_texts("It wasn't fear. It was memory.", "Mara remembered the red cup on the counter.")
     assert report["mode"] == "compare"

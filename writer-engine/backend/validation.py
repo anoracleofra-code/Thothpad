@@ -41,6 +41,8 @@ def validate_text(text: str, *, live: bool = False) -> str:
 def validate_passes(passes: int) -> int:
     if isinstance(passes, bool):
         raise ValueError(f"passes must be between 1 and {config.MAX_PASSES}")
+    if isinstance(passes, float) and not float(passes).is_integer():
+        raise ValueError(f"passes must be between 1 and {config.MAX_PASSES}")
     value = int(passes)
     if value < 1 or value > config.MAX_PASSES:
         raise ValueError(f"passes must be between 1 and {config.MAX_PASSES}")

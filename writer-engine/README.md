@@ -50,7 +50,7 @@ ThothPad launches the engine without a listening port:
 python -m backend.sidecar
 ```
 
-Messages are UTF-8 JSON framed as `Content-Length: N\r\n\r\n<body>`. Protocol 1.1 supports
+Messages are UTF-8 JSON framed as `Content-Length: N\r\n\r\n<body>`. Protocol 1.2 supports
 initialize, capabilities, profile management, region/document/manuscript analysis, rewrite,
 compare, cancellation, and shutdown. Cancellation is cooperative: the supervisor flags the
 request and the persistent report worker aborts at its next checkpoint without restarting,
@@ -102,6 +102,8 @@ Tools:
 - `prose_get_run`
 - `prose_analyze_manuscript`
 - `prose_calibrate_corpus`
+- `prose_quality_timeline`
+- `prose_lens_baselines`
 
 ## Analysis Policy
 

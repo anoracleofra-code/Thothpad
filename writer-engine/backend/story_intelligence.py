@@ -8,8 +8,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-from backend.llm_clients import complete_chat, scrub_provider
-from backend.models import RunRequest
 from backend.text_utils import Utf16Index
 
 STORY_KIND = "story_intelligence_v1"
@@ -714,35 +712,4 @@ def validate_story_response(text: str, payload: dict[str, Any]) -> dict[str, Any
         "scene_context_proposal": scene_proposal,
         "character_proposals": bounded_proposals,
         "structured": True,
-    }
-
-
-def run_story_intelligence(
-    request: RunRequest,
-    payload: dict[str, Any],
-) -> dict[str, Any]:
-    retrieved = retrieve_project_context(payload)
-    response = complete_chat(build_story_messages(payload, retrieved), request.provider)
-    if response.error:
-        story = {
-            "message": "",
-            "tool_calls": [],
-            "annotations": [],
-            "scene_context_proposal": {},
-            "character_proposals": [],
-            "structured": False,
-        }
-        errors = [response.error]
-    else:
-        story = validate_story_response(response.text, payload)
-        errors = []
-    return {
-        "mode": "story_chat",
-        "profile": request.profile,
-        "output_text": story["message"],
-        "llm_errors": errors,
-        "story_intelligence": story,
-        "provider": scrub_provider(request.provider),
-        "retrieved_project_files": [item["path"] for item in retrieved],
-        "persisted": False,
     }

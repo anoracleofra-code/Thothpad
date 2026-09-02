@@ -152,15 +152,17 @@ def report_to_markdown(report: dict[str, Any]) -> str:
                 f"- `{item.get('analyzer')}:{item.get('type')}`: {item.get('total_matches')} matches across {item.get('affected_files')} files"  # noqa: E501
             )
         return "\n".join(lines) + "\n"
+    has_flags = False
     for result in report.get("analysis_after") or report.get("analysis_before") or []:
         flags = result.get("flags", [])
         if not flags:
             continue
+        has_flags = True
         lines.append(f"### {result.get('name')}")
         for flag in flags:
             lines.append(f"- `{flag.get('severity')}` `{flag.get('type')}`: {flag.get('excerpt')}")
             if flag.get("suggestion"):
                 lines.append(f"  - {flag.get('suggestion')}")
-    if len(lines) == 9:
+    if not has_flags:
         lines.append("No flags.")
     return "\n".join(lines) + "\n"
