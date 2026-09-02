@@ -18,6 +18,7 @@ from typing import Any, BinaryIO
 
 from backend import config
 from backend.analysis_store import AnalysisStore
+from backend.analyzers import run_analyzers
 from backend.analyzers.dialogue import _dialogue_spans
 from backend.analyzers.possible_adverbs import spacy_model_status
 from backend.desktop_engine import (
@@ -38,7 +39,7 @@ from backend.manuscript import (
     manuscript_report_with_timeline,
     read_project_timeline,
 )
-from backend.models import AnalyzerResult, RunRequest
+from backend.models import RunRequest
 from backend.pipeline import compare_texts, run_pipeline
 from backend.profiles import (
     export_profile,
@@ -373,11 +374,8 @@ def _analyze_live_cancellable(
 ) -> dict[str, Any]:
     from backend.analyzers.base import (
         LIVE_ANALYZERS,
-        _analyzers,
-        _apply_thresholds,
+        validate_analyzer_names,
     )
-    from backend.analyzers.dialogue import dialogue_spans, inside_dialogue
-    from backend.analyzers.pattern_helpers import with_profile_patterns
 
     validate_text(text, live=True)
     if base_offset_utf16 < 0:
@@ -403,51 +401,12 @@ def _analyze_live_cancellable(
 
     with cancellable_analysis(cancelled.is_set), document_features(text, exclusions) as features:
         analyzer_started = time.perf_counter()
-        registry = _analyzers()
-        unknown = sorted(set(selected) - set(registry))
-        if unknown:
-            raise ValueError(f"unknown analyzers: {', '.join(unknown)}")
-        results = []
-        if lexical_rules_enabled:
-            for name in selected:
-                cancellation_checkpoint()
-                results.append(registry[name].analyze(text, profile))
-                cancellation_checkpoint()
-
-            spans: list[tuple[int, int]] | None = None
-            dialogue_settings = profile.get("dialogue_exclusions", {}) or {}
-            for result in results:
-                cancellation_checkpoint()
-                settings = profile.get(result.name, {}) or {}
-                ignore_dialogue = settings.get(
-                    "ignore_dialogue",
-                    dialogue_settings.get(result.name, dialogue_settings.get("all", False)),
-                )
-                if not ignore_dialogue:
-                    continue
-                if spans is None:
-                    spans = dialogue_spans(text)
-                original_count = len(result.flags)
-                result.flags = [
-                    flag for flag in result.flags
-                    if not inside_dialogue(flag.start, flag.end, spans)
-                ]
-                removed = original_count - len(result.flags)
-                if removed:
-                    result.score = max(0.0, result.score - removed)
-                result.metrics["ignored_dialogue"] = True
-                result.metrics["dialogue_findings_removed"] = removed
-
-        cancellation_checkpoint()
-        results.append(with_profile_patterns(
-            AnalyzerResult(name="profile_patterns", score=0.0), text, profile
-        ))
-        _apply_thresholds(results, profile)
-        for result in results:
-            result.metrics.setdefault("total_findings", len(result.flags))
-            result.metrics.setdefault("findings_truncated", False)
-            for flag in result.flags:
-                flag.analyzer = result.name
+        # Unknown names raise before any analyzer work, matching the sidecar's
+        # validate-first contract; the shared orchestration owns the registry
+        # loop, dialogue-exclusion post-pass, profile_patterns appending, and
+        # threshold application from here on.
+        validate_analyzer_names(selected)
+        results = run_analyzers(text, profile, selected if lexical_rules_enabled else ())
 
         grammar_allowed = bool(
             grammar

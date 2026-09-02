@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+* Sidecar live analysis now delegates its analyzer orchestration (registry loop, dialogue-exclusion post-pass, thresholds, profile patterns) to the engine's shared `run_analyzers` implementation instead of maintaining a byte-compatibility copy; golden equivalence tests pin both paths to identical envelopes.
 * Idle document analysis is no longer cancelled by killing the engine worker: cooperative cancellation keeps spaCy, WordNet, and Harper caches warm across pauses, eliminating cold-restart churn while typing.
 * Harper's grammar session stays warm after engine initialize and across documents.
 * Document edits coalesce into batched `patch_document` frames (25 ms window) instead of one IPC round trip per keystroke.

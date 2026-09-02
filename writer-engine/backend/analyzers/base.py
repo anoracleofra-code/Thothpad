@@ -123,6 +123,18 @@ def _apply_thresholds(results: list[AnalyzerResult], profile: dict[str, Any]) ->
                 result.score *= len(kept) / original_count
 
 
+def validate_analyzer_names(
+    names: Iterable[str],
+    registry: dict[str, Analyzer] | None = None,
+) -> None:
+    """Raise ValueError for any requested names missing from the registry."""
+    if registry is None:
+        registry = _analyzers()
+    unknown = sorted(set(names) - set(registry))
+    if unknown:
+        raise ValueError(f"unknown analyzers: {', '.join(unknown)}")
+
+
 def run_analyzers(
     text: str,
     profile: dict[str, Any] | None = None,
@@ -133,9 +145,7 @@ def run_analyzers(
     with document_features(text):
         registry = _analyzers()
         selected = tuple(dict.fromkeys(names)) if names is not None else tuple(registry)
-        unknown = sorted(set(selected) - set(registry))
-        if unknown:
-            raise ValueError(f"unknown analyzers: {', '.join(unknown)}")
+        validate_analyzer_names(selected, registry)
         active_profile = profile or {}
         results = []
         for name in selected:
