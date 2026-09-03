@@ -789,6 +789,212 @@ ghostwriter--ProseAwarenessWidget QToolButton#proseAwarenessCollapseButton:hover
 }
 
 /******************************************************************************/
+/*  Story Intelligence                                                        */
+/******************************************************************************/
+
+/* The right rail inherits the app chrome: the same parchment/zinc panel and
+   card surfaces as the left prose sidebar, compiled from the same theme
+   variables by StyleSheetBuilder. Structure (borders, radii, fonts, spacing) mirrors
+   the rail's original local stylesheet; only the color sources changed from
+   system-palette roles to theme roles. */
+ghostwriter--StoryIntelligenceWidget {
+    background-color: $secondary-background-color;
+    color: $text-color;
+}
+
+ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceHeaderSurface,
+ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceComposer {
+    background-color: $tertiary-fill-color;
+    border: 0;
+}
+
+ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceHeaderSurface {
+    border-bottom: 1px solid $secondary-separator-color;
+}
+
+ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceComposer {
+    border-top: 1px solid $secondary-separator-color;
+}
+
+ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceSetupSurface,
+ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceSceneCard,
+ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceSuggestionCard,
+ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceActivityCard,
+ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceCharacterCard {
+    background-color: $panel-fill-color;
+    border: 1px solid $secondary-separator-color;
+    border-radius: 7px;
+}
+
+ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceActivityCard {
+    background-color: $observation-fill-color;
+}
+
+ghostwriter--StoryIntelligenceWidget QLabel {
+    color: $text-color;
+}
+
+ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceTitle,
+ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceSectionTitle,
+ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceCaption,
+ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceCardHeading,
+ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceBubbleSpeaker,
+ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceActivityTitle {
+    font-weight: 600;
+}
+
+ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceTitle {
+    font-size: 10.5pt;
+}
+
+ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceMutedLabel,
+ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceKeyState,
+ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceStatus,
+ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceSuggestionQuote,
+ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceActivityCaption,
+ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceActivityDetail {
+    color: $secondary-label-color;
+    font-size: 9pt;
+}
+
+ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceActivityCaption {
+    font-weight: 600;
+}
+
+ghostwriter--StoryIntelligenceWidget QLabel#storyIntelligenceSuggestionReplacement {
+    padding: 6px;
+    border: 1px solid $secondary-separator-color;
+    border-radius: 5px;
+    background-color: $suggestion-fill-color;
+    color: $text-color;
+}
+
+ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligencePrimaryButton,
+ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceApplyButton,
+ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceUndoButton {
+    min-height: 28px;
+    padding: 4px 10px;
+    border: 1px solid $secondary-separator-color;
+    border-radius: 6px;
+    background-color: $fill-color;
+    color: $text-color;
+}
+
+ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceApplyButton {
+    background-color: $secondary-fill-color;
+    color: $text-color;
+    font-weight: 600;
+}
+
+ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceUndoButton {
+    font-weight: 600;
+}
+
+ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligencePrimaryButton:hover,
+ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceApplyButton:hover,
+ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceUndoButton:hover,
+ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceCharacterCard:hover {
+    border-color: $accent-color;
+    background-color: $fill-color-hover;
+}
+
+ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligencePrimaryButton:pressed,
+ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceApplyButton:pressed,
+ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceUndoButton:pressed {
+    border-color: $accent-color;
+    background-color: $fill-color-pressed;
+}
+
+ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligencePrimaryButton:disabled,
+ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceApplyButton:disabled,
+ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceUndoButton:disabled {
+    border-color: $fill-color-disabled;
+    background-color: $fill-color-disabled;
+    color: $text-color-disabled;
+}
+
+ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceApiKeyButton,
+ghostwriter--StoryIntelligenceWidget QToolButton#storyIntelligenceTextButton,
+ghostwriter--StoryIntelligenceWidget QToolButton#storyIntelligenceCollapseButton {
+    border: 0;
+    background-color: transparent;
+    color: $secondary-label-color;
+    padding: 3px 5px;
+}
+
+ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceApiKeyButton:hover,
+ghostwriter--StoryIntelligenceWidget QToolButton#storyIntelligenceTextButton:hover,
+ghostwriter--StoryIntelligenceWidget QToolButton#storyIntelligenceCollapseButton:hover {
+    color: $label-color;
+    background-color: $fill-color-hover;
+}
+
+ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceCharacterCard {
+    min-height: 46px;
+    text-align: left;
+    padding: 7px 9px;
+    color: $text-color;
+}
+
+ghostwriter--StoryIntelligenceWidget QPushButton#storyIntelligenceCharacterCard:checked {
+    border-color: $accent-color;
+    background-color: $secondary-fill-color;
+    color: $text-color;
+}
+
+ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceAssistantBubble {
+    background-color: $panel-fill-color;
+    border: 1px solid $secondary-separator-color;
+    border-radius: 7px;
+}
+
+ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceUserBubble {
+    background-color: $secondary-fill-color;
+    border: 1px solid $secondary-separator-color;
+    border-radius: 7px;
+}
+
+ghostwriter--StoryIntelligenceWidget QPlainTextEdit#storyIntelligenceChatInput {
+    border: 1px solid $secondary-separator-color;
+    border-radius: 7px;
+    padding: 6px;
+    background-color: $fill-color;
+    color: $text-color;
+    placeholder-text-color: $placeholder-text-color;
+    selection-color: $selected-text-fg-color;
+    selection-background-color: $selected-text-bg-color;
+}
+
+ghostwriter--StoryIntelligenceWidget QPlainTextEdit#storyIntelligenceChatInput:focus {
+    border: 1px solid $text-color;
+    background-color: $background-color;
+}
+
+ghostwriter--StoryIntelligenceWidget QPlainTextEdit#storyIntelligenceChatInput:disabled {
+    border-color: $fill-color-disabled;
+    background-color: $fill-color-disabled;
+    color: $text-color-disabled;
+}
+
+ghostwriter--StoryIntelligenceWidget QScrollArea#storyIntelligenceScrollArea,
+ghostwriter--StoryIntelligenceWidget QScrollArea#storyIntelligenceChatScroll,
+ghostwriter--StoryIntelligenceWidget QWidget#storyIntelligenceContent,
+ghostwriter--StoryIntelligenceWidget QWidget#storyIntelligenceChatContent {
+    background-color: $secondary-background-color;
+    border: 0;
+}
+
+ghostwriter--StoryIntelligenceWidget QScrollArea#storyIntelligenceScrollArea > QWidget#qt_scrollarea_viewport,
+ghostwriter--StoryIntelligenceWidget QScrollArea#storyIntelligenceChatScroll > QWidget#qt_scrollarea_viewport {
+    background-color: $secondary-background-color;
+    border: 0;
+}
+
+ghostwriter--StoryIntelligenceWidget QFrame#storyIntelligenceDivider {
+    color: $secondary-separator-color;
+}
+
+/******************************************************************************/
 /* Status bar                                                                 */
 /******************************************************************************/
 

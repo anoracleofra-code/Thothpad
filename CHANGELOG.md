@@ -61,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Authored panel chrome surfaces are keyed by theme name instead of exact background hex values, so custom themes sharing a built-in's background no longer silently inherit its hand-tuned surfaces.
 * Preview command-line options are saved per exporter, so params no longer bleed between markdown flavors when switching.
 * Story Intelligence installs through `MainWindow` accessors and menu-object identity instead of `findChild` name lookups and translated-title matching.
+* The Story Intelligence dock now follows the app theme: its widget-local system-palette stylesheet was removed and equivalent rules using the same theme surfaces as the left prose sidebar were added to the app-wide stylesheet, so the rail matches the panel/card colors in every built-in theme and dark mode instead of rendering white cards on white.
 
 ## [24.08.0]
 
