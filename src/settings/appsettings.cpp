@@ -289,8 +289,8 @@ int AppSettings::tabWidth() const
 void AppSettings::setTabWidth(int width)
 {
     Q_D(AppSettings);
-    
-    if ((d->tabWidth >= MIN_TAB_WIDTH) && (d->tabWidth <= MAX_TAB_WIDTH)) {
+
+    if ((width >= MIN_TAB_WIDTH) && (width <= MAX_TAB_WIDTH)) {
         d->tabWidth = width;
         emit tabWidthChanged(width);
     }

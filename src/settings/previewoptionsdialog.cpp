@@ -130,9 +130,7 @@ PreviewOptionsDialog::PreviewOptionsDialog(QWidget *parent)
         [this, d, currentCodeFont]() {
             bool success = false;
 
-            QFont font = SimpleFontDialog::monospaceFont(&success,
-                d->appSettings->previewTextFont(),
-                this);
+            QFont font = SimpleFontDialog::monospaceFont(&success, d->appSettings->previewCodeFont(), this);
 
             if (success) {
                 currentCodeFont->setText(d->fontToString(font));
