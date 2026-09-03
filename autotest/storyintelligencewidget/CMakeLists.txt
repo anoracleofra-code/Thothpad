@@ -12,8 +12,22 @@ qt_standard_project_setup()
 
 ecm_add_test(
     storyintelligencewidgettest.cpp
+    storyintelligencewidget.qrc
     ../../src/story/storyintelligencewidget.h
     ../../src/story/storyintelligencewidget.cpp
+    ../../src/prose/proseawarenesswidget.h
+    ../../src/prose/proseawarenesswidget.cpp
+    ../../src/prose/prosediagnostic.h
+    ../../src/theme/chromecolors.h
+    ../../src/theme/chromecolors.cpp
+    ../../src/theme/theme.h
+    ../../src/theme/theme.cpp
+    ../../src/theme/themerepository.h
+    ../../src/theme/themerepository.cpp
+    ../../src/theme/stylesheetbuilder.h
+    ../../src/theme/stylesheetbuilder.cpp
+    ../../src/theme/svgicontheme.h
+    ../../src/theme/svgicontheme.cpp
     LINK_LIBRARIES
         PRIVATE
             Qt::Core
