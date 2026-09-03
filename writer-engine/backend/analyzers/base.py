@@ -119,7 +119,10 @@ def _apply_thresholds(results: list[AnalyzerResult], profile: dict[str, Any]) ->
         removed = original_count - len(kept)
         if removed:
             result.metrics["threshold_findings_removed"] = removed
-            if original_count:
+            # Proportional rescale is only coherent for flag-count scores;
+            # rates and composites keep their score (thresholds stay a
+            # finding-level control for them).
+            if result.score_semantics == "count" and original_count:
                 result.score *= len(kept) / original_count
 
 
@@ -169,7 +172,7 @@ def run_analyzers(
                 if not inside_dialogue(flag.start, flag.end, spans)
             ]
             removed = original_count - len(result.flags)
-            if removed:
+            if removed and result.score_semantics == "count":
                 result.score = max(0.0, result.score - removed)
             result.metrics["ignored_dialogue"] = True
             result.metrics["dialogue_findings_removed"] = removed

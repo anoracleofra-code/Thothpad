@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+* Analyzer scores now declare their semantics (`score_semantics`: `count`, `per_1000`, or `composite`). Previously every result was treated as a flag count: thresholds proportionally rescaled and dialogue exclusion subtracted from scores that were not counts — stylometry's 0-100 uniformity composite and slop_score's per-1000-words rate got corrupted by count math. Non-count scores now stay unchanged when their findings are filtered (findings still filter; the removal is still recorded in `threshold_findings_removed` / `dialogue_findings_removed`), and the serialized-row rescale after exclusion-range filtering applies only to count scores.
 * Removed the dead duplicate Windows process-supervision helpers and protocol header constants from the engine sidecar; the live implementations in `backend.process_supervisor` and `backend.protocol` are now the single source.
 * Deleted the superseded unguarded `run_story_intelligence` entry point from `backend.story_intelligence`; the pipeline only ever routes Story Intelligence turns through the sanitized boundary in `backend.story_runtime`.
 * Saved-run Markdown reports render "No flags." again for analyses with zero findings (the old header-length check could never fire after the report header grew).

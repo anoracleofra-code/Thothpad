@@ -66,7 +66,11 @@ def _serialize(
             if not _overlaps(flag["start_utf16"], flag["end_utf16"], exclusions)
         ]
         if result.flags and len(row["flags"]) != len(result.flags):
-            row["score"] = result.score * len(row["flags"]) / len(result.flags)
+            # Proportional rescale after exclusion filtering is only coherent
+            # for flag-count scores; serialized rows carry score_semantics
+            # so non-count scores stay untouched (findings still filter).
+            if result.score_semantics == "count":
+                row["score"] = result.score * len(row["flags"]) / len(result.flags)
         diagnostics.extend(row["flags"])
         analysis.append(row)
     diagnostics.sort(key=lambda item: (item["start_utf16"], item["end_utf16"], item["rule_id"]))

@@ -116,6 +116,9 @@ class SlopScoreAnalyzer:
             name=self.name,
             score=round(score, 3),
             flags=flags,
+            # Weighted per-1000-words rate, not a flag count: threshold and
+            # dialogue-exclusion post-passes must not apply count math to it.
+            score_semantics="per_1000",
             metrics={
                 "word_count": len(toks),
                 "unique_word_ratio": stats["type_token_ratio"],

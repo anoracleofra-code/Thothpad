@@ -8,6 +8,11 @@ from backend.text_utils import Utf16Index
 
 Severity = Literal["hard_fail", "strong_flag", "context_flag", "taste_flag"]
 
+# How AnalyzerResult.score must be read: "count" is the number of findings
+# (flag-count arithmetic like proportional rescale is coherent), "per_1000"
+# is a rate per 1000 words, "composite" is a bounded composite metric.
+ScoreSemantics = Literal["count", "per_1000", "composite"]
+
 
 @dataclass
 class Flag:
@@ -58,6 +63,7 @@ class AnalyzerResult:
     score: float
     flags: list[Flag] = field(default_factory=list)
     metrics: dict[str, Any] = field(default_factory=dict)
+    score_semantics: ScoreSemantics = "count"
 
     def to_dict(
         self,
@@ -70,6 +76,7 @@ class AnalyzerResult:
             "score": self.score,
             "flags": [flag.to_dict(text, base_offset_utf16, utf16_index) for flag in self.flags],
             "metrics": self.metrics,
+            "score_semantics": self.score_semantics,
         }
 
 

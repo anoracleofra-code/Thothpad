@@ -119,4 +119,7 @@ class StylometryAnalyzer:
             score=stats["uniformity_score"],
             flags=flags,
             metrics=stats,
+            # 0-100 uniformity composite, not a flag count: threshold and
+            # dialogue-exclusion post-passes must not apply count math to it.
+            score_semantics="composite",
         )
