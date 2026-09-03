@@ -87,11 +87,20 @@ MarkdownAST *CmarkGfmAPI::parse(const QString &text, const bool smartTypographyE
     return ast;
 }
 
-QString CmarkGfmAPI::renderToHtml(const QString &text, const bool smartTypographyEnabled)
+QString CmarkGfmAPI::renderToHtml(const QString &text, const bool smartTypographyEnabled, const bool safeMode)
 {
     Q_D(CmarkGfmAPI);
-    
-    int opts = CMARK_OPT_DEFAULT | CMARK_OPT_FOOTNOTES | CMARK_OPT_UNSAFE;
+
+    // Safe mode (live preview of untrusted files) omits CMARK_OPT_UNSAFE so
+    // that raw HTML is escaped and dangerous URLs are stripped.  Unsafe mode
+    // (deliberate export of the user's own document) keeps CMARK_OPT_UNSAFE so
+    // that raw HTML is preserved in the exported file.  See the API docs in
+    // cmarkgfmapi.h for the full rationale.
+    int opts = CMARK_OPT_DEFAULT | CMARK_OPT_FOOTNOTES;
+
+    if (!safeMode) {
+        opts |= CMARK_OPT_UNSAFE;
+    }
 
     if (smartTypographyEnabled) {
         opts |= CMARK_OPT_SMART;

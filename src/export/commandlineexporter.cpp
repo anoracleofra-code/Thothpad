@@ -120,10 +120,11 @@ void CommandLineExporter::setMathSupported(bool supported)
     m_mathSupported = supported;
 }
 
-void CommandLineExporter::exportToHtml(const QString &text, QString &html, bool smartTypographyEnabled)
+void CommandLineExporter::exportToHtml(const QString &text, QString &html, bool smartTypographyEnabled, bool safeMode)
 {
     Q_D(CommandLineExporter);
-    
+    Q_UNUSED(safeMode)
+
     QString stderrOutput;
 
     if (d->htmlRenderCommand.isNull() || d->htmlRenderCommand.isEmpty()) {

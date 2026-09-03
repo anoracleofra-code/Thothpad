@@ -88,9 +88,12 @@ public:
      * parameter for use in the Live HTML Preview.  The
      * smartTypographyEnabled parameter decides whether the command
      * line's smart typography argument is expanded for enabling or
-     * disabling smart typography.
+     * disabling smart typography.  The safeMode parameter is accepted
+     * for interface compatibility but cannot be enforced here: raw
+     * HTML sanitization is the responsibility of the external
+     * processor being invoked.
      */
-    void exportToHtml(const QString &text, QString &html, bool smartTypographyEnabled) override;
+    void exportToHtml(const QString &text, QString &html, bool smartTypographyEnabled, bool safeMode = false) override;
 
     /**
      * Exports the given text to the given format and output file path.
