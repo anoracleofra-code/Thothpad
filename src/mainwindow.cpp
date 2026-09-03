@@ -637,7 +637,7 @@ void MainWindow::copyHtml()
         }
 
         // Convert Markdown to HTML.
-        htmlExporter->exportToHtml(markdownText, html);
+        htmlExporter->exportToHtml(markdownText, html, htmlExporter->smartTypographyEnabled());
 
         // Insert HTML into clipboard.
         QClipboard *clipboard = QApplication::clipboard();

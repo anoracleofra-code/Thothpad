@@ -248,8 +248,7 @@ ExporterFactory::ExporterFactory()
     if (!cmarkVersion.isNull()) {
         exporter = new CommandLineExporter("cmark");
         exporter->setSmartTypographyOnArgument("--smart");
-        exporter->setHtmlRenderCommand(QString("cmark -t html --smart %1")
-                                       .arg(CommandLineExporter::SMART_TYPOGRAPHY_ARG));
+        exporter->setHtmlRenderCommand(QString("cmark -t html %1").arg(CommandLineExporter::SMART_TYPOGRAPHY_ARG));
         exporter->addFileExportCommand
         (
             ExportFormat::HTML,

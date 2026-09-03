@@ -133,7 +133,6 @@ void ExportDialog::accept()
     fileDialog.setAcceptMode(QFileDialog::AcceptSave);
     fileDialog.setFileMode(QFileDialog::AnyFile);
     fileDialog.setOption(QFileDialog::DontUseNativeDialog, false);
-    QStringList selectedFiles = fileDialog.selectedFiles();
 
     QString initialDirPath;
     QString baseName;

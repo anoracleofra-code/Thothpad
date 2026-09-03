@@ -31,6 +31,14 @@ public:
     QString smartTypographyOffArgument = "";
     QString htmlRenderCommand = QString();
 
+    /*
+     * Maximum time (in milliseconds) to wait for the external processor
+     * to finish.  A hung processor must not block the calling thread
+     * (the GUI thread for file exports, a worker thread for the live
+     * preview) indefinitely.
+     */
+    static constexpr int PROCESS_TIMEOUT_MS = 30000;
+
     bool executeCommand
     (
         const QString &command,
@@ -112,7 +120,7 @@ void CommandLineExporter::setMathSupported(bool supported)
     m_mathSupported = supported;
 }
 
-void CommandLineExporter::exportToHtml(const QString &text, QString &html)
+void CommandLineExporter::exportToHtml(const QString &text, QString &html, bool smartTypographyEnabled)
 {
     Q_D(CommandLineExporter);
     
@@ -123,20 +131,7 @@ void CommandLineExporter::exportToHtml(const QString &text, QString &html)
         return;
     }
 
-    if
-    (
-        ! d->executeCommand
-        (
-            d->htmlRenderCommand,
-            QString(),
-            text,
-            QString(),
-            m_options,
-            this->m_smartTypographyEnabled,
-            html,
-            stderrOutput
-        )
-    ) {
+    if (!d->executeCommand(d->htmlRenderCommand, QString(), text, QString(), m_options, smartTypographyEnabled, html, stderrOutput)) {
         QString errorMessage = d->htmlRenderCommand;
 
         if (!stderrOutput.isNull() && !stderrOutput.isEmpty()) {
@@ -271,7 +266,20 @@ bool CommandLineExporterPrivate::executeCommand
             process.closeWriteChannel();
         }
 
-        if (!process.waitForFinished()) {
+        if (!process.waitForFinished(PROCESS_TIMEOUT_MS)) {
+            if (QProcess::Timedout == process.error()) {
+                // The external processor hung.  Kill it and report a
+                // descriptive error through the error-reporting out
+                // parameters used by both exportToHtml() and
+                // exportToFile().
+                process.kill();
+                process.waitForFinished();
+                stderrOutput = QObject::tr(
+                                   "The processor did not finish within %1 seconds "
+                                   "and was terminated: %2")
+                                   .arg(PROCESS_TIMEOUT_MS / 1000)
+                                   .arg(expandedCommand);
+            }
             return false;
         } else {
             stdoutOutput = QString::fromUtf8(
