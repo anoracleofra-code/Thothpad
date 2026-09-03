@@ -8,11 +8,22 @@
 #include <qt6keychain/keychain.h>
 #endif
 
+#include <QCryptographicHash>
+#include <QUrl>
+
 namespace ghostwriter
 {
 namespace
 {
 const QString ServiceName = QStringLiteral("ThothPad");
+}
+
+QString CredentialStore::providerCredentialId(const QString &kind, const QUrl &baseurl, const QString &model)
+{
+    const int defaultPort = baseurl.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) == 0 ? 443 : 80;
+    const QString origin = QStringLiteral("%1://%2:%3").arg(baseurl.scheme().toLower(), baseurl.host().toLower()).arg(baseurl.port(defaultPort));
+    const QString endpointId = QString::fromLatin1(QCryptographicHash::hash(origin.toUtf8(), QCryptographicHash::Sha256).toHex().left(16));
+    return QStringLiteral("provider/%1/%2/%3").arg(kind, endpointId, model);
 }
 
 CredentialStore::CredentialStore(QObject *parent)

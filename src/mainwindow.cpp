@@ -205,6 +205,26 @@ MainWindow::~MainWindow()
     }
 }
 
+MarkdownEditor *MainWindow::mainEditor() const
+{
+    return editor;
+}
+
+DocumentManager *MainWindow::mainDocumentManager() const
+{
+    return documentManager;
+}
+
+ProseController *MainWindow::mainProseController() const
+{
+    return proseController;
+}
+
+ProseAwarenessWidget *MainWindow::mainProseAwarenessWidget() const
+{
+    return proseAwarenessWidget;
+}
+
 QSize MainWindow::sizeHint() const
 {
     return QSize(800, 500);
@@ -763,7 +783,7 @@ void MainWindow::loadTheme()
         colorScheme = theme.lightColorScheme();
     }
 
-    ChromeColors chromeColors(colorScheme);
+    ChromeColors chromeColors(colorScheme, theme.name());
 
     primaryIconTheme = new SvgIconTheme(":/icons");
     primaryIconTheme->setColor(QIcon::Normal, chromeColors.color(ChromeColors::SecondaryLabel, ChromeColors::NormalState));
@@ -1580,7 +1600,7 @@ void MainWindow::applyTheme()
         colorScheme = theme.darkColorScheme();
     }
 
-    ChromeColors chromeColors(colorScheme);
+    ChromeColors chromeColors(colorScheme, theme.name());
 
     primaryIconTheme->setColor(QIcon::Normal, chromeColors.color(ChromeColors::SecondaryLabel, ChromeColors::NormalState));
     primaryIconTheme->setColor(QIcon::Active, chromeColors.color(ChromeColors::Label, ChromeColors::NormalState));

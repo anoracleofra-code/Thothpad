@@ -5,7 +5,6 @@
 #include "../messageboxhelper.h"
 #include "credentialstore.h"
 #include <QComboBox>
-#include <QCryptographicHash>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
@@ -220,14 +219,6 @@ QJsonObject ProviderSettingsDialog::nonSecretSettings() const
 }
 QString ProviderSettingsDialog::credentialId() const
 {
-    const QUrl url(m_endpoint->text().trimmed());
-    const QString origin = QStringLiteral("%1://%2:%3")
-        .arg(url.scheme().toLower(), url.host().toLower())
-        .arg(url.port(url.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) == 0
-                ? 443 : 80));
-    const QString endpointId = QString::fromLatin1(QCryptographicHash::hash(
-        origin.toUtf8(), QCryptographicHash::Sha256).toHex().left(16));
-    return QStringLiteral("provider/%1/%2/%3").arg(
-        m_provider->currentData().toString(), endpointId, m_model->text().trimmed());
+    return CredentialStore::providerCredentialId(m_provider->currentData().toString(), QUrl(m_endpoint->text().trimmed()), m_model->text().trimmed());
 }
 }

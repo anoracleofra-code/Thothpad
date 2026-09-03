@@ -56,6 +56,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * The document outline now repopulates when the background parse completes (previously it stayed stale until the next edit), and a dangling signal connection during teardown was removed.
 * Development builds deploy the Sonnet hunspell plugin and en_US dictionaries automatically, restoring spell checking in non-packaged builds.
 * The Repetition lens is visible as a primary lens row (it was hidden behind "More lenses" while its findings rendered), followed by Grammar, which is now enabled by default.
+* Provider credential-id derivation is unified in `CredentialStore::providerCredentialId` (previously three drifting copies in the provider dialog, prose controller, and story intelligence controller).
+* The engine client reuses a single log-file handle instead of opening and closing `thothpad-engine.log` for every frame; per-frame head hex dumps are gated behind `THOTHPAD_ENGINE_TRACE`.
+* Authored panel chrome surfaces are keyed by theme name instead of exact background hex values, so custom themes sharing a built-in's background no longer silently inherit its hand-tuned surfaces.
+* Preview command-line options are saved per exporter, so params no longer bleed between markdown flavors when switching.
+* Story Intelligence installs through `MainWindow` accessors and menu-object identity instead of `findChild` name lookups and translated-title matching.
 
 ## [24.08.0]
 

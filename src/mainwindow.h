@@ -59,6 +59,14 @@ public:
     explicit MainWindow(const QString &filePath = QString(), QWidget *parent = nullptr);
     virtual ~MainWindow();
 
+    // Accessors used by the Story Intelligence installer and diagnostics so it
+    // does not have to findChild-fish for private members by object name.
+    MarkdownEditor *mainEditor() const;
+    DocumentManager *mainDocumentManager() const;
+    ProseController *mainProseController() const;
+    ProseAwarenessWidget *mainProseAwarenessWidget() const;
+    QAction *appAction(AppActions::ActionType actionType) const;
+
 protected:
     QSize sizeHint() const  override;
     void resizeEvent(QResizeEvent *event) override;
@@ -148,8 +156,6 @@ private:
     KActionCollection *actionCollection() const;
 
     QMenu *addMenuBarMenu(const QString &name);
-
-    QAction *appAction(AppActions::ActionType actionType) const;
 
     void loadTheme();
     void setupActions();

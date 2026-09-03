@@ -34,6 +34,14 @@ constexpr qsizetype MaxResponseFrameBytes = 64 * 1024 * 1024;
 constexpr qsizetype MaxHeaderBytes = 16 * 1024;
 constexpr qsizetype MaxResyncWindow = 256 * 1024;
 
+// Per-frame detail (head hex dumps) is gated behind the same trace switch
+// the sidecar honors so overlay streaming does not churn disk I/O by default.
+bool engineTraceEnabled()
+{
+    static const bool enabled = qEnvironmentVariableIsSet("THOTHPAD_ENGINE_TRACE");
+    return enabled;
+}
+
 QThreadPool &responseParsePool()
 {
     // Process-lifetime pool: response tasks use QPointer guards and must not
@@ -108,11 +116,12 @@ WriterEngineClient::WriterEngineClient(QObject *parent)
                 // A timed-out request is cancelled, not engine-fatal: the
                 // stream resyncs around lost frames, so killing the sidecar
                 // would only restart the analysis loop it is mid-way through.
-                QFile engineLog(QCoreApplication::applicationDirPath() + QStringLiteral("/thothpad-engine.log"));
-                if (engineLog.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
-                    engineLog.write(QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8());
-                    engineLog.write(QString(QStringLiteral(" [timeout] %1 (request cancelled; engine kept)\n")).arg(operation).toUtf8());
-                    engineLog.close();
+                {
+                    QFile &engineLog = this->engineLog();
+                    if (engineLog.isOpen()) {
+                        engineLog.write(QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8());
+                        engineLog.write(QString(QStringLiteral(" [timeout] %1 (request cancelled; engine kept)\n")).arg(operation).toUtf8());
+                    }
                 }
                 emit engineError(tr("ThothPad Engine timed out while running %1.").arg(operation));
                 QJsonObject cancelRequest;
@@ -143,6 +152,18 @@ WriterEngineClient::WriterEngineClient(QObject *parent)
 WriterEngineClient::~WriterEngineClient()
 {
     stop();
+    delete m_engineLog;
+}
+
+QFile &WriterEngineClient::engineLog()
+{
+    // One lazily-opened append handle for the client's lifetime: per-frame
+    // open/close cycles measurably churn disk I/O during overlay streaming.
+    if (nullptr == m_engineLog) {
+        m_engineLog = new QFile(QCoreApplication::applicationDirPath() + QStringLiteral("/thothpad-engine.log"));
+        m_engineLog->open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text);
+    }
+    return *m_engineLog;
 }
 
 bool WriterEngineClient::isReady() const
@@ -365,14 +386,13 @@ void WriterEngineClient::parseMessages()
                 const QByteArray headerStart = QByteArrayLiteral("Content-Length:");
                 const int resync = m_buffer.indexOf(headerStart, m_bufferOffset + 1);
                 if (resync > 0) {
-                    QFile engineLog(QCoreApplication::applicationDirPath() + QStringLiteral("/thothpad-engine.log"));
-                    if (engineLog.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+                    QFile &engineLog = this->engineLog();
+                    if (engineLog.isOpen()) {
                         engineLog.write(QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8());
                         engineLog.write(QString(QStringLiteral(" [stream] resync(oversized): skipped %1 bytes at %2\n"))
                                             .arg(resync - m_bufferOffset)
                                             .arg(m_bufferOffset)
                                             .toUtf8());
-                        engineLog.close();
                     }
                     m_bufferOffset = resync;
                     continue;
@@ -382,26 +402,24 @@ void WriterEngineClient::parseMessages()
                     // Mid-body desync and the next frame header has not
                     // arrived yet: keep the bytes and wait — the parser
                     // resyncs when the next "Content-Length:" lands.
-                    QFile engineLog(QCoreApplication::applicationDirPath() + QStringLiteral("/thothpad-engine.log"));
-                    if (engineLog.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+                    QFile &engineLog = this->engineLog();
+                    if (engineLog.isOpen()) {
                         engineLog.write(QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8());
                         engineLog.write(QString(QStringLiteral(" [stream] desync-wait pending=%1 preview=%2\n"))
                                             .arg(m_buffer.size() - m_bufferOffset)
                                             .arg(QString::fromLatin1(preview.toHex()))
                                             .toUtf8());
-                        engineLog.close();
                     }
                     compactBuffer();
                     return;
                 }
-                QFile engineLog(QCoreApplication::applicationDirPath() + QStringLiteral("/thothpad-engine.log"));
-                if (engineLog.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+                QFile &engineLog = this->engineLog();
+                if (engineLog.isOpen()) {
                     engineLog.write(QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8());
                     engineLog.write(QString(QStringLiteral(" [stream] oversized-header pending=%1 preview=%2\n"))
                                         .arg(m_buffer.size() - m_bufferOffset)
                                         .arg(QString::fromLatin1(preview.toHex()))
                                         .toUtf8());
-                    engineLog.close();
                 }
                 m_buffer.clear();
                 m_bufferOffset = 0;
@@ -417,14 +435,13 @@ void WriterEngineClient::parseMessages()
             const QByteArray headerStart = QByteArrayLiteral("Content-Length:");
             const int resync = m_buffer.indexOf(headerStart, m_bufferOffset + 1);
             if (resync > 0) {
-                QFile engineLog(QCoreApplication::applicationDirPath() + QStringLiteral("/thothpad-engine.log"));
-                if (engineLog.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+                QFile &engineLog = this->engineLog();
+                if (engineLog.isOpen()) {
                     engineLog.write(QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8());
                     engineLog.write(QString(QStringLiteral(" [stream] resync(header-span): skipped %1 bytes at %2\n"))
                                         .arg(resync - m_bufferOffset)
                                         .arg(m_bufferOffset)
                                         .toUtf8());
-                    engineLog.close();
                 }
                 m_bufferOffset = resync;
                 continue;
@@ -444,27 +461,25 @@ void WriterEngineClient::parseMessages()
             const QByteArray headerStart = QByteArrayLiteral("Content-Length:");
             const int resync = m_buffer.indexOf(headerStart, m_bufferOffset + 1);
             if (resync > 0 && (headerEnd < 0 || resync < headerEnd + MaxResyncWindow)) {
-                QFile engineLog(QCoreApplication::applicationDirPath() + QStringLiteral("/thothpad-engine.log"));
-                if (engineLog.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+                QFile &engineLog = this->engineLog();
+                if (engineLog.isOpen()) {
                     engineLog.write(QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8());
                     engineLog.write(QString(QStringLiteral(" [stream] resync: skipped %1 bytes at %2; skipped-head=%3\n"))
                                         .arg(resync - m_bufferOffset)
                                         .arg(m_bufferOffset)
                                         .arg(QString::fromLatin1(header.left(80).toHex()))
                                         .toUtf8());
-                    engineLog.close();
                 }
                 m_bufferOffset = resync;
                 continue;
             }
-            QFile engineLog(QCoreApplication::applicationDirPath() + QStringLiteral("/thothpad-engine.log"));
-            if (engineLog.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+            QFile &engineLog = this->engineLog();
+            if (engineLog.isOpen()) {
                 engineLog.write(QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8());
                 engineLog.write(QString(QStringLiteral(" [stream] invalid-header offset=%1 preview=%2\n"))
                                     .arg(m_bufferOffset)
                                     .arg(QString::fromLatin1(header.left(120).toHex()))
                                     .toUtf8());
-                engineLog.close();
             }
             m_buffer.clear();
             m_bufferOffset = 0;
@@ -495,15 +510,18 @@ void WriterEngineClient::parseMessages()
 
         const QByteArray body = m_buffer.mid(bodyStart, contentLength);
         {
-            QFile engineLog(QCoreApplication::applicationDirPath() + QStringLiteral("/thothpad-engine.log"));
-            if (engineLog.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+            QFile &engineLog = this->engineLog();
+            if (engineLog.isOpen()) {
                 engineLog.write(QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8());
-                engineLog.write(QString(QStringLiteral(" [frame] offset=%1 len=%2 head=%3\n"))
-                                    .arg(m_bufferOffset)
-                                    .arg(contentLength)
-                                    .arg(QString::fromLatin1(body.left(40).toHex()))
-                                    .toUtf8());
-                engineLog.close();
+                if (engineTraceEnabled()) {
+                    engineLog.write(QString(QStringLiteral(" [frame] offset=%1 len=%2 head=%3\n"))
+                                        .arg(m_bufferOffset)
+                                        .arg(contentLength)
+                                        .arg(QString::fromLatin1(body.left(40).toHex()))
+                                        .toUtf8());
+                } else {
+                    engineLog.write(QString(QStringLiteral(" [frame] offset=%1 len=%2\n")).arg(m_bufferOffset).arg(contentLength).toUtf8());
+                }
             }
         }
         m_bufferOffset = frameEnd;
@@ -575,12 +593,11 @@ void WriterEngineClient::readStandardError()
     if (stderrBytes.isEmpty()) {
         return;
     }
-    QFile engineLog(QCoreApplication::applicationDirPath() + QStringLiteral("/thothpad-engine.log"));
-    if (engineLog.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+    QFile &engineLog = this->engineLog();
+    if (engineLog.isOpen()) {
         engineLog.write(QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8());
         engineLog.write(" ");
         engineLog.write(stderrBytes);
-        engineLog.close();
     }
 }
 
@@ -592,22 +609,25 @@ void WriterEngineClient::processStarted()
     payload.insert(QStringLiteral("performance"), PerformancePolicy::load().toJson());
     static int initializeSendCount = 0;
     ++initializeSendCount;
-    QFile engineLog(QCoreApplication::applicationDirPath() + QStringLiteral("/thothpad-engine.log"));
-    if (engineLog.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
-        engineLog.write(QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8());
-        engineLog.write(QString(QStringLiteral(" [init] sent #%1 pid=%2\n")).arg(initializeSendCount).arg(m_process.processId()).toUtf8());
-        engineLog.close();
+    {
+        QFile &engineLog = this->engineLog();
+        if (engineLog.isOpen()) {
+            engineLog.write(QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8());
+            engineLog.write(QString(QStringLiteral(" [init] sent #%1 pid=%2\n")).arg(initializeSendCount).arg(m_process.processId()).toUtf8());
+        }
     }
     send(QStringLiteral("initialize"), payload);
 }
 
 void WriterEngineClient::processFinished(int exitCode, QProcess::ExitStatus status)
 {
-    QFile engineLog(QCoreApplication::applicationDirPath() + QStringLiteral("/thothpad-engine.log"));
-    if (engineLog.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
-        engineLog.write(QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8());
-        engineLog.write(QString(QStringLiteral(" [finished] exit=%1 status=%2 program=%3\n")).arg(exitCode).arg((int)status).arg(m_process.program()).toUtf8());
-        engineLog.close();
+    {
+        QFile &engineLog = this->engineLog();
+        if (engineLog.isOpen()) {
+            engineLog.write(QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8());
+            engineLog.write(
+                QString(QStringLiteral(" [finished] exit=%1 status=%2 program=%3\n")).arg(exitCode).arg((int)status).arg(m_process.program()).toUtf8());
+        }
     }
     ++m_processGeneration;
     setReady(false);
@@ -628,11 +648,12 @@ void WriterEngineClient::processFinished(int exitCode, QProcess::ExitStatus stat
 
 void WriterEngineClient::abortEngine(const QString &reason)
 {
-    QFile engineLog(QCoreApplication::applicationDirPath() + QStringLiteral("/thothpad-engine.log"));
-    if (engineLog.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
-        engineLog.write(QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8());
-        engineLog.write(QString(QStringLiteral(" [abort] %1\n")).arg(reason).toUtf8());
-        engineLog.close();
+    {
+        QFile &engineLog = this->engineLog();
+        if (engineLog.isOpen()) {
+            engineLog.write(QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8());
+            engineLog.write(QString(QStringLiteral(" [abort] %1\n")).arg(reason).toUtf8());
+        }
     }
     if (m_aborting || m_process.state() == QProcess::NotRunning) {
         return;
@@ -688,11 +709,12 @@ void WriterEngineClient::forceTerminateProcessTree()
 
 void WriterEngineClient::processError(QProcess::ProcessError error)
 {
-    QFile engineLog(QCoreApplication::applicationDirPath() + QStringLiteral("/thothpad-engine.log"));
-    if (engineLog.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
-        engineLog.write(QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8());
-        engineLog.write(QString(QStringLiteral(" [error] code=%1 program=%2\n")).arg((int)error).arg(m_process.program()).toUtf8());
-        engineLog.close();
+    {
+        QFile &engineLog = this->engineLog();
+        if (engineLog.isOpen()) {
+            engineLog.write(QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8());
+            engineLog.write(QString(QStringLiteral(" [error] code=%1 program=%2\n")).arg((int)error).arg(m_process.program()).toUtf8());
+        }
     }
     setReady(false);
     emit engineError(tr("ThothPad Engine is unavailable. Editing and saving remain available."));
