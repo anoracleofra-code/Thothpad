@@ -122,6 +122,17 @@ public:
     void reviewSelection();
     void reviewFolder();
 
+    // Engine/credential accessors for co-installed subsystems (Story
+    // Intelligence) so they do not findChild-fish for private members.
+    WriterEngineClient *engineClient() const
+    {
+        return m_engine;
+    }
+    CredentialStore *credentialStore() const
+    {
+        return m_credentials;
+    }
+
     /**
      * Story Intelligence uses this local-only review path instead of the
      * interactive Grammar Settings path. It always uses the bundled/local

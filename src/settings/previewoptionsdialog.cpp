@@ -4,13 +4,14 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-#include <QDialogButtonBox>
-#include <QVBoxLayout>
-#include <QFormLayout>
 #include <QComboBox>
-#include <QPushButton>
+#include <QDialogButtonBox>
 #include <QFileInfo>
+#include <QFormLayout>
 #include <QLineEdit>
+#include <QPushButton>
+#include <QSettings>
+#include <QVBoxLayout>
 
 #include "../export/exporterfactory.h"
 
@@ -168,8 +169,24 @@ void PreviewOptionsDialogPrivate::onExporterChanged(int index) const
 {
     QVariant exporterVariant = this->previewerComboBox->itemData(index);
     Exporter *exporter = (Exporter *) exporterVariant.value<void *>();
-    exporter->setOptions(this->appSettings->currentHtmlExporter()->options());
+
+    // Persist the outgoing exporter's options under its own name so command
+    // line params do not bleed across markdown flavors, then restore the
+    // incoming exporter's previously saved options (if any).
+    Exporter *previous = this->appSettings->currentHtmlExporter();
+    if (nullptr != previous) {
+        QSettings().setValue(QStringLiteral("Preview/exporterParams/") + previous->name(), previous->options());
+    }
+    const QString savedOptions = QSettings().value(QStringLiteral("Preview/exporterParams/") + exporter->name()).toString();
+    exporter->setOptions(savedOptions);
     appSettings->setCurrentHtmlExporter(exporter);
+
+    // Keep the visible options field in sync with the loaded options.
+    // Without this the field would keep showing the previous exporter's
+    // text and the next keystroke would write it back over the incoming
+    // exporter's own saved options. Setting identical text is a no-op (Qt
+    // emits textChanged only on actual change), so no recursion is possible.
+    this->paramsLineEdit->setText(savedOptions);
 }
 
 QString PreviewOptionsDialogPrivate::fontToString(const QFont &font) const

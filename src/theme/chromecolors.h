@@ -68,7 +68,12 @@ public:
         LastElem = Grid
     } ColorElem;
 
-    ChromeColors(const ColorScheme &base);
+    /**
+     * Constructs chrome colors for the given color scheme. When themeName
+     * matches one of the authored ThothPad themes, its hand-tuned panel
+     * surfaces are used instead of the generic contrast-derived fills.
+     */
+    ChromeColors(const ColorScheme &base, const QString &themeName = QString());
     ChromeColors(const ChromeColors &other);
     ~ChromeColors();
 

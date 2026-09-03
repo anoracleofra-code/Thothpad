@@ -2491,13 +2491,9 @@ QJsonObject ProseController::providerSettings() const
 }
 QString ProseController::providerCredentialId(const QJsonObject &provider) const
 {
-    const QUrl url(provider.value(QStringLiteral("base_url")).toString());
-    const QString origin = QStringLiteral("%1://%2:%3")
-                               .arg(url.scheme().toLower(), url.host().toLower())
-                               .arg(url.port(url.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) == 0 ? 443 : 80));
-    const QString endpointId = QString::fromLatin1(QCryptographicHash::hash(origin.toUtf8(), QCryptographicHash::Sha256).toHex().left(16));
-    return QStringLiteral("provider/%1/%2/%3")
-        .arg(provider.value(QStringLiteral("provider")).toString(), endpointId, provider.value(QStringLiteral("model")).toString());
+    return CredentialStore::providerCredentialId(provider.value(QStringLiteral("provider")).toString(),
+                                                 QUrl(provider.value(QStringLiteral("base_url")).toString().trimmed()),
+                                                 provider.value(QStringLiteral("model")).toString().trimmed());
 }
 void ProseController::requestRevision(const ProseDiagnostic &diagnostic)
 {

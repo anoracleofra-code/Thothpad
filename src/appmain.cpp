@@ -44,12 +44,12 @@ namespace
 {
 void installStoryIntelligence(ghostwriter::MainWindow *window)
 {
-    auto *editor = window->findChild<ghostwriter::MarkdownEditor *>();
-    auto *documentManager = window->findChild<ghostwriter::DocumentManager *>();
-    auto *proseController = window->findChild<ghostwriter::ProseController *>();
-    auto *proseWidget = window->findChild<ghostwriter::ProseAwarenessWidget *>();
-    auto *engine = proseController ? proseController->findChild<ghostwriter::WriterEngineClient *>() : nullptr;
-    auto *credentials = proseController ? proseController->findChild<ghostwriter::CredentialStore *>() : nullptr;
+    auto *editor = window->mainEditor();
+    auto *documentManager = window->mainDocumentManager();
+    auto *proseController = window->mainProseController();
+    auto *proseWidget = window->mainProseAwarenessWidget();
+    auto *engine = proseController ? proseController->engineClient() : nullptr;
+    auto *credentials = proseController ? proseController->credentialStore() : nullptr;
     if (!editor || !documentManager || !proseController || !proseWidget || !engine || !credentials) {
         qWarning() << "Story Intelligence could not attach to the editor/engine services.";
         return;
@@ -209,17 +209,17 @@ void installStoryIntelligence(ghostwriter::MainWindow *window)
     toggleAction->setShortcutContext(Qt::WindowShortcut);
 
     // Put the recovery/toggle affordance alongside the existing View tools.
-    for (QAction *menuAction : window->menuBar()->actions()) {
-        QMenu *menu = menuAction->menu();
-        if (!menu) {
-            continue;
-        }
-        QString title = menu->title();
-        title.remove(QChar('&'));
-        if (title.compare(QStringLiteral("View"), Qt::CaseInsensitive) == 0) {
-            menu->addSeparator();
-            menu->addAction(toggleAction);
-            break;
+    // Locate the View menu through the sidebar action's object identity so
+    // insertion does not depend on translated menu titles.
+    QAction *sidebarAction = window->appAction(ghostwriter::AppActions::ShowSidebar);
+    if (nullptr != sidebarAction) {
+        const QList<QMenu *> menus = window->findChildren<QMenu *>();
+        for (QMenu *menu : menus) {
+            if (menu->actions().contains(sidebarAction)) {
+                menu->addSeparator();
+                menu->addAction(toggleAction);
+                break;
+            }
         }
     }
 

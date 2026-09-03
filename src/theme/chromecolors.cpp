@@ -98,7 +98,7 @@ public:
     QColor colors[ColorCount][ChromeColors::StateCount];
 };
 
-ChromeColors::ChromeColors(const ColorScheme &base)
+ChromeColors::ChromeColors(const ColorScheme &base, const QString &themeName)
     : d(new ChromeColorsPrivate)
 {
     d->colors[BackgroundColor][NormalState] = base.background;
@@ -169,12 +169,19 @@ ChromeColors::ChromeColors(const ColorScheme &base)
     d->colors[SelectionFgColor][NormalState] = selectedFgColor;
 
     // The prose sidebar uses the theme's authored selection color as its
-    // active row surface. This keeps parchment, zinc, and teal themes
-    // visually intentional instead of producing a gray surface from a
-    // contrast-derived chrome color.
-    const bool thothPadParchment = base.background == QColor("#f4eed1");
-    const bool thothPadZinc = base.background == QColor("#09090b");
-    const bool thothPadTeal = base.background == QColor("#071f1e");
+    // active row surface. Authored themes carry hand-tuned panel surfaces
+    // keyed by theme name instead of relying on the generic contrast-derived
+    // chrome mixes reserved for legacy themes. Kanagawa Lotus carries the
+    // authored parchment surfaces in light mode and the zinc surfaces in
+    // dark mode; Kanagawa Lotus Paper shares the parchment light surfaces;
+    // ThothPad Teal has its own teal surfaces.
+    const bool kanagawaLotus = themeName == QStringLiteral("Kanagawa Lotus");
+    const bool kanagawaLotusPaper = themeName == QStringLiteral("Kanagawa Lotus Paper");
+    const bool thothPadTeal = themeName == QStringLiteral("ThothPad Teal");
+    const bool lightModeAuthored = kanagawaLotus || kanagawaLotusPaper;
+    const bool thothPadParchment = lightModeAuthored && lightMode;
+    const bool thothPadZinc = kanagawaLotus && !lightMode;
+    const bool thothPadTealActive = thothPadTeal;
 
     if (thothPadParchment) {
         d->colors[SecondaryBackgroundColor][NormalState] = QColor("#efe6c1");
@@ -182,7 +189,7 @@ ChromeColors::ChromeColors(const ColorScheme &base)
     } else if (thothPadZinc) {
         d->colors[SecondaryBackgroundColor][NormalState] = QColor("#0f0f0f");
         d->colors[TertiaryFillColor][NormalState] = QColor("#141414");
-    } else if (thothPadTeal) {
+    } else if (thothPadTealActive) {
         d->colors[SecondaryBackgroundColor][NormalState] = QColor("#082725");
         d->colors[TertiaryFillColor][NormalState] = QColor("#06302e");
     } else {
@@ -198,7 +205,7 @@ ChromeColors::ChromeColors(const ColorScheme &base)
         d->colors[PanelFillColor][NormalState] = QColor("#141414");
         d->colors[ObservationFillColor][NormalState] = QColor("#18181b");
         d->colors[SuggestionFillColor][NormalState] = QColor("#09090b");
-    } else if (thothPadTeal) {
+    } else if (thothPadTealActive) {
         d->colors[PanelFillColor][NormalState] = QColor("#0b2927");
         d->colors[ObservationFillColor][NormalState] = QColor("#0b322f");
         d->colors[SuggestionFillColor][NormalState] = QColor("#061b1a");
@@ -225,7 +232,7 @@ ChromeColors::ChromeColors(const ColorScheme &base)
     } else if (thothPadZinc) {
         d->colors[SecondarySeparatorColor][NormalState] = QColor("#27272a");
         d->colors[GridColor][NormalState] = QColor("#27272a");
-    } else if (thothPadTeal) {
+    } else if (thothPadTealActive) {
         d->colors[SecondarySeparatorColor][NormalState] = QColor("#0f4a46");
         d->colors[GridColor][NormalState] = QColor("#0f4a46");
     } else {
