@@ -38,25 +38,34 @@ QSize BreathMapWidget::sizeHint() const
 
 void BreathMapWidget::setDocument(QTextDocument *newDocument)
 {
+    // Re-own the contentsChange wiring: drop the previous document's
+    // connection before (optionally) binding to the new document, so
+    // repeated setDocument() calls never accumulate connections.
+    QObject::disconnect(contentsChangeConnection);
     document = newDocument;
     monotonyRun = false;
     sentenceWords.clear();
 
-    if (nullptr != document) {
-        QTimer *debounce = new QTimer(this);
+    if (nullptr == debounce) {
+        // Create the debounce timer exactly once; it lives with the widget.
+        debounce = new QTimer(this);
         debounce->setSingleShot(true);
         debounce->setInterval(UPDATE_DEBOUNCE_MS);
         connect(debounce, &QTimer::timeout, this, &BreathMapWidget::refresh);
-        // Debounce lives with the widget; one per document binding is fine
-        // because setDocument is called once per document in practice.
-        connect(document, &QTextDocument::contentsChange, debounce, static_cast<void (QTimer::*)()>(&QTimer::start));
     }
+
+    if (nullptr != document) {
+        contentsChangeConnection = connect(document, &QTextDocument::contentsChange, debounce, static_cast<void (QTimer::*)()>(&QTimer::start));
+    }
+
     refresh();
 }
 
 void BreathMapWidget::refresh()
 {
     // Zero cost while hidden: the strip only works when the user can see it.
+    // Re-showing the widget triggers showEvent(), which refreshes in case
+    // the document changed while it was hidden.
     if (!isVisible() || nullptr == document) {
         return;
     }
@@ -101,6 +110,15 @@ void BreathMapWidget::refresh()
     }
 
     update();
+}
+
+void BreathMapWidget::showEvent(QShowEvent *event)
+{
+    QWidget::showEvent(event);
+
+    // The strip skips updates while hidden, so it can be stale on re-show;
+    // recompute now that the widget is visible.
+    refresh();
 }
 
 QVector<int> BreathMapWidget::sentenceWordCounts() const

@@ -110,8 +110,9 @@ public:
     void removeRecent(const Bookmark &bookmark);
 
     /**
-     * Wipes all saved bookmarks in the recent files history,
-     * including the last opened file bookmark.
+     * Wipes all saved bookmarks in the recent files history.
+     * The last opened file bookmark is deliberately preserved so that
+     * the current document can still be restored on the next session.
      */
     void clearHistory();
 
