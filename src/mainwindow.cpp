@@ -763,6 +763,15 @@ QAction *MainWindow::appAction(AppActions::ActionType actionType) const
     return action;
 }
 
+QIcon MainWindow::themedIcon(const QString &name) const
+{
+    if (nullptr != primaryIconTheme) {
+        return primaryIconTheme->icon(name);
+    }
+
+    return QIcon();
+}
+
 void MainWindow::loadTheme()
 {
     QString err;

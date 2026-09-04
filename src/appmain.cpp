@@ -205,21 +205,33 @@ void installStoryIntelligence(ghostwriter::MainWindow *window)
 
     QAction *toggleAction = dock->toggleViewAction();
     toggleAction->setText(QCoreApplication::translate("main", "Story Intelligence"));
-    toggleAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Alt+I")));
+    toggleAction->setIcon(window->themedIcon(QStringLiteral("story-intelligence")));
+    toggleAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+A")));
     toggleAction->setShortcutContext(Qt::WindowShortcut);
 
-    // Put the recovery/toggle affordance alongside the existing View tools.
+    // Keep the two primary side-panel controls together in the View menu.
     // Locate the View menu through the sidebar action's object identity so
     // insertion does not depend on translated menu titles.
     QAction *sidebarAction = window->appAction(ghostwriter::AppActions::ShowSidebar);
     if (nullptr != sidebarAction) {
         const QList<QMenu *> menus = window->findChildren<QMenu *>();
         for (QMenu *menu : menus) {
-            if (menu->actions().contains(sidebarAction)) {
-                menu->addSeparator();
-                menu->addAction(toggleAction);
-                break;
+            const QList<QAction *> viewActions = menu->actions();
+            const int sidebarIndex = viewActions.indexOf(sidebarAction);
+            if (sidebarIndex < 0) {
+                continue;
             }
+            // Insert directly under "Show Sidebar", with a separator after
+            // the toggle so the sidebar-visibility pair stays grouped
+            // before the outline/statistics entries (matches the View-menu
+            // group style in MainWindow::setupMenuBar). When the sidebar
+            // action is last, insertBefore is null so the toggle appends.
+            // (If the sidebar action itself is absent there is no View-menu
+            // identity anchor, so the toggle stays unplaced.)
+            QAction *insertBefore = (sidebarIndex + 1 < viewActions.size()) ? viewActions.at(sidebarIndex + 1) : nullptr;
+            menu->insertAction(insertBefore, toggleAction);
+            menu->insertSeparator(insertBefore);
+            break;
         }
     }
 

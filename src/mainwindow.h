@@ -9,6 +9,7 @@
 #define MAIN_WINDOW_H
 
 #include <QAction>
+#include <QIcon>
 #include <QLabel>
 #include <QMainWindow>
 #include <QMap>
@@ -66,6 +67,7 @@ public:
     ProseController *mainProseController() const;
     ProseAwarenessWidget *mainProseAwarenessWidget() const;
     QAction *appAction(AppActions::ActionType actionType) const;
+    QIcon themedIcon(const QString &name) const;
 
 protected:
     QSize sizeHint() const  override;
