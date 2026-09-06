@@ -22,6 +22,9 @@ class QPushButton;
 class QToolButton;
 class QTreeWidget;
 class QTreeWidgetItem;
+class QStackedWidget;
+class QHBoxLayout;
+class QButtonGroup;
 
 namespace ghostwriter
 {
@@ -71,6 +74,7 @@ public:
     void setLockedFacts(const QStringList &facts);
     void setUndoAvailable(bool available);
     void setCollapseIcon(const QIcon &icon);
+    void addWorkspacePage(const QString &title, QWidget *page);
 
 signals:
     void modeChanged(Mode mode);
@@ -153,6 +157,9 @@ private:
     QToolButton *m_collapseButton;
     QToolButton *m_findingActionsButton;
     QWidget *m_findingActionsSurface;
+    QStackedWidget *m_pages;
+    QHBoxLayout *m_workspaceHeader;
+    QButtonGroup *m_workspaceButtons;
     QList<ProseDiagnostic> m_diagnostics;
     QHash<QString, QColor> m_categoryColors;
     QHash<QString, int> m_categoryCounts;

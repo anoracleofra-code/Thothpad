@@ -85,6 +85,12 @@ QProcessEnvironment sidecarEnvironment()
     // helpers and development Python launchers to resolve platform runtimes.
 #ifdef Q_OS_WIN
     result.insert(QStringLiteral("PATH"), QStringLiteral("C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\Wbem"));
+    // Resolve the optional native CLI before scrubbing PATH; never pass a shell
+    // shim or accept an executable path from a model/provider request.
+    const QString codex = QStandardPaths::findExecutable(QStringLiteral("codex.exe"));
+    if (!codex.isEmpty()) {
+        result.insert(QStringLiteral("THOTHPAD_CODEX_EXECUTABLE"), codex);
+    }
 #else
     if (system.contains(QStringLiteral("PATH"))) {
         result.insert(QStringLiteral("PATH"), system.value(QStringLiteral("PATH")));

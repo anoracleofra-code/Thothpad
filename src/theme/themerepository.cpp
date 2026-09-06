@@ -493,7 +493,7 @@ ColorScheme makeColorScheme(const char *background,
 void ThemeRepositoryPrivate::loadKanagawaLotusTheme()
 {
     const ColorScheme light =
-        makeColorScheme("#f4eed1", "#222222", "#c8bb86", "#434343", "#4d699b", "#111111", "#624c83", "#6f894e", "#8a8980", "#716e61", "#c84053");
+        makeColorScheme("#f4eed1", "#222222", "#c8bb86", "#434343", "#4d699b", "#111111", "#222222", "#6f894e", "#8a8980", "#716e61", "#c84053");
     const ColorScheme dark =
         makeColorScheme("#09090b", "#e4e4e7", "#27272a", "#f4f4f5", "#60a5fa", "#f4f4f5", "#a78bfa", "#d4d4d8", "#71717a", "#52525b", "#fb7185");
     builtInThemes.append(Theme("Kanagawa Lotus", light, dark, true));

@@ -10,6 +10,9 @@
 #include <QObject>
 #include <QString>
 #include <QTimer>
+#include "storyworkspace.h"
+
+class VisualShellTest;
 
 namespace ghostwriter
 {
@@ -34,7 +37,11 @@ public:
         QObject *parent = nullptr);
 
     void start();
+    ~StoryIntelligenceController() override;
     QString projectRoot() const;
+    QJsonObject reviewWorkspace();
+    bool saveWritingReview(const QString &workspaceId, const QJsonObject &review);
+    bool saveDetectedCharacter(const QString &workspaceId, const QString &name, const QString &detectedId);
     void setToolServices(
         StoryToolHarness *harness,
         AgentEditTransactionManager *transactions,
@@ -59,6 +66,7 @@ private slots:
     void pollPendingTool();
 
 private:
+    friend class ::VisualShellTest;
     struct PendingAsyncTool {
         bool active = false;
         QString callId;
@@ -93,7 +101,26 @@ private:
     void dispatchPendingChat(const QString &apiKey = QString());
     void loadProject(const QString &root);
     void loadProjectMetadata();
-    bool saveProjectMetadata(QString *errorMessage = nullptr) const;
+    bool saveWorkspace();
+    void openWorkspaceForDocument();
+    void refreshWorkspace();
+    void reconcileWorkspaceHeadings();
+    void editWorkspace(int tab = 0);
+    void restoreSession();
+    void newSession();
+    void deleteSession(const QString &sessionId);
+    void selectSession(const QString &sessionId);
+    bool sessionAvailable(const QJsonObject &session) const;
+    void handleMessageAction(const QString &messageId, const QString &action);
+    bool reviseChatHistory(int index, const QString &action, const QString &replacement = QString());
+    void rememberMessage(const QString &text);
+    void reviewProposal(const QString &kind, const QJsonObject &proposal);
+    void storeSession();
+    QJsonObject activeAgent() const;
+    QJsonObject workspaceContext() const;
+    QJsonArray allowedManifest() const;
+    QJsonObject workspaceTool(const QString &toolId, const QJsonObject &arguments) const;
+    void restoreMarkers();
     QString metadataPath() const;
     QJsonObject activeCharacter() const;
     QString currentStoryContextHash() const;
@@ -115,6 +142,7 @@ private:
     void finishPendingTool(bool completed, const QString &error = QString());
     bool pendingToolCompleted() const;
     void finishChatTurn(const QJsonObject &story, const QJsonObject &result);
+    void failChatTurn(const QString &message);
     void resetPendingChat();
 
     MarkdownEditor *m_editor;
@@ -128,6 +156,15 @@ private:
     QJsonObject m_metadata;
     QJsonArray m_history;
     QJsonArray m_annotations;
+    StoryWorkspace m_workspace;
+    QString m_workspaceDocument;
+    QString m_scopeId = QStringLiteral("manuscript");
+    QString m_scopeMode = QStringLiteral("manuscript");
+    QString m_sessionId;
+    bool m_started = false;
+    bool m_loadingWorkspace = false;
+    bool m_documentCleared = false;
+    QTimer m_workspaceTimer;
     PendingChat m_pendingChat;
     QString m_chatRequestId;
     QTimer m_toolWaitTimer;

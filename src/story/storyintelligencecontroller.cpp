@@ -13,6 +13,8 @@
 #include "../editor/textformatoverlaycontroller.h"
 #include "../messageboxhelper.h"
 #include "../prose/credentialstore.h"
+#include "storyresponse.h"
+#include "storyworkspacedialog.h"
 #include "../prose/providersettingsdialog.h"
 #include "../prose/writerengineclient.h"
 
@@ -32,6 +34,7 @@
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QPushButton>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QSet>
@@ -61,9 +64,13 @@ QString providerDisplayName(const QString &kind)
 {
     static const QHash<QString, QString> names = {
         {QStringLiteral("gemini"), QStringLiteral("Google Gemini")},
+        {QStringLiteral("gemini_oauth"), QStringLiteral("Google Gemini (OAuth)")},
+        {QStringLiteral("codex"), QStringLiteral("OpenAI (Codex / ChatGPT)")},
         {QStringLiteral("openai"), QStringLiteral("OpenAI")},
         {QStringLiteral("openai_compatible"), QStringLiteral("OpenAI compatible")},
         {QStringLiteral("openrouter"), QStringLiteral("OpenRouter")},
+        {QStringLiteral("opencode_zen"), QStringLiteral("OpenCode Zen")},
+        {QStringLiteral("opencode_go"), QStringLiteral("OpenCode Go")},
         {QStringLiteral("anthropic"), QStringLiteral("Anthropic")},
         {QStringLiteral("ollama"), QStringLiteral("Ollama")},
         {QStringLiteral("lmstudio"), QStringLiteral("LM Studio")},
@@ -167,8 +174,40 @@ StoryIntelligenceController::StoryIntelligenceController(
     connect(m_widget, &StoryIntelligenceWidget::dismissSuggestionRequested,
             this, &StoryIntelligenceController::dismissSuggestion);
     connect(m_widget, &StoryIntelligenceWidget::characterActivated, this, [this](const QString &id) {
-        QSettings().setValue(QStringLiteral("story/activeCharacter"), id);
+        Q_UNUSED(id);
+        newSession();
     });
+    connect(m_widget, &StoryIntelligenceWidget::workspaceRequested, this, [this]() { editWorkspace(); });
+    connect(m_widget, &StoryIntelligenceWidget::newSessionRequested, this, &StoryIntelligenceController::newSession);
+    connect(m_widget, &StoryIntelligenceWidget::deleteSessionRequested, this, &StoryIntelligenceController::deleteSession);
+    connect(m_widget, &StoryIntelligenceWidget::sessionSelected, this, &StoryIntelligenceController::selectSession);
+    connect(m_widget, &StoryIntelligenceWidget::messageActionRequested, this, &StoryIntelligenceController::handleMessageAction);
+    connect(m_widget, &StoryIntelligenceWidget::rememberRequested, this, &StoryIntelligenceController::rememberMessage);
+    connect(m_widget, &StoryIntelligenceWidget::proposalReviewRequested, this, &StoryIntelligenceController::reviewProposal);
+    connect(m_widget, &StoryIntelligenceWidget::scopeModeChanged, this, [this](const QString &mode) {
+        m_scopeMode = mode == "manuscript" ? "manuscript" : "chapter";
+        m_workspace.data.insert("scope_mode", m_scopeMode);
+        refreshWorkspace();
+        saveWorkspace();
+    });
+    m_workspaceTimer.setSingleShot(true);
+    m_workspaceTimer.setInterval(600);
+    connect(&m_workspaceTimer, &QTimer::timeout, this, [this]() {
+        if (!m_started) return;
+        openWorkspaceForDocument();
+        reconcileWorkspaceHeadings();
+        refreshWorkspace();
+    });
+    connect(m_editor, &MarkdownEditor::markdownASTUpdated, this, [this](quint64) {
+        if (m_started) m_workspaceTimer.start();
+    });
+    connect(m_editor, &MarkdownEditor::cursorPositionChanged, this, [this]() {
+        if (m_started && !m_loadingWorkspace) refreshWorkspace();
+    });
+    if (auto *document = qobject_cast<MarkdownDocument *>(m_editor->document())) {
+        connect(document, &MarkdownDocument::filePathChanged, this, [this]() { m_workspaceTimer.start(0); });
+        connect(document, &MarkdownDocument::cleared, this, [this]() { m_documentCleared = true; m_workspaceTimer.start(0); });
+    }
 
     connect(m_engine, &WriterEngineClient::responseReceived,
             this, &StoryIntelligenceController::handleResponse);
@@ -189,6 +228,9 @@ StoryIntelligenceController::StoryIntelligenceController(
             this, &StoryIntelligenceController::handleCredentialError);
     connect(m_editor->document(), &QTextDocument::contentsChange, this, [this](int, int, int) {
         ++m_revision;
+        QTimer::singleShot(0, this, [this]() {
+            if (m_started && !m_loadingWorkspace && currentDocumentPath() == m_workspaceDocument) restoreMarkers();
+        });
     });
 }
 
@@ -218,7 +260,8 @@ void StoryIntelligenceController::start()
         m_widget->setCharacters(m_metadata.value(QStringLiteral("characters")).toArray());
         emit projectRootChanged(QString());
     }
-    m_widget->setActiveCharacter(QSettings().value(QStringLiteral("story/activeCharacter")).toString());
+    m_started = true;
+    openWorkspaceForDocument();
 }
 
 QString StoryIntelligenceController::projectRoot() const
@@ -246,7 +289,8 @@ void StoryIntelligenceController::refreshProviderSummary()
     m_widget->setProviderSummary(
         providerDisplayName(providerConfig.value(QStringLiteral("provider")).toString()),
         providerConfig.value(QStringLiteral("model")).toString(),
-        !savedCredentialId.isEmpty() && savedCredentialId == expectedCredentialId);
+        !savedCredentialId.isEmpty() && savedCredentialId == expectedCredentialId,
+        providerConfig.value(QStringLiteral("provider")).toString());
 }
 
 QJsonObject StoryIntelligenceController::providerSettings() const
@@ -268,11 +312,36 @@ QJsonObject StoryIntelligenceController::providerSettings() const
                     settings.value(QStringLiteral("timeout"), 180).toInt());
     provider.insert(QStringLiteral("_desktop_no_environment"), true);
     settings.endGroup();
+    const auto agent = activeAgent();
+    if (!agent.value("model").toString().isEmpty()) {
+        const auto kind=agent.value("provider").toString();
+        if (!kind.isEmpty() && kind != provider.value("provider").toString()) {
+            const auto preset=QJsonObject::fromVariantMap(settings.value(QStringLiteral("prose/providerPresets/")+kind).toMap());
+            provider = QJsonObject{{"provider",kind},{"temperature",preset.value("temperature").toDouble(0.7)},
+                {"max_tokens",preset.value("max_tokens").toInt(4096)},{"timeout",preset.value("timeout").toInt(180)},
+                {"_desktop_no_environment",true}};
+        }
+        provider.insert("model",agent.value("model"));
+        if (!kind.isEmpty()) {
+            provider.insert("provider",kind);
+            provider.insert("base_url",agent.value("base_url"));
+        }
+    }
     return provider;
 }
 
 QString StoryIntelligenceController::providerCredentialId(const QJsonObject &provider) const
 {
+    const QString kind = provider.value(QStringLiteral("provider")).toString();
+    if (kind == QStringLiteral("opencode_zen") || kind == QStringLiteral("opencode_go")) {
+        QSettings settings;
+        settings.beginGroup(QStringLiteral("prose/provider"));
+        const QString storedKind = settings.value(QStringLiteral("provider")).toString();
+        const QString storedId = settings.value(QStringLiteral("credential_id")).toString();
+        settings.endGroup();
+        if (storedKind == kind && !storedId.isEmpty())
+            return storedId;
+    }
     return CredentialStore::providerCredentialId(provider.value(QStringLiteral("provider")).toString(),
                                                  QUrl(provider.value(QStringLiteral("base_url")).toString().trimmed()),
                                                  provider.value(QStringLiteral("model")).toString().trimmed());
@@ -281,7 +350,8 @@ QString StoryIntelligenceController::providerCredentialId(const QJsonObject &pro
 bool StoryIntelligenceController::providerMayNeedCredential(const QJsonObject &provider) const
 {
     const QString kind = provider.value(QStringLiteral("provider")).toString();
-    if (kind == QStringLiteral("ollama")
+    if (kind == QStringLiteral("codex")
+        || kind == QStringLiteral("ollama")
         || kind == QStringLiteral("lmstudio")
         || kind == QStringLiteral("llama_cpp")) {
         return false;
@@ -340,10 +410,7 @@ void StoryIntelligenceController::loadProject(const QString &root)
     }
     emit projectRootChanged(m_projectRoot);
     m_widget->setProjectFolder(m_projectRoot);
-    loadProjectMetadata();
-    clearAnnotations();
-    m_history = {};
-    m_widget->clearChat();
+    if (!m_started) loadProjectMetadata();
     m_widget->setStatusMessage(tr("Project loaded"));
 }
 
@@ -386,251 +453,59 @@ void StoryIntelligenceController::loadProjectMetadata()
     m_widget->setCharacters(m_metadata.value(QStringLiteral("characters")).toArray());
 }
 
-bool StoryIntelligenceController::saveProjectMetadata(QString *errorMessage) const
-{
-    if (m_projectRoot.isEmpty()) {
-        if (errorMessage) {
-            *errorMessage = tr("Open a project folder first.");
-        }
-        return false;
-    }
-    QDir root(m_projectRoot);
-    if (!root.mkpath(QStringLiteral(".thothpad"))) {
-        if (errorMessage) {
-            *errorMessage = tr("Could not create the .thothpad project metadata directory.");
-        }
-        return false;
-    }
-    QSaveFile file(metadataPath());
-    if (!file.open(QIODevice::WriteOnly)) {
-        if (errorMessage) {
-            *errorMessage = file.errorString();
-        }
-        return false;
-    }
-    const QByteArray json = QJsonDocument(m_metadata).toJson(QJsonDocument::Indented);
-    if (file.write(json) != json.size()) {
-        if (errorMessage) {
-            *errorMessage = file.errorString();
-        }
-        file.cancelWriting();
-        return false;
-    }
-    if (!file.commit()) {
-        if (errorMessage) {
-            *errorMessage = file.errorString();
-        }
-        return false;
-    }
-    return true;
-}
-
 void StoryIntelligenceController::editSceneContext()
 {
-    if (m_projectRoot.isEmpty()) {
-        chooseProjectFolder();
-        if (m_projectRoot.isEmpty()) {
-            return;
-        }
-    }
-    const QJsonObject current = m_metadata.value(QStringLiteral("scene_context")).toObject();
-    QDialog dialog(m_widget);
-    dialog.setWindowTitle(tr("Scene Context"));
-    auto *layout = new QVBoxLayout(&dialog);
-    auto *form = new QFormLayout;
-    QPlainTextEdit setting;
-    QPlainTextEdit goal;
-    QLineEdit pov;
-    QLineEdit location;
-    QLineEdit time;
-    QPlainTextEdit conflict;
-    QPlainTextEdit notes;
-    setting.setPlainText(current.value(QStringLiteral("setting")).toString());
-    goal.setPlainText(current.value(QStringLiteral("goal")).toString());
-    pov.setText(current.value(QStringLiteral("pov")).toString());
-    location.setText(current.value(QStringLiteral("location")).toString());
-    time.setText(current.value(QStringLiteral("time")).toString());
-    conflict.setPlainText(current.value(QStringLiteral("conflict")).toString());
-    notes.setPlainText(current.value(QStringLiteral("notes")).toString());
-    for (QPlainTextEdit *edit : {&setting, &goal, &conflict, &notes}) {
-        edit->setMaximumHeight(90);
-    }
-    form->addRow(tr("Setting"), &setting);
-    form->addRow(tr("Current goal"), &goal);
-    form->addRow(tr("POV"), &pov);
-    form->addRow(tr("Location"), &location);
-    form->addRow(tr("Time"), &time);
-    form->addRow(tr("Conflict"), &conflict);
-    form->addRow(tr("Notes"), &notes);
-    layout->addLayout(form);
-    QDialogButtonBox buttons(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog);
-    connect(&buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(&buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addWidget(&buttons);
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-    QJsonObject next;
-    next.insert(QStringLiteral("setting"), setting.toPlainText().trimmed());
-    next.insert(QStringLiteral("goal"), goal.toPlainText().trimmed());
-    next.insert(QStringLiteral("pov"), pov.text().trimmed());
-    next.insert(QStringLiteral("location"), location.text().trimmed());
-    next.insert(QStringLiteral("time"), time.text().trimmed());
-    next.insert(QStringLiteral("conflict"), conflict.toPlainText().trimmed());
-    next.insert(QStringLiteral("notes"), notes.toPlainText().trimmed());
-    m_metadata.insert(QStringLiteral("scene_context"), next);
-    QString error;
-    if (!saveProjectMetadata(&error)) {
-        loadProjectMetadata();
-        MessageBoxHelper::warning(m_widget, tr("Scene context not saved"), error);
-        return;
-    }
-    m_widget->setSceneContext(next);
+    auto context = m_workspace.effectiveContext(m_scopeId);
+    if (!editStoryRecord(context, QStringLiteral("scene"), m_widget)) return;
+    const auto before = m_workspace.data;
+    auto scope = m_workspace.scope(m_scopeId);
+    scope.insert("context", context);
+    m_workspace.setScope(scope);
+    if (!saveWorkspace()) m_workspace.data = before;
+    refreshWorkspace();
 }
 
 void StoryIntelligenceController::addCharacter()
 {
-    if (m_projectRoot.isEmpty()) {
-        chooseProjectFolder();
-        if (m_projectRoot.isEmpty()) {
-            return;
-        }
-    }
-    QDialog dialog(m_widget);
-    dialog.setWindowTitle(tr("Add Character"));
-    auto *layout = new QVBoxLayout(&dialog);
-    auto *form = new QFormLayout;
-    QLineEdit name;
-    QLineEdit role;
-    QPlainTextEdit summary;
-    QPlainTextEdit voice;
-    QPlainTextEdit knowledge;
-    for (QPlainTextEdit *edit : {&summary, &voice, &knowledge}) {
-        edit->setMaximumHeight(90);
-    }
-    form->addRow(tr("Name"), &name);
-    form->addRow(tr("Role"), &role);
-    form->addRow(tr("Character summary"), &summary);
-    form->addRow(tr("Voice"), &voice);
-    form->addRow(tr("Knowledge / secrets"), &knowledge);
-    layout->addLayout(form);
-    QDialogButtonBox buttons(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog);
-    connect(&buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(&buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addWidget(&buttons);
-    if (dialog.exec() != QDialog::Accepted || name.text().trimmed().isEmpty()) {
-        return;
-    }
-    QJsonObject character;
-    character.insert(QStringLiteral("id"), QUuid::createUuid().toString(QUuid::WithoutBraces));
-    character.insert(QStringLiteral("name"), name.text().trimmed());
-    character.insert(QStringLiteral("role"), role.text().trimmed());
-    character.insert(QStringLiteral("summary"), summary.toPlainText().trimmed());
-    character.insert(QStringLiteral("voice"), voice.toPlainText().trimmed());
-    character.insert(QStringLiteral("knowledge"), knowledge.toPlainText().trimmed());
-    QJsonArray characters = m_metadata.value(QStringLiteral("characters")).toArray();
-    characters.append(character);
-    m_metadata.insert(QStringLiteral("characters"), characters);
-    QString error;
-    if (!saveProjectMetadata(&error)) {
-        loadProjectMetadata();
-        MessageBoxHelper::warning(m_widget, tr("Character not saved"), error);
-        return;
-    }
-    m_widget->setCharacters(characters);
+    auto character = StoryWorkspace::agentTemplate(QStringLiteral("character"));
+    if (!editStoryRecord(character, QStringLiteral("agent"), m_widget)) return;
+    const auto before = m_workspace.data;
+    m_workspace.putAgent(character);
+    auto scope = m_workspace.scope(m_scopeId);
+    auto settings = scope.value("settings").toObject();
+    auto cast = m_workspace.effectiveSettings(m_scopeId).value("cast").toArray();
+    cast.append(character.value("id"));
+    settings.insert("cast", cast);
+    scope.insert("settings", settings);
+    m_workspace.setScope(scope);
+    if (!saveWorkspace()) m_workspace.data = before;
+    refreshWorkspace();
 }
 
 void StoryIntelligenceController::editCharacters()
 {
-    QJsonArray characters = m_metadata.value(QStringLiteral("characters")).toArray();
-    if (characters.isEmpty()) {
-        addCharacter();
-        return;
-    }
-    QStringList names;
-    for (const QJsonValue value : characters) {
-        names << value.toObject().value(QStringLiteral("name")).toString();
-    }
-    bool ok = false;
-    const QString selected = QInputDialog::getItem(
-        m_widget, tr("Edit Character"), tr("Character"), names, 0, false, &ok);
-    if (!ok || selected.isEmpty()) {
-        return;
-    }
-    const int index = names.indexOf(selected);
-    if (index < 0 || index >= characters.size()) {
-        return;
-    }
-    QJsonObject character = characters.at(index).toObject();
-    QDialog dialog(m_widget);
-    dialog.setWindowTitle(tr("Edit %1").arg(selected));
-    auto *layout = new QVBoxLayout(&dialog);
-    auto *form = new QFormLayout;
-    QLineEdit name(character.value(QStringLiteral("name")).toString());
-    QLineEdit role(character.value(QStringLiteral("role")).toString());
-    QPlainTextEdit summary(character.value(QStringLiteral("summary")).toString());
-    QPlainTextEdit voice(character.value(QStringLiteral("voice")).toString());
-    QPlainTextEdit knowledge(character.value(QStringLiteral("knowledge")).toString());
-    for (QPlainTextEdit *edit : {&summary, &voice, &knowledge}) {
-        edit->setMaximumHeight(90);
-    }
-    form->addRow(tr("Name"), &name);
-    form->addRow(tr("Role"), &role);
-    form->addRow(tr("Character summary"), &summary);
-    form->addRow(tr("Voice"), &voice);
-    form->addRow(tr("Knowledge / secrets"), &knowledge);
-    layout->addLayout(form);
-    QDialogButtonBox buttons(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog);
-    connect(&buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(&buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addWidget(&buttons);
-    if (dialog.exec() != QDialog::Accepted || name.text().trimmed().isEmpty()) {
-        return;
-    }
-    character.insert(QStringLiteral("name"), name.text().trimmed());
-    character.insert(QStringLiteral("role"), role.text().trimmed());
-    character.insert(QStringLiteral("summary"), summary.toPlainText().trimmed());
-    character.insert(QStringLiteral("voice"), voice.toPlainText().trimmed());
-    character.insert(QStringLiteral("knowledge"), knowledge.toPlainText().trimmed());
-    characters[index] = character;
-    m_metadata.insert(QStringLiteral("characters"), characters);
-    QString error;
-    if (!saveProjectMetadata(&error)) {
-        loadProjectMetadata();
-        MessageBoxHelper::warning(m_widget, tr("Character not saved"), error);
-        return;
-    }
-    m_widget->setCharacters(characters);
+    auto character = m_workspace.agent(m_widget->activeCharacterId());
+    if (character.isEmpty()) { editWorkspace(0); return; }
+    if (!editStoryRecord(character, QStringLiteral("agent"), m_widget)) return;
+    const auto before = m_workspace.data;
+    m_workspace.putAgent(character);
+    if (!saveWorkspace()) m_workspace.data = before;
+    refreshWorkspace();
 }
 
 QJsonObject StoryIntelligenceController::activeCharacter() const
 {
-    const QString id = m_widget->activeCharacterId();
-    if (id.isEmpty()) {
-        return {};
-    }
-    const QJsonArray characters = m_metadata.value(QStringLiteral("characters")).toArray();
-    for (const QJsonValue value : characters) {
-        const QJsonObject character = value.toObject();
-        if (character.value(QStringLiteral("id")).toString() == id) {
-            return character;
-        }
-    }
-    return {};
+    const auto record = m_workspace.agent(m_widget->activeCharacterId());
+    return record.value("archived").toBool() ? QJsonObject() : record;
 }
 
 QString StoryIntelligenceController::currentStoryContextHash() const
 {
-    QJsonObject context;
-    context.insert(QStringLiteral("project_root"), m_projectRoot);
-    context.insert(QStringLiteral("scene_context"),
-                   m_metadata.value(QStringLiteral("scene_context")).toObject());
-    context.insert(QStringLiteral("characters"),
-                   m_metadata.value(QStringLiteral("characters")).toArray());
-    context.insert(QStringLiteral("active_character_id"), m_widget->activeCharacterId());
+    auto context = workspaceContext();
+    context.insert("project_root", m_projectRoot);
+    context.insert("session_id", m_sessionId);
     return QString::fromLatin1(QCryptographicHash::hash(
-        QJsonDocument(context).toJson(QJsonDocument::Compact),
-        QCryptographicHash::Sha256).toHex());
+        QJsonDocument(context).toJson(QJsonDocument::Compact), QCryptographicHash::Sha256).toHex());
 }
 
 void StoryIntelligenceController::appendHistory(
@@ -639,20 +514,23 @@ void StoryIntelligenceController::appendHistory(
     const QString &speaker)
 {
     QJsonObject message;
+    message.insert(QStringLiteral("id"), StoryWorkspace::newId());
     message.insert(QStringLiteral("role"), role);
     message.insert(QStringLiteral("content"), content);
     if (!speaker.isEmpty()) {
         message.insert(QStringLiteral("speaker"), speaker);
     }
     m_history.append(message);
-    while (m_history.size() > MaximumHistoryMessages) {
-        m_history.removeAt(0);
-    }
+    storeSession();
+    saveWorkspace();
 }
 
 QJsonArray StoryIntelligenceController::boundedHistory() const
 {
-    return m_history;
+    QJsonArray result;
+    for (int i = qMax(0, m_history.size() - MaximumHistoryMessages); i < m_history.size(); ++i)
+        result.append(m_history[i]);
+    return result;
 }
 
 QString StoryIntelligenceController::currentDocumentPath() const
@@ -753,13 +631,17 @@ void StoryIntelligenceController::sendChat(const QString &message)
         return;
     }
 
-    m_widget->appendChatMessage(QStringLiteral("user"), prompt);
+    openWorkspaceForDocument();
+    reconcileWorkspaceHeadings();
+    refreshWorkspace();
     appendHistory(QStringLiteral("user"), prompt);
+    m_widget->appendChatMessage(QStringLiteral("user"), prompt, {}, {}, m_history.last().toObject().value("id").toString());
     m_widget->setBusy(true);
 
     resetPendingChat();
     m_pendingChat.prompt = prompt;
     m_pendingChat.provider = providerSettings();
+    const auto agent = activeAgent();
     m_pendingChat.credentialId = providerCredentialId(m_pendingChat.provider);
     m_pendingChat.revision = m_revision;
 
@@ -767,11 +649,17 @@ void StoryIntelligenceController::sendChat(const QString &message)
     settings.beginGroup(QStringLiteral("prose/provider"));
     const QString savedCredentialId = settings.value(QStringLiteral("credential_id")).toString();
     settings.endGroup();
-    if (!savedCredentialId.isEmpty()
-        && savedCredentialId == m_pendingChat.credentialId
+    if (((!savedCredentialId.isEmpty() && savedCredentialId == m_pendingChat.credentialId)
+         || !agent.value("model").toString().isEmpty())
         && m_credentials->isAvailable()) {
         m_pendingChat.waitingForCredential = true;
         m_credentials->read(m_pendingChat.credentialId);
+        return;
+    }
+    const QString kind = m_pendingChat.provider.value(QStringLiteral("provider")).toString();
+    if (storyProviderRequiresSavedCredential(kind)) {
+        m_widget->showChatError(tr("No saved credential matches this provider and model. Open Model Settings, enter a key or sign in where available, choose the model, then Save."));
+        resetPendingChat();
         return;
     }
     dispatchPendingChat();
@@ -838,11 +726,12 @@ void StoryIntelligenceController::dispatchPendingChat(const QString &apiKey)
 
     // Text-changing tools may have completed in a previous tool round, so the
     // current revision/document/context are sampled again for every model turn.
-    const QJsonObject persona = activeCharacter();
+    const auto context = workspaceContext();
+    const QJsonObject persona = activeCharacter().isEmpty() ? QJsonObject() : context.value("co_writer").toObject();
     m_pendingChat.revision = m_revision;
     m_pendingChat.documentPath = currentDocumentPath();
     m_pendingChat.storyContextHash = currentStoryContextHash();
-    m_pendingChat.speaker = persona.value(QStringLiteral("name")).toString();
+    m_pendingChat.speaker = activeAgent().value(QStringLiteral("name")).toString();
 
     QJsonObject storyPayload;
     storyPayload.insert(QStringLiteral("kind"), QStringLiteral("story_intelligence_v1"));
@@ -858,12 +747,16 @@ void StoryIntelligenceController::dispatchPendingChat(const QString &apiKey)
     storyPayload.insert(QStringLiteral("characters"),
                         m_metadata.value(QStringLiteral("characters")).toArray());
     storyPayload.insert(QStringLiteral("active_character"), persona);
+    storyPayload.insert("co_writer", context.value("co_writer"));
+    storyPayload.insert("scope", context.value("scope"));
+    storyPayload.insert("memories", context.value("memories"));
+    storyPayload.insert("characters", context.value("characters"));
     storyPayload.insert(QStringLiteral("history"), history);
     storyPayload.insert(QStringLiteral("tool_round"), m_pendingChat.toolRound);
     storyPayload.insert(QStringLiteral("tool_results"), m_pendingChat.toolResults);
     if (m_harness) {
         storyPayload.insert(QStringLiteral("app_state"), m_harness->snapshot());
-        storyPayload.insert(QStringLiteral("tool_manifest"), m_harness->manifest());
+        storyPayload.insert(QStringLiteral("tool_manifest"), allowedManifest());
     }
     if (m_activity) {
         storyPayload.insert(QStringLiteral("activity_events"), m_activity->recentEvents());
@@ -893,6 +786,7 @@ void StoryIntelligenceController::dispatchPendingChat(const QString &apiKey)
 
 QString StoryIntelligenceController::toolRisk(const QString &toolId) const
 {
+    if (toolId == "get_story_context" || toolId == "list_story_scopes" || toolId == "read_story_scope" || toolId == "search_manuscript") return QStringLiteral("R0");
     if (!m_harness) {
         return {};
     }
@@ -911,6 +805,8 @@ bool StoryIntelligenceController::authorizeTool(
     const QJsonObject &arguments)
 {
     const QString risk = toolRisk(toolId);
+    if ((risk == "R3" || risk == "R4") && activeAgent().value("tools").toString() != "edit")
+        return false;
     if (risk == QStringLiteral("R0")
         || risk == QStringLiteral("R1")
         || risk == QStringLiteral("R2")) {
@@ -1127,8 +1023,8 @@ bool StoryIntelligenceController::executeToolCalls(const QJsonArray &toolCalls)
 
         const bool boundedEdit = risk == QStringLiteral("R3") || risk == QStringLiteral("R4");
         const bool bulkEdit = risk == QStringLiteral("R4");
-        const QJsonObject nativeResult =
-            m_harness->execute(toolId, arguments, boundedEdit, bulkEdit);
+        QJsonObject nativeResult = workspaceTool(toolId, arguments);
+        if (nativeResult.isEmpty()) nativeResult = m_harness->execute(toolId, arguments, boundedEdit, bulkEdit);
         const bool nativeOk = nativeResult.value(QStringLiteral("ok")).toBool();
 
         if (nativeOk && nativeResult.value(QStringLiteral("pending")).toBool()) {
@@ -1190,16 +1086,9 @@ void StoryIntelligenceController::handleResponse(
     }
     m_chatRequestId.clear();
 
-    if (!response.value(QStringLiteral("ok")).toBool()) {
-        QString error = response.value(QStringLiteral("error")).toString();
-        if (error.isEmpty() && response.value(QStringLiteral("error")).isObject()) {
-            error = response.value(QStringLiteral("error")).toObject()
-                .value(QStringLiteral("message")).toString();
-        }
-        m_widget->setBusy(false);
-        m_widget->setStatusMessage(
-            error.isEmpty() ? tr("Story Intelligence request failed.") : error);
-        resetPendingChat();
+    const QString error = storyResponseError(response);
+    if (!error.isEmpty()) {
+        failChatTurn(error);
         return;
     }
 
@@ -1227,6 +1116,9 @@ void StoryIntelligenceController::handleResponse(
     QJsonObject guardedStory = story;
     if (staleStoryContext) {
         guardedStory.remove(QStringLiteral("annotations"));
+        guardedStory.remove(QStringLiteral("scene_context_proposal"));
+        guardedStory.remove(QStringLiteral("character_proposals"));
+        guardedStory.remove(QStringLiteral("memory_proposals"));
     }
 
     if (!toolCalls.isEmpty() && m_harness) {
@@ -1268,19 +1160,63 @@ void StoryIntelligenceController::finishChatTurn(
         message = result.value(QStringLiteral("output_text")).toString().trimmed();
     }
     if (message.isEmpty()) {
-        message = tr("Story Intelligence completed the turn without a text response.");
+        failChatTurn(tr("The provider returned no text. Check the model and generation settings, then retry."));
+        return;
     }
 
     const QString speaker = m_pendingChat.speaker;
-    m_widget->appendChatMessage(QStringLiteral("assistant"), message, speaker);
+    const auto references = m_pendingChat.revision == m_revision ? story.value("annotations").toArray() : QJsonArray();
     appendHistory(QStringLiteral("assistant"), message, speaker);
+    m_widget->appendChatMessage(QStringLiteral("assistant"), message, speaker, references, m_history.last().toObject().value("id").toString());
+    auto saved = m_history.last().toObject();
+    saved.insert("references", references);
+    QJsonArray proposals;
+    auto offer = [&](const QString &kind, QJsonObject proposal) {
+        if (proposal.isEmpty()) return;
+        proposal.insert("_scope_id", m_scopeId);
+        proposal.insert("_agent_id", activeAgent().value("id"));
+        proposal.insert("_proposal_id", StoryWorkspace::newId());
+        proposals.append(QJsonObject{{"kind",kind},{"record",proposal}});
+        m_widget->appendProposal(kind,proposal);
+    };
+    if (m_pendingChat.revision == m_revision && m_pendingChat.storyContextHash == currentStoryContextHash()) {
+        offer("scene", story.value("scene_context_proposal").toObject());
+        for (const auto &v : story.value("character_proposals").toArray()) offer("character",v.toObject());
+        if (activeAgent().value("memory_policy").toString() != "off")
+            for (const auto &v : story.value("memory_proposals").toArray()) offer("memory",v.toObject());
+    }
+    saved.insert("proposals", proposals);
+    m_history[m_history.size()-1] = saved;
+    storeSession();
 
     const QJsonArray annotations = story.value(QStringLiteral("annotations")).toArray();
     applyAnnotations(annotations, m_pendingChat.revision);
+    if (m_pendingChat.revision == m_revision) {
+        auto markers = m_workspace.data.value("markers").toArray();
+        const QString digest = QString::fromLatin1(QCryptographicHash::hash(m_editor->toPlainText().toUtf8(), QCryptographicHash::Sha256).toHex());
+        for (const auto &v : m_annotations) {
+            auto mark = v.toObject();
+            mark.insert("document_hash",digest); mark.insert("scope_id",m_scopeId); mark.insert("session_id",m_sessionId);
+            mark.insert("message_id", saved.value("id"));
+            bool exists=false;
+            for (const auto &old : markers) if (old.toObject().value("id")==mark.value("id")) {exists=true;break;}
+            if (!exists) markers.append(mark);
+        }
+        m_workspace.data.insert("markers",markers);
+    }
     m_widget->setBusy(false);
-    m_widget->setStatusMessage(annotations.isEmpty()
+    const bool savedWorkspace = saveWorkspace();
+    restoreMarkers();
+    if (savedWorkspace) m_widget->setStatusMessage(annotations.isEmpty()
         ? tr("Response complete")
         : tr("Response complete · %1 manuscript mark(s)").arg(annotations.size()));
+    resetPendingChat();
+    refreshWorkspace();
+}
+
+void StoryIntelligenceController::failChatTurn(const QString &message)
+{
+    m_widget->showChatError(message);
     resetPendingChat();
 }
 
@@ -1374,6 +1310,23 @@ void StoryIntelligenceController::applySuggestion(const QString &suggestionId)
             m_widget->setStatusMessage(tr("That suggestion is stale because the manuscript changed."));
             return;
         }
+        if (annotation.value("stale").toBool()) return;
+        QDialog review(m_widget);
+        review.setWindowTitle(tr("Review rewrite"));
+        review.resize(720, 520);
+        auto *layout = new QVBoxLayout(&review);
+        layout->addWidget(new QLabel(tr("Original passage"), &review));
+        auto *original = new QPlainTextEdit(annotation.value("quote").toString(), &review);
+        original->setReadOnly(true); layout->addWidget(original);
+        layout->addWidget(new QLabel(tr("Proposed replacement"), &review));
+        auto *proposed = new QPlainTextEdit(replacement, &review);
+        proposed->setReadOnly(true); layout->addWidget(proposed);
+        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Apply | QDialogButtonBox::Cancel, &review);
+        layout->addWidget(buttons);
+        connect(buttons->button(QDialogButtonBox::Apply), &QPushButton::clicked, &review, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &review, &QDialog::reject);
+        if (review.exec() != QDialog::Accepted) return;
+        if (annotation.value("document_revision").toInt(-1) != m_revision) return;
         QJsonObject edit;
         edit.insert(QStringLiteral("start_utf16"), annotation.value(QStringLiteral("start_utf16")));
         edit.insert(QStringLiteral("end_utf16"), annotation.value(QStringLiteral("end_utf16")));
@@ -1429,6 +1382,10 @@ void StoryIntelligenceController::dismissSuggestion(const QString &suggestionId)
             dismissed.value(QStringLiteral("comment")).toString());
     }
     m_annotations = filtered;
+    auto markers = m_workspace.data.value("markers").toArray();
+    for (int i=markers.size()-1; i>=0; --i) if (markers[i].toObject().value("id").toString()==suggestionId) markers.removeAt(i);
+    m_workspace.data.insert("markers",markers);
+    saveWorkspace();
     refreshAnnotationPresentation();
     m_widget->appendChatMessage(
         QStringLiteral("assistant"),
@@ -1440,6 +1397,8 @@ void StoryIntelligenceController::clearAnnotations()
 {
     m_editor->textFormatOverlayController()->clearChannel(StoryOverlayChannel);
     m_annotations = {};
+    m_workspace.data.insert("markers",QJsonArray());
+    if (m_started && !m_loadingWorkspace) saveWorkspace();
     m_widget->setAnnotations({});
     m_widget->setStatusMessage(tr("AI manuscript marks cleared"));
 }

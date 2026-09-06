@@ -36,6 +36,7 @@ OPERATIONS = (
     "dispose_document", "analyze_region", "analyze_document", "query_findings",
     "query_overlay_spans", "dispose_analysis", "analyze_manuscript", "rewrite",
     "compare", "cancel", "shutdown", "quality_timeline", "lens_baselines",
+    "provider_access",
 )
 
 

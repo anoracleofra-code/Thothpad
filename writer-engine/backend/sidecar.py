@@ -488,6 +488,9 @@ def dispatch(
         return _capabilities()
     if operation == "capabilities":
         return _capabilities()
+    if operation == "provider_access":
+        from backend.provider_access import provider_access
+        return provider_access(params)
     if operation == "list_profiles":
         return {"profiles": list_profiles()}
     if operation == "get_profile":

@@ -102,4 +102,4 @@ def load_profile(name: str | None = None, overrides: dict[str, Any] | None = Non
             merged[key].update(value)
         else:
             merged[key] = value
-    return merged
+    return validate_profile(merged)

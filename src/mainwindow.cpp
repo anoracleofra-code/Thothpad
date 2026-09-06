@@ -6,6 +6,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #include <QApplication>
+#include <QActionGroup>
 #include <QClipboard>
 #include <QDesktopServices>
 #include <QFile>
@@ -293,6 +294,18 @@ void MainWindow::keyPressEvent(QKeyEvent *e)
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *event)
 {
+    if ((editorArea == obj) && (QEvent::Resize == event->type()) && !editorMarginUpdatePending) {
+        // QDockWidget resizes do not resize MainWindow itself, so defer the
+        // margin refresh until Qt has committed the editor area's new width.
+        editorMarginUpdatePending = true;
+        QTimer::singleShot(0, this, [this]() {
+            editorMarginUpdatePending = false;
+            if (nullptr != editor) {
+                editor->setupPaperMargins();
+            }
+        });
+    }
+
     if (this->isFullScreen() && appSettings->hideMenuBarInFullScreenEnabled()) {
         if ((this->menuBar() == obj) 
                 && (QEvent::Leave == event->type()) 
@@ -333,6 +346,9 @@ void MainWindow::quitApplication()
         windowSettings.setValue(GW_MAIN_WINDOW_GEOMETRY_KEY, saveGeometry());
         windowSettings.setValue(GW_MAIN_WINDOW_STATE_KEY, saveState());
         windowSettings.setValue(GW_SPLITTER_GEOMETRY_KEY, splitter->saveState());
+        if (sidebar->isVisible() && !splitter->sizes().isEmpty()) {
+            windowSettings.setValue(QStringLiteral("Window/proseSidebarWidth"), splitter->sizes().first());
+        }
         windowSettings.sync();
 
         this->editor->document()->disconnect();
@@ -1063,7 +1079,7 @@ void MainWindow::setupGui()
 
     splitter = new QSplitter(this);
     // Editor plus the sentence-rhythm strip ride together as one pane.
-    auto *editorArea = new QWidget(this);
+    editorArea = new QWidget(this);
     auto *editorLayout = new QHBoxLayout(editorArea);
     editorLayout->setContentsMargins(0, 0, 0, 0);
     editorLayout->setSpacing(0);
@@ -1079,15 +1095,17 @@ void MainWindow::setupGui()
 
     // Set default sizes for splitter.
     QList<int> sizes;
-    // The ThothPad tool pane is intentionally fixed to the redesign's
-    // 56 px activity rail + 320 px content pane.  A percentage-based default
-    // grows the native sidebar far beyond the reference on large displays.
-    int sidebarWidth = ProseSidebarWidth;
+    // Keep the redesign width as the default while preserving adjustments.
+    QSettings paneSettings;
+    int sidebarWidth = qBound(ProseSidebarWidth,
+                              paneSettings.value(QStringLiteral("Window/proseSidebarWidth"), ProseSidebarWidth).toInt(),
+                              qMax(ProseSidebarWidth, width() * 2 / 3));
     int otherWidth = width() - sidebarWidth;
     sizes.append(sidebarWidth);
     sizes.append(otherWidth);
 
     splitter->setSizes(sizes);
+    editorArea->installEventFilter(this);
 
     connect(splitter, &QSplitter::splitterMoved, splitter, [this](int pos, int index) {
         Q_UNUSED(pos)
@@ -1199,6 +1217,33 @@ void MainWindow::setupMenuBar()
     menu->addAction(appAction(AppActions::ShowSessionStatistics));
     menu->addAction(appAction(AppActions::ShowDocumentStatistics));
     menu->addAction(appAction(AppActions::ShowCheatSheet));
+    menu->addSeparator();
+    QMenu *writingWidthMenu = menu->addMenu(tr("Writing Width"));
+    auto *writingWidthGroup = new QActionGroup(writingWidthMenu);
+    writingWidthGroup->setExclusive(true);
+
+    const QList<QPair<QString, EditorWidth>> writingWidths = {
+        {tr("Narrow (60 columns)"), EditorWidthNarrow},
+        {tr("Standard (80 columns)"), EditorWidthMedium},
+        {tr("Wide (100 columns)"), EditorWidthWide},
+        {tr("Fill available space"), EditorWidthFull},
+    };
+    for (const auto &entry : writingWidths) {
+        QAction *widthAction = writingWidthMenu->addAction(entry.first);
+        widthAction->setCheckable(true);
+        widthAction->setData(static_cast<int>(entry.second));
+        widthAction->setChecked(entry.second == appSettings->editorWidth());
+        writingWidthGroup->addAction(widthAction);
+    }
+    connect(writingWidthGroup, &QActionGroup::triggered, this, [this](QAction *action) {
+        appSettings->setEditorWidth(static_cast<EditorWidth>(action->data().toInt()));
+    });
+    connect(appSettings, &AppSettings::editorWidthChanged, writingWidthGroup,
+            [writingWidthGroup](EditorWidth editorWidth) {
+        for (QAction *action : writingWidthGroup->actions()) {
+            action->setChecked(action->data().toInt() == static_cast<int>(editorWidth));
+        }
+    });
     menu->addSeparator();
     menu->addAction(appAction(AppActions::ZoomIn));
     menu->addAction(appAction(AppActions::ZoomOut));
@@ -1518,19 +1563,21 @@ void MainWindow::setupSidebar()
     sidebar = new Sidebar(this);
     sidebar->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     sidebar->setMinimumWidth(ProseSidebarWidth);
-    sidebar->setMaximumWidth(ProseSidebarWidth);
+
+    auto *preferencesButton = sidebar->addButton(primaryIconTheme->icon("preferences"), tr("Preferences"));
+    connect(preferencesButton, &QPushButton::clicked, this, &MainWindow::openPreferencesDialog);
 
     folderViewWidget = new FolderViewWidget(this);
-    sidebar->addTab(primaryIconTheme->icon("open-file"), folderViewWidget, tr("Folder View"));
-    sidebar->addTab(primaryIconTheme->icon("outline"), outlineWidget, tr("Outline"));
+    sidebar->addTab(primaryIconTheme->icon("shell-folder"), folderViewWidget, tr("Folder View"));
+    sidebar->addTab(primaryIconTheme->icon("shell-outline"), outlineWidget, tr("Outline"));
     proseAwarenessWidget = new ProseAwarenessWidget(this);
     sidebar->addTab(primaryIconTheme->icon("prose-awareness"), proseAwarenessWidget, tr("Prose Awareness"));
     // Session statistics still powers the status indicator and its View
     // action, but it is intentionally not a primary activity-rail tool in
     // the redesigned shell.
     sidebar->addTab(primaryIconTheme->icon("session-statistics"), sessionStatsWidget, tr("Session Statistics"), QStringLiteral("sessionStatsTab"));
-    sidebar->addTab(primaryIconTheme->icon("document-statistics"), documentStatsWidget, tr("Document Statistics"));
-    sidebar->addTab(primaryIconTheme->icon("cheat-sheet"), cheatSheetWidget, tr("Cheat Sheet"), "cheatSheetTab");
+    sidebar->addTab(primaryIconTheme->icon("shell-statistics"), documentStatsWidget, tr("Document Statistics"));
+    sidebar->addTab(primaryIconTheme->icon("shell-book"), cheatSheetWidget, tr("Cheat Sheet"), "cheatSheetTab");
     if (auto *sessionStatsTab = sidebar->findChild<QPushButton *>(QStringLiteral("sessionStatsTab"))) {
         sessionStatsTab->hide();
     }
@@ -1646,6 +1693,7 @@ void MainWindow::applyTheme()
     } else {
         qApp->style()->unpolish(qApp);
         qApp->style()->unpolish(this);
+        qApp->setPalette(StyleSheetBuilder::widgetPalette(chromeColors));
         qApp->setStyleSheet(styleSheet);
         qApp->style()->polish(qApp);
         qApp->style()->polish(this);
@@ -1700,12 +1748,12 @@ void MainWindow::ensureHtmlPreview()
         splitter->restoreState(windowSettings.value(GW_SPLITTER_GEOMETRY_KEY).toByteArray());
     }
 
-    // Reassert the reference width after restoring legacy splitter state.  The
-    // editor and preview keep the remaining space, while the tools pane stays
-    // visually stable across launches and display sizes.
-    const int availableWidth = qMax(0, width() - ProseSidebarWidth);
-    if (sidebar->isVisible()) {
-        splitter->setSizes({ProseSidebarWidth, availableWidth * 2 / 3, availableWidth / 3});
+    // If no three-pane state exists, keep the user's left width rather than
+    // forcing the original fixed redesign width back on them.
+    const int sidebarWidth = splitter->sizes().value(0, ProseSidebarWidth);
+    const int availableWidth = qMax(0, width() - sidebarWidth);
+    if (sidebar->isVisible() && !windowSettings.contains(GW_SPLITTER_GEOMETRY_KEY)) {
+        splitter->setSizes({sidebarWidth, availableWidth * 2 / 3, availableWidth / 3});
     }
 
     applyTheme();

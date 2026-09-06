@@ -9,6 +9,8 @@
 #include <utility>
 
 #include <QAbstractListModel>
+#include <QButtonGroup>
+#include <QStackedWidget>
 #include <QAction>
 #include <QApplication>
 #include <QColorDialog>
@@ -27,6 +29,7 @@
 #include <QPalette>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSet>
 #include <QShortcut>
 #include <QSignalBlocker>
@@ -343,6 +346,10 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     m_statusLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     m_statusLabel->setObjectName(QStringLiteral("proseAwarenessStatusLabel"));
     auto *header = new QHBoxLayout;
+    m_workspaceHeader = header;
+    header->setSpacing(2);
+    m_workspaceButtons = new QButtonGroup(this);
+    m_workspaceButtons->setExclusive(true);
 
     auto *controls = new QFormLayout;
     controls->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
@@ -371,7 +378,11 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     m_toolsButton->setObjectName(QStringLiteral("proseAwarenessToolsButton"));
     m_toolsButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     m_toolsButton->setFixedHeight(28);
-    m_toolsButton->setPopupMode(QToolButton::InstantPopup);
+    m_toolsButton->setContextMenuPolicy(Qt::CustomContextMenu);
+    m_toolsButton->setToolTip(tr("Writing tools. Right-click for profile, export and settings actions."));
+    m_toolsButton->setCheckable(true);
+    m_toolsButton->setChecked(true);
+    m_workspaceButtons->addButton(m_toolsButton, 0);
     m_toolsButton->setAccessibleName(tr("Prose tools and settings"));
     header->addWidget(m_toolsButton);
     header->addStretch();
@@ -395,7 +406,9 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     QAction *grammarSettingsAction = toolsMenu->addAction(tr("Grammar settings..."));
     QAction *modelSettingsAction = toolsMenu->addAction(tr("Model settings..."));
     QAction *performanceSettingsAction = toolsMenu->addAction(tr("Performance settings..."));
-    m_toolsButton->setMenu(toolsMenu);
+    connect(m_toolsButton, &QWidget::customContextMenuRequested, toolsMenu, [this, toolsMenu](const QPoint &point) {
+        toolsMenu->popup(m_toolsButton->mapToGlobal(point));
+    });
     const QList<QAction *> engineActions = {editProfileAction, importProfileAction, exportProfileAction, rewriteSelectionAction};
     connect(toolsMenu, &QMenu::aboutToShow, this, [this, engineActions]() {
         for (QAction *action : engineActions) {
@@ -432,17 +445,21 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     // Match the redesign's lens card.  The additional engine lenses
     // remain available through the card's own scrollbar instead of pushing the
     // observations and actions below the fold.
-    // Keep nine primary lenses visible. The navigator itself scrolls for the
-    // remaining lens, while the surrounding sidebar stays fixed in place.
-    m_categoryTree->setFixedHeight(322);
+    // Every lens is directly available in this scrolling list.
+    // Keep the full review path visible at ordinary desktop heights. Each
+    // list retains its own scrollbar for larger result sets; the whole panel
+    // should not have to scroll just to reach its observation actions.
+    m_categoryTree->setMinimumHeight(140);
+    m_categoryTree->setMaximumHeight(260);
+    m_categoryTree->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
     m_categoryTree->setObjectName(QStringLiteral("proseAwarenessCategoryTree"));
     m_categoryTree->setAccessibleName(tr("Prose lenses"));
-    m_categoryTree->setAccessibleDescription(tr("Check lenses to enable them. Open the context menu for color, timing, and decoration choices."));
+    m_categoryTree->setAccessibleDescription(tr("Check lenses to enable them. Right-click a lens to edit its lists, color, timing, or decoration."));
     m_categoryTree->setContextMenuPolicy(Qt::CustomContextMenu);
 
     addCategory(QStringLiteral("general_rules"),
-                tr("General rules"),
-                tr("Words and phrases the active profile marks as general rules."),
+                tr("Profile phrases"),
+                tr("Phrases flagged by the active writing profile's hard-ban and soft-flag lists."),
                 QColor("#F87171"),
                 true);
     addCategory(QStringLiteral("possible_adverbs"), tr("Adverbs"), tr("Words that may be functioning as adverbs."), QColor("#FACC15"), true);
@@ -453,31 +470,17 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     addCategory(QStringLiteral("formulaic_patterns"), tr("Formulaic prose"), tr("Repeated rhetorical patterns and AI-like cadences."), QColor("#F472B6"), true);
     addCategory(QStringLiteral("repetition_rhythm"), tr("Echoes"), tr("Manuscript-wide word and phrase echoes."), QColor("#22D3EE"), true);
     addCategory(QStringLiteral("repetition"), tr("Repetition"), tr("Words repeated close together."), QColor("#A76D87"), true);
-    addCategory(QStringLiteral("grammar_mechanics"), tr("Grammar"), tr("Punctuation, agreement, spelling, and copyediting."), QColor("#B8685F"), true);
-    auto *advancedGroup = new QTreeWidgetItem(m_categoryTree);
-    advancedGroup->setText(0, tr("More lenses"));
-    advancedGroup->setFlags(Qt::ItemIsEnabled);
-    advancedGroup->setExpanded(false);
     addCategory(QStringLiteral("body_cinematic"),
                 tr("Body/cinematic"),
                 tr("Stock body language and cinematic atmosphere."),
                 QColor("#B66E7D"),
-                true,
-                advancedGroup);
+                true);
     addCategory(QStringLiteral("abstraction_agency"),
                 tr("Abstraction"),
                 tr("Vague abstractions and inanimate false agency."),
                 QColor("#6096A4"),
-                false,
-                advancedGroup);
-    addCategory(QStringLiteral("metaphor_texture"), tr("Metaphors"), tr("Dense or clustered metaphors and similes."), QColor("#739764"), false, advancedGroup);
-    advancedGroup->setHidden(true);
-    toolsMenu->addSeparator();
-    QAction *showAdvancedLensesAction = toolsMenu->addAction(tr("Show advanced lenses"));
-    showAdvancedLensesAction->setCheckable(true);
-    connect(showAdvancedLensesAction, &QAction::toggled, this, [advancedGroup](bool visible) {
-        advancedGroup->setHidden(!visible);
-    });
+                true);
+    addCategory(QStringLiteral("metaphor_texture"), tr("Metaphor/texture"), tr("Dense or clustered metaphors, similes, and concrete sensory detail."), QColor("#739764"), true);
     m_categoryTree->setCurrentItem(m_categoryTree->topLevelItem(0));
 
     m_findingView->setModel(m_findingModel);
@@ -489,7 +492,9 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     m_findingView->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     // Keep five observations visible; additional matches scroll inside this
     // list so the selected-observation actions stay in the static sidebar.
-    m_findingView->setFixedHeight(210);
+    m_findingView->setMinimumHeight(70);
+    m_findingView->setMaximumHeight(140);
+    m_findingView->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
     m_findingView->setObjectName(QStringLiteral("proseAwarenessFindingView"));
     m_findingView->setAccessibleName(tr("Prose observations"));
 
@@ -502,8 +507,8 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     m_findingView->setAccessibleDescription(tr("Use F8 for the next observation and Shift+F8 for the previous observation."));
 
     m_deleteButton->setText(tr("Delete"));
-    m_deleteButton->setIcon(QIcon::fromTheme(QStringLiteral("edit-delete")));
-    m_deleteButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    m_deleteButton->setIcon(QIcon(QStringLiteral(":/icons/shell-trash.svg")));
+    m_deleteButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
     m_deleteButton->setAccessibleName(tr("Delete selected occurrence"));
     m_deleteButton->setToolTip(tr("Delete the selected occurrence from the manuscript"));
     m_backButton->setText(QStringLiteral("←"));
@@ -525,7 +530,7 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     m_undoButton->setAccessibleName(tr("Undo manuscript edit"));
     m_undoButton->setToolTip(tr("Undo the last manuscript edit"));
     m_undoButton->setEnabled(false);
-    m_findingActionsButton->setText(QStringLiteral("..."));
+    m_findingActionsButton->setText(QStringLiteral("…"));
     m_findingActionsButton->setToolTip(tr("More actions"));
     m_findingActionsButton->setPopupMode(QToolButton::InstantPopup);
     m_findingActionsButton->setAccessibleName(tr("More finding actions"));
@@ -544,10 +549,8 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     m_deleteButton->setMinimumHeight(28);
     m_backButton->setObjectName(QStringLiteral("backObservationButton"));
     m_backButton->setMinimumHeight(28);
-    m_backButton->setFixedWidth(36);
     m_nextButton->setObjectName(QStringLiteral("nextObservationButton"));
     m_nextButton->setMinimumHeight(28);
-    m_nextButton->setFixedWidth(36);
     m_undoButton->setObjectName(QStringLiteral("undoActionButton"));
     m_undoButton->setMinimumHeight(28);
     m_findingActionsButton->setObjectName(QStringLiteral("findingActionsButton"));
@@ -555,11 +558,12 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
 
     auto *findingActions = new QHBoxLayout;
     findingActions->setSpacing(6);
-    findingActions->addWidget(m_deleteButton, 1);
-    findingActions->addWidget(m_backButton, 1);
-    findingActions->addWidget(m_nextButton, 1);
-    findingActions->addWidget(m_undoButton);
-    findingActions->addWidget(m_findingActionsButton);
+    for (auto *button : {m_deleteButton, m_backButton, m_nextButton, m_undoButton, m_findingActionsButton}) {
+        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        button->setMinimumWidth(32);
+        button->setMinimumHeight(34);
+        findingActions->addWidget(button, 1);
+    }
 
     for (QPushButton *advancedButton : {m_exportMarkdownButton,
                                         m_exportJsonButton,
@@ -588,8 +592,8 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     content->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     auto *layout = new QVBoxLayout(content);
     layout->setSizeConstraint(QLayout::SetNoConstraint);
-    layout->setContentsMargins(16, 16, 16, 16);
-    layout->setSpacing(24);
+    layout->setContentsMargins(12, 12, 12, 12);
+    layout->setSpacing(12);
     auto *setupSurface = new QFrame(content);
     setupSurface->setObjectName(QStringLiteral("proseAwarenessSetupSurface"));
     setupSurface->setFrameShape(QFrame::NoFrame);
@@ -598,8 +602,8 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     // leaves a large empty gap between the controls and Scan document.
     setupSurface->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto *setupLayout = new QVBoxLayout(setupSurface);
-    setupLayout->setContentsMargins(12, 12, 12, 12);
-    setupLayout->setSpacing(10);
+    setupLayout->setContentsMargins(10, 10, 10, 10);
+    setupLayout->setSpacing(6);
     setupLayout->addLayout(controls);
     setupLayout->addWidget(m_scanButton);
     layout->addWidget(setupSurface);
@@ -607,14 +611,26 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     auto *lensesSurface = new QFrame(content);
     lensesSurface->setObjectName(QStringLiteral("proseAwarenessLensesSurface"));
     lensesSurface->setFrameShape(QFrame::NoFrame);
-    lensesSurface->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    lensesSurface->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
     auto *lensesLayout = new QVBoxLayout(lensesSurface);
     lensesLayout->setContentsMargins(0, 0, 0, 0);
     lensesLayout->setSpacing(7);
-    lensesLayout->addWidget(lensesTitle);
-    auto *lensesHint = new QLabel(tr("Choose a lens to inspect its observations."), lensesSurface);
+    lensesLayout->setSizeConstraint(QLayout::SetMinAndMaxSize);
+    lensesTitle->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    m_profileEditButton->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    auto *lensHeader = new QHBoxLayout;
+    lensHeader->addWidget(lensesTitle);
+    lensHeader->addStretch();
+    m_profileEditButton->setText(tr("Edit lists…"));
+    m_profileEditButton->setObjectName(QStringLiteral("editLensListsButton"));
+    m_profileEditButton->setToolTip(tr("Edit, name, load, and share custom lists for any lens."));
+    m_profileEditButton->show();
+    lensHeader->addWidget(m_profileEditButton);
+    lensesLayout->addLayout(lensHeader);
+    auto *lensesHint = new QLabel(tr("Choose a lens to inspect its observations. Right-click any lens to edit its lists."), lensesSurface);
     lensesHint->setObjectName(QStringLiteral("proseAwarenessHelperLabel"));
     lensesHint->setWordWrap(true);
+    lensesHint->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     lensesLayout->addWidget(lensesHint);
     lensesLayout->addWidget(m_categoryTree);
     layout->addWidget(lensesSurface);
@@ -624,10 +640,12 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     auto *findingsLayout = new QVBoxLayout(findingsSurface);
     findingsLayout->setContentsMargins(0, 0, 0, 0);
     findingsLayout->setSpacing(7);
+    findingsTitle->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     findingsLayout->addWidget(findingsTitle);
     m_findingsHint = new QLabel(tr("Choose a lens to see its observations."), findingsSurface);
     m_findingsHint->setObjectName(QStringLiteral("proseAwarenessFindingsHint"));
     m_findingsHint->setWordWrap(true);
+    m_findingsHint->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     findingsLayout->addWidget(m_findingsHint);
     findingsLayout->addWidget(m_findingView);
 
@@ -637,6 +655,7 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     auto *detailsLayout = new QVBoxLayout(detailsSurface);
     detailsLayout->setContentsMargins(12, 10, 12, 10);
     detailsLayout->setSpacing(4);
+    detailsLayout->setAlignment(Qt::AlignTop);
     auto *explanationTitle = new QLabel(tr("Observation"), detailsSurface);
     explanationTitle->setObjectName(QStringLiteral("proseAwarenessDetailLabel"));
     detailsLayout->addWidget(explanationTitle);
@@ -647,18 +666,22 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     detailsLayout->addWidget(suggestionTitle);
     m_suggestionLabel->setObjectName(QStringLiteral("proseAwarenessSuggestionLabel"));
     detailsLayout->addWidget(m_suggestionLabel);
-    // The reference card keeps the review controls attached to the
-    // observation they act on.  Keeping the same parent also prevents a
-    // detached action strip from reading like a second unrelated section.
-    m_findingActionsSurface = new QFrame(detailsSurface);
+    // Keep actions visible even when a long explanation needs to scroll.
+    m_findingActionsSurface = new QFrame(this);
     m_findingActionsSurface->setObjectName(QStringLiteral("proseAwarenessFindingActions"));
     auto *findingActionsLayout = new QVBoxLayout(m_findingActionsSurface);
-    findingActionsLayout->setContentsMargins(0, 8, 0, 0);
+    findingActionsLayout->setContentsMargins(12, 8, 12, 8);
     findingActionsLayout->addLayout(findingActions);
-    detailsLayout->addWidget(m_findingActionsSurface);
     detailsSurface->setVisible(false);
-    findingsLayout->addWidget(detailsSurface);
-    layout->addWidget(findingsSurface);
+    auto *detailsScroll = new QScrollArea(findingsSurface);
+    detailsScroll->setObjectName(QStringLiteral("proseAwarenessDetailsScroll"));
+    detailsScroll->setWidgetResizable(true);
+    detailsScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    detailsScroll->setFrameShape(QFrame::NoFrame);
+    detailsScroll->setMinimumHeight(160);
+    detailsScroll->setWidget(detailsSurface);
+    findingsLayout->addWidget(detailsScroll, 1);
+    layout->addWidget(findingsSurface, 1);
 
     auto *outerLayout = new QVBoxLayout(this);
     outerLayout->setContentsMargins(0, 0, 0, 0);
@@ -669,10 +692,26 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
     // The redesign uses a deliberately quiet, full-height tool header.  Keep
     // its content aligned with the 16 px sidebar inset and the 56 px activity
     // rail rather than allowing the native style to compress it.
-    headerSurfaceLayout->setContentsMargins(16, 14, 16, 14);
+    headerSurfaceLayout->setContentsMargins(12, 10, 12, 10);
     headerSurfaceLayout->addLayout(header);
     outerLayout->addWidget(headerSurface);
-    outerLayout->addWidget(content, 1);
+    auto *contentScroll = new QScrollArea(this);
+    contentScroll->setObjectName(QStringLiteral("proseAwarenessScrollArea"));
+    contentScroll->setWidgetResizable(true);
+    contentScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    contentScroll->setFrameShape(QFrame::NoFrame);
+    layout->setSizeConstraint(QLayout::SetMinimumSize);
+    contentScroll->setWidget(content);
+    auto *toolsPage = new QWidget(this);
+    auto *toolsLayout = new QVBoxLayout(toolsPage);
+    toolsLayout->setContentsMargins(0, 0, 0, 0);
+    toolsLayout->setSpacing(0);
+    toolsLayout->addWidget(contentScroll, 1);
+    toolsLayout->addWidget(m_findingActionsSurface);
+    m_pages = new QStackedWidget(this);
+    m_pages->addWidget(toolsPage);
+    outerLayout->addWidget(m_pages, 1);
+    connect(m_workspaceButtons, &QButtonGroup::idClicked, m_pages, &QStackedWidget::setCurrentIndex);
     connect(editProfileAction, &QAction::triggered, m_profileEditButton, &QPushButton::click);
     connect(importProfileAction, &QAction::triggered, m_profileImportButton, &QPushButton::click);
     connect(exportProfileAction, &QAction::triggered, m_profileExportButton, &QPushButton::click);
@@ -761,6 +800,9 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
             return;
         }
         QMenu menu(this);
+        QAction *editLists = menu.addAction(tr("Edit this lens's lists…"));
+        editLists->setEnabled(m_engineReady);
+        menu.addSeparator();
         QAction *isolate = menu.addAction(tr("Show only this lens"));
         QAction *showAll = menu.addAction(tr("Show all lenses"));
         QAction *chooseColor = menu.addAction(tr("Choose lens color"));
@@ -773,7 +815,10 @@ ProseAwarenessWidget::ProseAwarenessWidget(QWidget *parent)
         QAction *underline = menu.addAction(tr("Underline decoration"));
         QAction *combined = menu.addAction(tr("Background and underline"));
         QAction *chosen = menu.exec(m_categoryTree->viewport()->mapToGlobal(menuPosition));
-        if (chosen == isolate || chosen == showAll) {
+        if (chosen == editLists) {
+            m_categoryTree->setCurrentItem(selected);
+            emit editProfileRequested();
+        } else if (chosen == isolate || chosen == showAll) {
             for (QTreeWidgetItem *item : categoryItems(m_categoryTree)) {
                 item->setCheckState(0, chosen == showAll || item == selected ? Qt::Checked : Qt::Unchecked);
             }
@@ -867,6 +912,19 @@ void ProseAwarenessWidget::setCollapseIcon(const QIcon &icon)
         m_collapseButton->setIcon(icon);
         m_collapseButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
     }
+}
+
+void ProseAwarenessWidget::addWorkspacePage(const QString &title, QWidget *page)
+{
+    const int index = m_pages->addWidget(page);
+    auto *button = new QToolButton(this);
+    button->setText(title);
+    button->setAccessibleName(title);
+    button->setObjectName(QStringLiteral("writingWorkspaceTab"));
+    button->setCheckable(true);
+    button->setFixedHeight(28);
+    m_workspaceButtons->addButton(button, index);
+    m_workspaceHeader->insertWidget(index, button);
 }
 
 void ProseAwarenessWidget::addCategory(const QString &id,
@@ -984,7 +1042,7 @@ QString ProseAwarenessWidget::categoryLabel(const QString &category) const
 QString ProseAwarenessWidget::categoryFindingLabel(const QString &category) const
 {
     static const QHash<QString, QString> labels = {
-        {QStringLiteral("general_rules"), tr("General rule")},
+        {QStringLiteral("general_rules"), tr("Profile phrase")},
         {QStringLiteral("possible_adverbs"), tr("Adverb")},
         {QStringLiteral("possible_adjectives"), tr("Adjective")},
         {QStringLiteral("possible_verbs"), tr("Verb")},

@@ -801,6 +801,18 @@ AppSettings::AppSettings()
         appSettings.sync();
     }
 
+    // The visual-shell upgrade is applied once; subsequent font choices win.
+    if (!appSettings.value(QStringLiteral("Style/editorialShellApplied"), false).toBool()) {
+        appSettings.setValue(QStringLiteral("Style/fontBeforeEditorialShell"),
+                             appSettings.value(constants::GW_EDITOR_FONT_KEY));
+        const QString serif = d->firstAvailableFont({QStringLiteral("Georgia"),
+            QStringLiteral("Noto Serif"), QStringLiteral("Liberation Serif"), QStringLiteral("Times New Roman")});
+        appSettings.setValue(constants::GW_EDITOR_FONT_KEY, QFont(serif, 13).toString());
+        appSettings.setValue(constants::GW_EDITOR_WIDTH_KEY, EditorWidthMedium);
+        appSettings.setValue(constants::GW_INTERFACE_STYLE_KEY, InterfaceStyleRounded);
+        appSettings.setValue(QStringLiteral("Style/editorialShellApplied"), true);
+    }
+
     d->autoSaveEnabled = appSettings.value(constants::GW_AUTOSAVE_KEY, QVariant(true)).toBool();
     d->backupFileEnabled = appSettings.value(constants::GW_BACKUP_FILE_KEY, QVariant(true)).toBool();
     d->editorFont.fromString(appSettings.value(constants::GW_EDITOR_FONT_KEY, QVariant(monospaceFont)).toString());

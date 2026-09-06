@@ -60,7 +60,7 @@ Sidebar::Sidebar(QWidget *parent)
     d->tabs = new QVBoxLayout();
     d->tabs->setObjectName("sidebarTabs");
     d->tabs->setAlignment(Qt::AlignTop | Qt::AlignCenter);
-    d->tabs->setSpacing(0);
+    d->tabs->setSpacing(4);
     d->tabs->setContentsMargins(0, 0, 0, 0);
     d->tabs->setSizeConstraint(QLayout::SetMinimumSize);
 
@@ -88,7 +88,7 @@ Sidebar::Sidebar(QWidget *parent)
     QVBoxLayout *leftBarLayout = new QVBoxLayout();
     leftBarLayout->setAlignment(Qt::AlignCenter | Qt::AlignTop);
     leftBarLayout->setSpacing(0);
-    leftBarLayout->setContentsMargins(0, 0, 0, 0);
+    leftBarLayout->setContentsMargins(0, 12, 0, 12);
     leftBarLayout->setSizeConstraint(QLayout::SetMinimumSize);
     leftBarLayout->addLayout(d->tabs);
     leftBarLayout->addStretch(1);

@@ -861,6 +861,12 @@ void MarkdownEditor::setPlainText(const QString &text)
     d->parseDocument();
 }
 
+bool MarkdownEditor::isDocumentParsed() const
+{
+    Q_D(const MarkdownEditor);
+    return d->parsedRevision == d->documentRevision;
+}
+
 void MarkdownEditor::ensureDocumentParsed()
 {
     Q_D(MarkdownEditor);
@@ -1022,7 +1028,7 @@ void MarkdownEditor::setupPaperMargins()
 {
     Q_D(MarkdownEditor);
 
-    this->setViewportMargins(0, 20, 0, 0);
+    this->setViewportMargins(0, 48, 0, 0);
     d->preferredLayout->setContentsMargins(0, 0, 0, 0);
 
     // Use a simple monospace font at a fixed size to determine
@@ -1057,7 +1063,7 @@ void MarkdownEditor::setupPaperMargins()
         margin = (this->viewport()->width() - width) / 2;
     }
 
-    this->setViewportMargins(margin, 20, margin, 0);
+    this->setViewportMargins(margin, 48, margin, 0);
 }
 
 QVariant MarkdownEditor::inputMethodQuery(Qt::InputMethodQuery query) const

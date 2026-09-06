@@ -7,12 +7,16 @@ cmake_minimum_required(VERSION 3.16)
 project(storyintelligencewidgettest VERSION 1.0.0 LANGUAGES CXX)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Test Widgets)
+find_package(KF6 REQUIRED COMPONENTS ConfigWidgets XmlGui)
 
 qt_standard_project_setup()
 
 ecm_add_test(
     storyintelligencewidgettest.cpp
     storyintelligencewidget.qrc
+    ../../icons.qrc
+    ../../src/appactions.h
+    ../../src/appactions.cpp
     ../../src/story/storyintelligencewidget.h
     ../../src/story/storyintelligencewidget.cpp
     ../../src/prose/proseawarenesswidget.h
@@ -34,6 +38,8 @@ ecm_add_test(
             Qt::Gui
             Qt::Test
             Qt::Widgets
+            KF6::ConfigWidgets
+            KF6::XmlGui
     TEST_NAME storyintelligencewidgettest
 )
 

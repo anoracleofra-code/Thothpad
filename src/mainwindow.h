@@ -114,6 +114,8 @@ private slots:
 
 private:
     MarkdownEditor *editor;
+    QWidget *editorArea = nullptr;
+    bool editorMarginUpdatePending = false;
     BreathMapWidget *breathMap = nullptr;
     bool readerModeEnteredFullScreen = false;
     SpellCheckDecorator *spelling;

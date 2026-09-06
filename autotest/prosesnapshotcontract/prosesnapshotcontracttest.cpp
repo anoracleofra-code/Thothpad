@@ -24,6 +24,7 @@ private slots:
     void validCurrentZeroFindingLensIsComplete();
     void currentLoadedLensIsHydrated();
     void staleFindingPagesAreRejected();
+    void regionalScanCannotReplaceCompleteDocumentPresentation();
 };
 
 void ProseSnapshotContractTest::noScanRequiresAnalysisBeforeHydration()
@@ -105,6 +106,19 @@ void ProseSnapshotContractTest::staleFindingPagesAreRejected()
     QVERIFY(!pages.accepts(QStringLiteral("grammar_mechanics"), 42, QString(), stale));
     QVERIFY(!pages.accepts(QStringLiteral("possible_adverbs"), 42, QString(), current));
     QVERIFY(pages.accepts(QStringLiteral("grammar_mechanics"), 42, QString(), current));
+}
+
+void ProseSnapshotContractTest::regionalScanCannotReplaceCompleteDocumentPresentation()
+{
+    const QHash<QString, int> counts{{QStringLiteral("possible_adjectives"), 498}};
+    QVERIFY(!AgentProseSnapshotContract::regionalAnalysisCanReplacePresentation(QStringLiteral("current"), counts));
+    // An edit invalidates the identity, but the last complete display remains
+    // until the idle scan replaces it. A regional scan is still insufficient.
+    QVERIFY(!AgentProseSnapshotContract::regionalAnalysisCanReplacePresentation(QString(), counts));
+    QVERIFY(!AgentProseSnapshotContract::regionalAnalysisCanReplacePresentation(
+        QString(), {{QStringLiteral("possible_adjectives"), 0}}));
+    QVERIFY(!AgentProseSnapshotContract::regionalAnalysisCanReplacePresentation(QStringLiteral("current"), {}));
+    QVERIFY(AgentProseSnapshotContract::regionalAnalysisCanReplacePresentation(QString(), {}));
 }
 
 QTEST_MAIN(ProseSnapshotContractTest)

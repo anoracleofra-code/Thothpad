@@ -5,20 +5,34 @@
  */
 
 #include <QApplication>
+#include <QComboBox>
+#include <QClipboard>
+#include <QToolButton>
+#include <algorithm>
 #include <QColor>
 #include <QFont>
+#include <QFontDatabase>
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QLabel>
+#include <QMainWindow>
+#include <QPlainTextEdit>
 #include <QPixmap>
 #include <QPushButton>
 #include <QSignalSpy>
+#include <QScrollArea>
+#include <QScrollBar>
+#include <QSplitter>
+#include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QWidget>
 
 #include "../../src/prose/proseawarenesswidget.h"
+#include "../../src/appactions.h"
 #include "../../src/story/storyintelligencewidget.h"
+#include "../../src/story/storyresponse.h"
 #include "../../src/story/storytoolharness.h"
 #include "../../src/theme/chromecolors.h"
 #include "../../src/theme/stylesheetbuilder.h"
@@ -33,6 +47,8 @@ class StoryIntelligenceWidgetTest : public QObject
     Q_OBJECT
 
 private slots:
+    void scopeAndSessionControlsStayExplicit();
+    void chatMessageActionsUseStableIdentityAndRespectBusyState();
     void goToEmitsExactAnnotationRange();
     void activityCardEmitsOperationSpecificUndo();
     void activityCardWithoutOperationHasNoUndoButton();
@@ -41,11 +57,186 @@ private slots:
     void currentModelDocumentContextAllowsTools();
     void staleModelDocumentContextRejectsTools();
     void storyRailCarriesNoLocalStylesheet();
+    void storyRailIsResizableAndWrapsStatusText();
+    void conversationUsesAvailableHeightAndPreservesFullMessages();
     void appStylesheetCoversAllStoryObjectNames();
     void kanagawaLotusPixelsMatchLeftSidebar();
     void lotusDarkSchemeHasNoWhiteSurfaces();
     void allBuiltInThemesKeepTextReadable();
+    void chatKeyboardAndBusyState();
+    void chatFailuresAreVisibleAndReleaseBusyState();
+    void storyResponseErrorsTakePriorityOverTextAndTools();
+    void sceneNotesAreVisible();
+    void storyLabelsInheritCardSurfaces();
+    void nativePaletteFollowsThemeSwitches();
+    void chatDoesNotInheritManuscriptFont();
+    void storyShortcutHasNoCompetingAppAction();
+    void characterCardsRetainMouseAndKeyboardActivation();
 };
+
+void StoryIntelligenceWidgetTest::scopeAndSessionControlsStayExplicit()
+{
+    StoryIntelligenceWidget widget;
+    auto *modelCard = widget.findChild<QWidget *>("storyIntelligenceSetupSurface");
+    auto *projectCard = widget.findChild<QWidget *>("storyIntelligenceProjectSurface");
+    QVERIFY(modelCard && projectCard);
+    QVERIFY(!modelCard->isAncestorOf(projectCard));
+    QVERIFY(modelCard->findChild<QPushButton *>("storyIntelligenceApiKeyButton"));
+    QVERIFY(projectCard->findChild<QPushButton *>("storyIntelligencePrimaryButton"));
+    auto *input = widget.findChild<QPlainTextEdit *>("storyIntelligenceChatInput");
+    auto *scope = widget.findChild<QComboBox *>("storyScopeCombo");
+    auto *sessions = widget.findChild<QComboBox *>("storySessionCombo");
+    auto *newSession = widget.findChild<QToolButton *>("storyNewSessionButton");
+    auto *deleteSession = widget.findChild<QToolButton *>("storyDeleteSessionButton");
+    QVERIFY(input && scope && sessions && newSession && deleteSession);
+    QVERIFY(input->placeholderText().isEmpty());
+    QSignalSpy scopeSpy(&widget, &StoryIntelligenceWidget::scopeModeChanged);
+    QSignalSpy sessionSpy(&widget, &StoryIntelligenceWidget::sessionSelected);
+    QSignalSpy newSpy(&widget, &StoryIntelligenceWidget::newSessionRequested);
+    widget.setWorkspaceContext("chapter", "**CHAPTER THREE: NOTHING**", "Co-Writer", "Revision");
+    QCOMPARE(scope->currentData().toString(), QString("chapter"));
+    QCOMPARE(scope->currentText(), QString("Current chapter"));
+    auto *context = widget.findChild<QLabel *>("storyContextHeadingLabel");
+    QVERIFY(context);
+    QCOMPARE(context->text(), QString("Chapter: CHAPTER THREE: NOTHING"));
+    widget.setWorkspaceContext("chapter", "**CHAPTER FOUR**", "Co-Writer", "Revision");
+    QCOMPARE(scope->currentText(), QString("Current chapter"));
+    QCOMPARE(context->text(), QString("Chapter: CHAPTER FOUR"));
+    widget.setWorkspaceContext("scene", "**CHAPTER FOUR**", "Co-Writer", "Revision", "chapter");
+    QCOMPARE(scope->count(), 2);
+    QCOMPARE(scope->findData("scene"), -1);
+    QCOMPARE(scope->currentText(), QString("Current chapter"));
+    QCOMPARE(context->text(), QString("Chapter: CHAPTER FOUR"));
+    QVERIFY(!context->text().contains("Scene: CHAPTER"));
+    QCOMPARE(scopeSpy.count(), 0);
+    const QJsonArray choices{QJsonObject{{"id", "a"}, {"label", "First draft · Chapter one · Co-Writer"}},
+        QJsonObject{{"id", "b"}, {"label", "Alternative · Chapter one · Co-Writer"}}};
+    widget.setSessions(choices, "a");
+    QCOMPARE(sessions->count(), 2);
+    QCOMPARE(sessions->currentData().toString(), QString("a"));
+    QVERIFY(deleteSession->isEnabled());
+    QCOMPARE(sessionSpy.count(), 0);
+    sessions->setCurrentIndex(1);
+    sessions->activated(1);
+    QCOMPARE(sessionSpy.takeFirst().first().toString(), QString("b"));
+    QSignalSpy deleteSpy(&widget, &StoryIntelligenceWidget::deleteSessionRequested);
+    deleteSession->click();
+    QCOMPARE(deleteSpy.takeFirst().first().toString(), QString("b"));
+    newSession->click();
+    QCOMPARE(newSpy.count(), 1);
+    widget.setBusy(true);
+    QVERIFY(!sessions->isEnabled() && !newSession->isEnabled() && !deleteSession->isEnabled() && !scope->isEnabled());
+    widget.setBusy(false);
+    QVERIFY(sessions->isEnabled() && newSession->isEnabled() && deleteSession->isEnabled() && scope->isEnabled());
+    widget.setSessions({}, QString());
+    QVERIFY(!deleteSession->isEnabled());
+}
+
+void StoryIntelligenceWidgetTest::chatMessageActionsUseStableIdentityAndRespectBusyState()
+{
+    StoryIntelligenceWidget widget;
+    widget.appendChatMessage("assistant", "An answer", {}, {}, "answer-id");
+    QSignalSpy actions(&widget, &StoryIntelligenceWidget::messageActionRequested);
+    int count = 0;
+    for (auto *button : widget.findChildren<QToolButton *>("storyChatActionButton")) {
+        QCOMPARE(button->property("messageId").toString(), QString("answer-id"));
+        const auto action = button->property("chatAction").toString();
+        button->click();
+        if (action == "copy") {
+            QCOMPARE(QApplication::clipboard()->text(), QString("An answer"));
+        } else {
+            QCOMPARE(actions.last().at(0).toString(), QString("answer-id"));
+            QCOMPARE(actions.last().at(1).toString(), action);
+        }
+        ++count;
+    }
+    QCOMPARE(count, 4);
+    QCOMPARE(actions.count(), 3);
+    widget.setBusy(true);
+    widget.appendChatMessage("user", "New prompt", {}, {}, "prompt-id");
+    for (auto *button : widget.findChildren<QToolButton *>("storyChatActionButton"))
+        QCOMPARE(button->isEnabled(), button->property("chatAction").toString() == "copy");
+    widget.setBusy(false);
+    for (auto *button : widget.findChildren<QToolButton *>("storyChatActionButton"))
+        QVERIFY(button->isEnabled());
+}
+
+void StoryIntelligenceWidgetTest::characterCardsRetainMouseAndKeyboardActivation()
+{
+    StoryIntelligenceWidget widget;
+    widget.findChild<QTabWidget *>("storyIntelligenceContextTabs")->setCurrentIndex(2);
+    widget.setCharacters({QJsonObject{{QStringLiteral("id"), QStringLiteral("mara")},
+        {QStringLiteral("name"), QStringLiteral("Mara")}, {QStringLiteral("role"), QStringLiteral("The traveller")}}});
+    widget.resize(320, 900);
+    widget.show();
+    QTest::qWait(20);
+    auto *card = widget.findChild<QPushButton *>(QStringLiteral("storyIntelligenceCharacterCard"));
+    QVERIFY(card);
+    QVERIFY(card->accessibleName().contains(QStringLiteral("Mara")));
+    auto *avatar = card->findChild<QLabel *>(QStringLiteral("storyIntelligenceAvatar"));
+    QVERIFY(avatar);
+    QVERIFY(avatar->testAttribute(Qt::WA_TransparentForMouseEvents));
+    QSignalSpy activated(&widget, &StoryIntelligenceWidget::characterActivated);
+    QTest::mouseClick(card, Qt::LeftButton);
+    QCOMPARE(widget.activeCharacterId(), QStringLiteral("mara"));
+    QCOMPARE(activated.count(), 1);
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    card = widget.findChild<QPushButton *>(QStringLiteral("storyIntelligenceCharacterCard"));
+    QVERIFY(card);
+    card->setFocus();
+    QTest::keyClick(card, Qt::Key_Space);
+    QVERIFY(widget.activeCharacterId().isEmpty());
+    QCOMPARE(activated.count(), 2);
+}
+
+void StoryIntelligenceWidgetTest::storyResponseErrorsTakePriorityOverTextAndTools()
+{
+    QVERIFY(storyProviderRequiresSavedCredential(QStringLiteral("openrouter")));
+    QVERIFY(storyProviderRequiresSavedCredential(QStringLiteral("opencode_zen")));
+    QVERIFY(storyProviderRequiresSavedCredential(QStringLiteral("opencode_go")));
+    QVERIFY(!storyProviderRequiresSavedCredential(QStringLiteral("ollama")));
+    QVERIFY(!storyProviderRequiresSavedCredential(QStringLiteral("openai_compatible")));
+    QJsonObject story{{QStringLiteral("message"), QStringLiteral("Hello")},
+                      {QStringLiteral("tool_calls"), QJsonArray{QJsonObject{{QStringLiteral("id"), QStringLiteral("edit")}}}}};
+    QJsonObject result{{QStringLiteral("story_intelligence"), story},
+                       {QStringLiteral("llm_errors"), QJsonArray{QStringLiteral("max_tokens must be between 1 and 32768")}}};
+    QJsonObject response{{QStringLiteral("ok"), true}, {QStringLiteral("result"), result}};
+    QCOMPARE(storyResponseError(response), QStringLiteral("max_tokens must be between 1 and 32768"));
+    result.remove(QStringLiteral("llm_errors"));
+    story.remove(QStringLiteral("message"));
+    result.insert(QStringLiteral("story_intelligence"), story);
+    response.insert(QStringLiteral("result"), result);
+    QVERIFY(storyResponseError(response).isEmpty()); // Tool-only rounds are valid.
+    story.remove(QStringLiteral("tool_calls"));
+    result.insert(QStringLiteral("story_intelligence"), story);
+    response.insert(QStringLiteral("result"), result);
+    QVERIFY(storyResponseError(response).contains(QStringLiteral("no text")));
+    response.insert(QStringLiteral("ok"), false);
+    response.insert(QStringLiteral("error"), QJsonObject{{QStringLiteral("message"), QStringLiteral("HTTP 401")}});
+    QCOMPARE(storyResponseError(response), QStringLiteral("HTTP 401"));
+}
+
+void StoryIntelligenceWidgetTest::chatFailuresAreVisibleAndReleaseBusyState()
+{
+    StoryIntelligenceWidget widget;
+    widget.setBusy(true);
+    widget.showChatError(QStringLiteral("OpenRouter requires an API key."));
+    bool errorSeen = false;
+    bool failedStatus = false;
+    for (auto *label : widget.findChildren<QLabel *>()) {
+        if (label->text() == QStringLiteral("OpenRouter requires an API key.")) errorSeen = true;
+        if (label->text().startsWith(QStringLiteral("Response failed"))) failedStatus = true;
+        QVERIFY(label->text() != QStringLiteral("Response complete"));
+    }
+    QVERIFY(errorSeen);
+    QVERIFY(failedStatus);
+    QPushButton *send = nullptr;
+    for (auto *button : widget.findChildren<QPushButton *>()) {
+        if (button->property("storySend").toBool()) send = button;
+    }
+    QVERIFY(send);
+    QVERIFY(send->isEnabled());
+}
 
 namespace
 {
@@ -248,6 +439,88 @@ void StoryIntelligenceWidgetTest::storyRailCarriesNoLocalStylesheet()
              "it is themed by the app-wide widgets.qss");
 }
 
+void StoryIntelligenceWidgetTest::storyRailIsResizableAndWrapsStatusText()
+{
+    StoryIntelligenceWidget widget;
+    QVERIFY(widget.minimumWidth() <= 280);
+    QVERIFY(widget.maximumWidth() > 1000);
+    QVERIFY(widget.sizePolicy().horizontalPolicy() != QSizePolicy::Fixed);
+    widget.setProviderSummary(QStringLiteral("OpenRouter"), QStringLiteral("long/model-name"), false, QStringLiteral("openrouter"));
+    auto *status = widget.findChild<QLabel *>(QStringLiteral("storyIntelligenceKeyState"));
+    QVERIFY(status);
+    QVERIFY(status->wordWrap());
+    for (int width : {280, 360, 520}) {
+        widget.resize(width, 700);
+        widget.show();
+        QTest::qWait(20);
+        QCOMPARE(widget.width(), width);
+        QVERIFY(status->width() <= widget.width());
+    }
+}
+
+void StoryIntelligenceWidgetTest::conversationUsesAvailableHeightAndPreservesFullMessages()
+{
+#ifdef Q_OS_WIN
+    QFontDatabase::addApplicationFont("C:/Windows/Fonts/segoeui.ttf");
+    QFontDatabase::addApplicationFont("C:/Windows/Fonts/seguisb.ttf");
+#endif
+    const QString previousStyle = qApp->styleSheet();
+    qApp->setStyleSheet(compileAppStyleSheet(loadBuiltInTheme("Kanagawa Lotus").lightChromeColors()));
+    StoryIntelligenceWidget widget;
+    widget.setProviderSummary("OpenCode Zen", "nemotron-3-ultra-free", true, "opencode_zen");
+    widget.appendChatMessage("user", "Can you help me strengthen the dialogue in this chapter?", {}, {}, "user-1");
+    const QString paragraph = "The dialogue gives each character a clear aim. Let the disagreement build through their choices, and keep the final exchange brief enough to leave room for the reader.\n\n";
+    widget.appendChatMessage("assistant", paragraph.repeated(5), {}, {}, "answer-1");
+    auto *scroll = widget.findChild<QScrollArea *>("storyIntelligenceChatScroll");
+    auto *sections = widget.findChild<QSplitter *>("storyIntelligenceSections");
+    QVERIFY(scroll && sections);
+    auto *tabs = widget.findChild<QTabWidget *>("storyIntelligenceContextTabs");
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 3);
+    QCOMPARE(tabs->tabText(0), QString("Model"));
+    QCOMPARE(tabs->tabText(1), QString("Scene Context"));
+    QCOMPARE(tabs->tabText(2), QString("Characters"));
+    for (int width : {340, 560, 280, 340}) {
+        widget.resize(width, 1000);
+        widget.show();
+        sections->setSizes({290, 550});
+        QTest::qWait(80);
+        QVERIFY2(scroll->height() > 350, qPrintable(QString("Chat height %1 at sidebar width %2").arg(scroll->height()).arg(width)));
+        const auto messages = widget.findChildren<QLabel *>("storyIntelligenceBubbleText");
+        QCOMPARE(messages.size(), 2);
+        for (auto *message : messages) {
+            QVERIFY2(message->height() >= message->heightForWidth(message->width()), "Message text is clipped after sidebar resizing");
+            QVERIFY(message->parentWidget()->rect().contains(message->geometry()));
+        }
+        QVERIFY(scroll->verticalScrollBar()->maximum() > 0);
+        scroll->verticalScrollBar()->setValue(0);
+        QVERIFY(scroll->viewport()->rect().contains(messages.first()->mapTo(scroll->viewport(), QPoint(0, 0))));
+        if (width == 340) QVERIFY(widget.grab().save("chat-layout-narrow.png"));
+        if (width == 560) QVERIFY(widget.grab().save("chat-layout-wide.png"));
+    }
+    for (int index : {1, 2, 0}) {
+        tabs->setCurrentIndex(index);
+        QTest::qWait(30);
+        QVERIFY(tabs->currentWidget()->isVisible());
+        QVERIFY(widget.grab().save(QString("chat-context-tab-%1.png").arg(index)));
+    }
+    auto *panel = widget.findChild<QWidget *>("storyIntelligenceChatPanel");
+    QVERIFY(panel);
+    for (bool dark : {false, true}) {
+        const auto theme = loadBuiltInTheme("Kanagawa Lotus");
+        const ChromeColors chrome(dark ? theme.darkColorScheme() : theme.lightColorScheme(), theme.name());
+        qApp->setStyleSheet(compileAppStyleSheet(chrome));
+        QTest::qWait(30);
+        const QColor surface = panel->grab().toImage().pixelColor(2, 2);
+        QVERIFY2(colorsClose(surface, chrome.color(ChromeColors::SecondaryBackground)), qPrintable(hexOf(surface)));
+        tabs->setCurrentIndex(2);
+        QTest::qWait(20);
+        const QColor contextSurface = tabs->currentWidget()->grab().toImage().pixelColor(2, 2);
+        QVERIFY2(colorsClose(contextSurface, chrome.color(ChromeColors::SecondaryBackground)), qPrintable(hexOf(contextSurface)));
+    }
+    qApp->setStyleSheet(previousStyle);
+}
+
 void StoryIntelligenceWidgetTest::appStylesheetCoversAllStoryObjectNames()
 {
     QString error;
@@ -407,6 +680,111 @@ void StoryIntelligenceWidgetTest::allBuiltInThemesKeepTextReadable()
             checkThemeModeReadable(name, QStringLiteral("dark"), chrome);
         }
     }
+}
+
+void StoryIntelligenceWidgetTest::chatKeyboardAndBusyState()
+{
+    StoryIntelligenceWidget widget;
+    showForGrab(widget);
+    auto *input = widget.findChild<QPlainTextEdit *>(QStringLiteral("storyIntelligenceChatInput"));
+    auto *status = widget.findChild<QLabel *>(QStringLiteral("storyIntelligenceStatus"));
+    QVERIFY(input);
+    QVERIFY(status);
+    QSignalSpy spy(&widget, &StoryIntelligenceWidget::chatRequested);
+    input->setFocus();
+    input->setPlainText(QStringLiteral("First line"));
+    QTest::keyClick(input, Qt::Key_End);
+    QTest::keyClick(input, Qt::Key_Return, Qt::ShiftModifier);
+    QCOMPARE(spy.count(), 0);
+    QVERIFY(input->toPlainText().contains(QChar('\n')));
+    QTest::keyClick(input, Qt::Key_Return);
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.takeFirst().at(0).toString(), QStringLiteral("First line"));
+    QVERIFY(input->toPlainText().isEmpty());
+    QVERIFY(status->isHidden());
+    input->setPlainText(QStringLiteral("Keep this draft"));
+    widget.setBusy(true);
+    QVERIFY(!status->isHidden());
+    QTest::keyClick(input, Qt::Key_Return, Qt::ControlModifier);
+    QCOMPARE(spy.count(), 0);
+    QCOMPARE(input->toPlainText(), QStringLiteral("Keep this draft"));
+    widget.setBusy(false);
+    QVERIFY(status->isHidden());
+    widget.setStatusMessage(QStringLiteral("Engine unavailable"));
+    QVERIFY(!status->isHidden());
+}
+
+void StoryIntelligenceWidgetTest::sceneNotesAreVisible()
+{
+    StoryIntelligenceWidget widget;
+    widget.setSceneContext(QJsonObject{{QStringLiteral("notes"), QStringLiteral("Keep the secret hidden.")}});
+    const auto labels = widget.findChildren<QLabel *>();
+    QVERIFY(std::any_of(labels.cbegin(), labels.cend(), [](const QLabel *label) {
+        return label->text().contains(QStringLiteral("Keep the secret hidden.")) && !label->isHidden();
+    }));
+}
+
+void StoryIntelligenceWidgetTest::storyLabelsInheritCardSurfaces()
+{
+    const Theme theme = loadBuiltInTheme(QStringLiteral("Kanagawa Lotus"));
+    qApp->setStyleSheet(compileAppStyleSheet(theme.lightChromeColors()));
+    StoryIntelligenceWidget widget;
+    showForGrab(widget);
+    auto *label = widget.findChild<QLabel *>(QStringLiteral("storyIntelligenceProviderLabel"));
+    QVERIFY(label);
+    const QColor pixel = grabPoint(widget.grab(), widget, *label, QPoint(label->width() - 2, 1));
+    QVERIFY2(colorsClose(pixel, theme.lightChromeColors().color(ChromeColors::PanelFill)), qPrintable(hexOf(pixel)));
+    qApp->setStyleSheet(QString());
+}
+
+void StoryIntelligenceWidgetTest::nativePaletteFollowsThemeSwitches()
+{
+    const QPalette original = qApp->palette();
+    const Theme theme = loadBuiltInTheme(QStringLiteral("Kanagawa Lotus"));
+    QWidget nativeSurface;
+    for (const bool dark : {false, true, false}) {
+        const ChromeColors chrome(dark ? theme.darkColorScheme() : theme.lightColorScheme(), theme.name());
+        qApp->setPalette(StyleSheetBuilder::widgetPalette(chrome));
+        QApplication::processEvents();
+        QCOMPARE(nativeSurface.palette().color(QPalette::Window), chrome.color(ChromeColors::Background));
+        QCOMPARE(nativeSurface.palette().color(QPalette::Text), chrome.color(ChromeColors::Text));
+        QCOMPARE(nativeSurface.palette().color(QPalette::Disabled, QPalette::Text),
+                 chrome.color(ChromeColors::Text, ChromeColors::DisabledState));
+    }
+    qApp->setPalette(original);
+}
+
+void StoryIntelligenceWidgetTest::chatDoesNotInheritManuscriptFont()
+{
+    const Theme theme = loadBuiltInTheme(QStringLiteral("Kanagawa Lotus"));
+    QTemporaryDir iconDir;
+    SvgIconTheme icons(iconDir.path());
+    const QFont manuscriptFont(QStringLiteral("Courier New"), 28);
+    StyleSheetBuilder builder(theme.lightChromeColors(), &icons, true,
+                              manuscriptFont, manuscriptFont, manuscriptFont);
+    qApp->setStyleSheet(builder.widgetStyleSheet());
+    QMainWindow window;
+    auto *story = new StoryIntelligenceWidget(&window);
+    window.setCentralWidget(story);
+    showForGrab(window);
+    auto *input = story->findChild<QPlainTextEdit *>(QStringLiteral("storyIntelligenceChatInput"));
+    QVERIFY(input);
+    QVERIFY(input->font().family() != manuscriptFont.family());
+    QVERIFY(input->font().pointSizeF() < manuscriptFont.pointSizeF());
+    qApp->setStyleSheet(QString());
+}
+
+void StoryIntelligenceWidgetTest::storyShortcutHasNoCompetingAppAction()
+{
+    QMainWindow window;
+    SvgIconTheme icons(QStringLiteral(":/icons"));
+    KActionCollection collection(&window);
+    AppActions actions(&collection, &icons);
+    const QKeySequence shortcut(QStringLiteral("Ctrl+Shift+A"));
+    for (QAction *action : collection.actions()) {
+        QVERIFY2(!action->shortcuts().contains(shortcut), qPrintable(action->text()));
+    }
+    QCOMPARE(actions.get(AppActions::Deselect)->shortcut(), QKeySequence(QStringLiteral("Ctrl+Alt+Shift+A")));
 }
 
 QTEST_MAIN(StoryIntelligenceWidgetTest)

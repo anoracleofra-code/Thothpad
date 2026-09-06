@@ -8,6 +8,7 @@
 #define STYLESHEETBUILDER_H
 
 #include <QFont>
+#include <QPalette>
 #include <QString>
 
 #include "chromecolors.h"
@@ -158,6 +159,9 @@ public:
      * Call on application exit.
      */
     static void clearCache();
+
+    // Native controls and custom delegates need the same colors as the QSS.
+    static QPalette widgetPalette(const ChromeColors &colors);
 
     /**
      * Gets the QSS style sheet for the Qt main window widgets.

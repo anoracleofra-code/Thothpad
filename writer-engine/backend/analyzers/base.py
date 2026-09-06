@@ -177,6 +177,8 @@ def run_analyzers(
             result.metrics["ignored_dialogue"] = True
             result.metrics["dialogue_findings_removed"] = removed
         results.append(with_profile_patterns(AnalyzerResult(name="profile_patterns", score=0.0), text, profile))
+        from backend.lens_lists import apply_lens_lists
+        apply_lens_lists(results, text, active_profile.get("lens_lists", {}))
         _apply_thresholds(results, active_profile)
 
         for result in results:

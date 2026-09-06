@@ -76,6 +76,8 @@ def validate_profile(profile: dict[str, Any]) -> dict[str, Any]:
     encoded = json.dumps(profile, ensure_ascii=False).encode("utf-8")
     if len(encoded) > config.MAX_PROFILE_BYTES:
         raise ValueError(f"profile exceeds the {config.MAX_PROFILE_BYTES}-byte limit")
+    from backend.lens_lists import validate_lens_lists
+    validate_lens_lists(profile.get("lens_lists", {}))
     return profile
 
 
