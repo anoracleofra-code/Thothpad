@@ -1,37 +1,38 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "mainwindow.h"
+#include "prose/credentialstore.h"
+#include "prose/writerengineclient.h"
+#include "statistics/writingworkbench.h"
+#include "story/agentedittransactionmanager.h"
+#include "story/storyintelligencecontroller.h"
+#include "story/storyintelligencewidget.h"
+#include "story/storytoolharness.h"
 #include <QApplication>
 #include <QComboBox>
-#include <QLabel>
-#include <QLineEdit>
-#include <QTreeWidget>
-#include <QToolButton>
-#include <QMessageBox>
-#include <QInputDialog>
 #include <QDialog>
 #include <QDialogButtonBox>
-#include <QJsonDocument>
+#include <QDir>
+#include <QDockWidget>
 #include <QFile>
+#include <QFontDatabase>
+#include <QInputDialog>
+#include <QJsonDocument>
+#include <QLabel>
+#include <QLineEdit>
+#include <QListView>
+#include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
-#include <QSignalSpy>
-#include <QTimer>
-#include <QDockWidget>
-#include <QDir>
-#include <QFontDatabase>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSettings>
+#include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
-#include "mainwindow.h"
-#include "story/storyintelligencewidget.h"
-#include "story/storyintelligencecontroller.h"
-#include "story/storytoolharness.h"
-#include "story/agentedittransactionmanager.h"
-#include "prose/writerengineclient.h"
-#include "prose/credentialstore.h"
-#include "statistics/writingworkbench.h"
+#include <QTimer>
+#include <QToolButton>
+#include <QTreeWidget>
 
 using namespace ghostwriter;
 
@@ -39,6 +40,16 @@ class VisualShellTest : public QObject
 {
     Q_OBJECT
 private slots:
+    void windowDestructionWithoutCloseDoesNotReloadOutline()
+    {
+        MainWindow window;
+        window.mainEditor()->setPlainText(QStringLiteral("# A heading\n\nA paragraph."));
+        window.mainEditor()->ensureDocumentParsed();
+        QTRY_VERIFY(window.mainEditor()->isDocumentParsed());
+        window.mainEditor()->document()->setModified(false);
+        // Exercise destruction without closeEvent, including assertion unwinding.
+    }
+
     void writingTabsNavigateEditAndPersist()
     {
         QTemporaryDir dir;
@@ -552,7 +563,11 @@ private slots:
         QVERIFY(window.grab().save(QStringLiteral("visual-shell-wide.png")));
         auto *leftScroll = prose->findChild<QScrollArea*>("proseAwarenessScrollArea");
         QVERIFY(leftScroll);
-        QCOMPARE(leftScroll->verticalScrollBar()->maximum(),0);
+        // Font metrics and offscreen window limits differ across platforms.
+        // Check the review controls themselves, not a pixel-perfect scroll range.
+        auto *findingList = prose->findChild<QListView *>("proseAwarenessFindingView");
+        QVERIFY(findingList);
+        QVERIFY(leftScroll->viewport()->rect().contains(QRect(findingList->mapTo(leftScroll->viewport(), QPoint()), findingList->size())));
         auto *lensSurface = prose->findChild<QWidget *>("proseAwarenessLensesSurface");
         QVERIFY(lensSurface);
         auto *lensHint = lensSurface->findChild<QLabel *>("proseAwarenessHelperLabel");

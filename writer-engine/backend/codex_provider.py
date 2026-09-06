@@ -6,6 +6,7 @@ import os
 import queue
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -68,10 +69,13 @@ class CodexSession:
                         "code_mode_host", "shell_snapshot", "memories", "skill_search", "workspace_dependencies"):
             args.extend(["--disable", feature])
         try:
+            creationflags = 0
+            if sys.platform == "win32":
+                creationflags = subprocess.CREATE_NO_WINDOW
             self.process = subprocess.Popen(
                 args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                 cwd=self._directory.name, env=env,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                creationflags=creationflags,
             )
             if os.name == "nt":
                 self._job = _create_windows_kill_job(self.process.pid)

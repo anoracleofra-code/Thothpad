@@ -6,10 +6,12 @@ cleanup, and liveness checks behind kernel32.
 
 from __future__ import annotations
 
-import os
+import sys
 
 
 def _create_windows_kill_job(process_id: int) -> int:
+    if sys.platform != "win32":
+        raise OSError("Windows job objects are unavailable on this platform")
     import ctypes
     from ctypes import wintypes
 
@@ -90,7 +92,7 @@ def _create_windows_kill_job(process_id: int) -> int:
 
 
 def _close_windows_handle(handle: int | None) -> None:
-    if handle and os.name == "nt":
+    if handle and sys.platform == "win32":
         import ctypes
         from ctypes import wintypes
 
@@ -100,6 +102,8 @@ def _close_windows_handle(handle: int | None) -> None:
 
 
 def _windows_process_is_alive(process_id: int) -> bool:
+    if sys.platform != "win32":
+        return False
     import ctypes
     from ctypes import wintypes
 

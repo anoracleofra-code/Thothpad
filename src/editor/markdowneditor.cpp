@@ -556,6 +556,10 @@ MarkdownEditor::MarkdownEditor(MarkdownDocument *textDocument, const ColorScheme
 MarkdownEditor::~MarkdownEditor()
 {
     Q_D(MarkdownEditor);
+    // Highlighter teardown emits contentsChange. Stop observers before the
+    // base text control is destroyed and can no longer serve document().
+    document()->disconnect();
+    disconnect();
     // The parse task owns an immutable text snapshot and never dereferences
     // the editor. Let an in-flight parse finish without blocking window close.
     d->markdownParseWatcher->disconnect();

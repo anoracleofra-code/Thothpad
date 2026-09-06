@@ -1,6 +1,21 @@
 name: native-pr
 
 on:
+  # Seed dependencies on the default branch so subsequent PRs can reuse them.
+  # GitHub isolates caches created under refs/pull/N/merge to that single PR.
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "autotest/**"
+      - "3rdparty/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - "resources/**"
+      - "resources.qrc"
+      - "icons.qrc"
+      - "packaging/toolchain-lock.json"
+      - ".github/workflows/native-pr.yml"
   pull_request:
     paths:
       - "src/**"
@@ -9,6 +24,7 @@ on:
       - "cmake/**"
       - "CMakeLists.txt"
       - "resources.qrc"
+      - "resources/**"
       - "icons.qrc"
       - "packaging/toolchain-lock.json"
       - ".github/workflows/native-pr.yml"
@@ -73,11 +89,18 @@ jobs:
           restore-keys: |
             windows-craft-core-v1-
       - name: Bootstrap KDE Craft core
+        timeout-minutes: 12
         if: steps.windows-craft-deps-cache.outputs.cache-matched-key == '' && steps.windows-craft-glib-cache.outputs.cache-matched-key == '' && steps.windows-craft-core-cache.outputs.cache-matched-key == ''
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $true
+          # Hosted Windows images also expose Android SDKs. Craft tests these
+          # variables independently of the Windows ABI and selects MinSizeRel,
+          # which misses every RelWithDebInfo desktop binary cache entry.
+          foreach ($variable in @("ANDROID_SDK_ROOT", "ANDROID_HOME", "ANDROID_NDK_ROOT", "ANDROID_NDK_HOME")) {
+            Remove-Item "Env:$variable" -ErrorAction SilentlyContinue
+          }
           $bootstrapLog = Join-Path $env:RUNNER_TEMP "windows-bootstrap.log"
           "Windows native bootstrap started: $(Get-Date -Format o)" | Set-Content -Path $bootstrapLog
 
@@ -497,7 +520,7 @@ jobs:
             Tee-Object -FilePath $bootstrapLog -Append
           & $pythonExe $craftPy --run $pwshExe -NoProfile -ExecutionPolicy Bypass -File $driver
       - name: Upload native failure logs
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: native-windows-failure-logs
