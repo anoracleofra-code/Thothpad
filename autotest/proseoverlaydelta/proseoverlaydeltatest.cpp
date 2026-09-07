@@ -67,6 +67,8 @@ class ProseOverlayDeltaTest : public QObject
 
 private slots:
     void adjustedFormatsMirrorDiagnosticAdjustmentOnInsert();
+    void disablingLensClearsPaintedSpansDuringInterruptedRefresh();
+    void partialCommitsRetainUnchangedAndPendingBlocks();
     void adjustedFormatsShiftAndDropAcrossMultiBlockDeletion();
     void identicalIncomingSpansLeaveBlocksUntouched();
     void refreshKeepsDistantBlocksPaintedWhileEditedBlockRecovers();
@@ -242,6 +244,79 @@ void ProseOverlayDeltaTest::refreshKeepsDistantBlocksPaintedWhileEditedBlockReco
         }
         QCOMPARE(overlays->formatsForBlock(painted.at(index).first, ProseChannel), painted.at(index).second);
     }
+}
+
+void ProseOverlayDeltaTest::disablingLensClearsPaintedSpansDuringInterruptedRefresh()
+{
+    MarkdownDocument document;
+    MarkdownEditor editor(&document, ColorScheme{});
+    const QString manuscript = QStringLiteral("I saw the valley.\nClose as flies to a corpse.\nDust rose in a curtain.");
+    editor.setPlainText(manuscript);
+    document.setModified(false);
+    const int undoSteps = document.availableUndoSteps();
+    auto *overlays = editor.textFormatOverlayController();
+    auto filter = makeRange(2, 3, QStringLiteral("#ff0000"));
+    filter.format.setProperty(ProseOverlayCategoryProperty, QStringLiteral("filter_words"));
+    filter.format.setToolTip(QStringLiteral("Filter or filler word"));
+    auto metaphor = makeRange(0, 5, QStringLiteral("#ff0000")); // Same user-selected color.
+    metaphor.format.setProperty(ProseOverlayCategoryProperty, QStringLiteral("metaphor_texture"));
+    metaphor.format.setToolTip(QStringLiteral("Metaphor or texture"));
+    const QTextBlock first = document.firstBlock();
+    const QTextBlock second = first.next();
+    const QTextBlock third = second.next();
+    QHash<int, QList<QTextLayout::FormatRange>> painted = {
+        {first.position(), {filter, metaphor}}, {second.position(), {metaphor}}, {third.position(), {filter}}
+    };
+    overlays->updateChannelFormats(ProseChannel, painted);
+    overlays->setBlockFormats(QStringLiteral("spelling"), first, {makeRange(6, 3, QStringLiteral("#0000ff"))});
+    const auto spelling = overlays->formatsForBlock(first, QStringLiteral("spelling"));
+
+    // A new hydration has only reached the first paragraph. It is NOT the
+    // painted baseline: both distant paragraphs still need tracking.
+    QHash<int, QList<QTextLayout::FormatRange>> incoming = {{first.position(), {filter}}};
+    incoming.clear(); // Interrupted by the checkbox change before completion.
+    const auto updates = overlayUpdatesForVisibleCategories(painted, {QStringLiteral("metaphor_texture")});
+    QCOMPARE(updates.size(), 2);
+    QVERIFY(!updates.contains(second.position())); // Unchanged block is untouched.
+    overlays->updateChannelFormats(ProseChannel, updates);
+    updateAppliedOverlayFormats(painted, updates);
+    QCOMPARE(overlays->formatsForBlock(first, ProseChannel).size(), 1);
+    QCOMPARE(overlays->formatsForBlock(first, ProseChannel).first().format.toolTip(), QStringLiteral("Metaphor or texture"));
+    QVERIFY(overlays->formatsForBlock(third, ProseChannel).isEmpty());
+    QVERIFY(!painted.contains(third.position()));
+    QCOMPARE(overlays->formatsForBlock(first, QStringLiteral("spelling")), spelling);
+
+    // All off must remove all remaining prose, without waiting for the engine.
+    const auto allOff = overlayUpdatesForVisibleCategories(painted, {});
+    overlays->updateChannelFormats(ProseChannel, allOff);
+    updateAppliedOverlayFormats(painted, allOff);
+    QVERIFY(painted.isEmpty());
+    for (QTextBlock block = first; block.isValid(); block = block.next()) {
+        QVERIFY(overlays->formatsForBlock(block, ProseChannel).isEmpty());
+    }
+    QCOMPARE(overlays->formatsForBlock(first, QStringLiteral("spelling")), spelling);
+    QCOMPARE(document.toPlainText(), manuscript);
+    QCOMPARE(document.availableUndoSteps(), undoSteps);
+    QVERIFY(!document.isModified());
+}
+
+void ProseOverlayDeltaTest::partialCommitsRetainUnchangedAndPendingBlocks()
+{
+    QHash<int, QList<QTextLayout::FormatRange>> painted = {
+        {0, singleRange(0, 3, QStringLiteral("#ff0000"))},
+        {40, singleRange(1, 4, QStringLiteral("#00ff00"))},
+        {80, singleRange(2, 5, QStringLiteral("#0000ff"))}
+    };
+    const auto distant = painted.value(80);
+    // A time-budgeted diff commits one removal, leaving the other blocks on
+    // screen. Restarting must keep these, not use a partial incoming snapshot.
+    updateAppliedOverlayFormats(painted, {{0, {}}});
+    QVERIFY(!painted.contains(0));
+    QCOMPARE(painted.size(), 2);
+    QCOMPARE(painted.value(80), distant);
+    updateAppliedOverlayFormats(painted, {{40, singleRange(0, 2, QStringLiteral("#facc15"))}});
+    QCOMPARE(painted.size(), 2);
+    QCOMPARE(painted.value(80), distant);
 }
 
 QTEST_MAIN(ProseOverlayDeltaTest)

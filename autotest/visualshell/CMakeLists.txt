@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+find_package(Qt6 REQUIRED COMPONENTS Test Concurrent Core Gui Network Svg Widgets)
+find_package(KF6 REQUIRED COMPONENTS ConfigWidgets CoreAddons Sonnet WidgetsAddons XmlGui)
+find_package(Qt6Keychain REQUIRED)
+if(THOTHPAD_PACKAGE_VARIANT STREQUAL "Full")
+    find_package(Qt6 REQUIRED COMPONENTS WebChannel WebEngineWidgets)
+endif()
+get_target_property(shell_sources thothpad SOURCES)
+get_target_property(shell_source_dir thothpad SOURCE_DIR)
+list(FILTER shell_sources EXCLUDE REGEX "(^|/)appmain\\.cpp$|\\.rc$")
+set(shell_absolute_sources)
+foreach(source IN LISTS shell_sources)
+    if(IS_ABSOLUTE "${source}")
+        list(APPEND shell_absolute_sources "${source}")
+    else()
+        list(APPEND shell_absolute_sources "${shell_source_dir}/${source}")
+    endif()
+endforeach()
+add_executable(visualshelltest visualshelltest.cpp ${shell_absolute_sources})
+add_executable(storychatfixture storychatfixture.cpp)
+set_target_properties(storychatfixture PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF WIN32_EXECUTABLE OFF)
+set_target_properties(storychatfixture PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test-tools/storychatfixture")
+target_link_libraries(storychatfixture PRIVATE Qt::Core)
+if(WIN32)
+    add_custom_command(TARGET storychatfixture POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+            "-DFIXTURE=$<TARGET_FILE:storychatfixture>"
+            "-DQT_BIN=$<TARGET_FILE_DIR:Qt6::Core>"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/deployfixture.cmake")
+endif()
+target_compile_definitions(visualshelltest PRIVATE STORY_CHAT_FIXTURE="$<TARGET_FILE:storychatfixture>")
+add_dependencies(visualshelltest storychatfixture)
+set_target_properties(visualshelltest PROPERTIES
+    AUTOMOC ON AUTORCC ON AUTOUIC ON
+    AUTOUIC_SEARCH_PATHS "${shell_source_dir}/settings")
+target_include_directories(visualshelltest PRIVATE $<TARGET_PROPERTY:thothpad,INCLUDE_DIRECTORIES>)
+target_compile_definitions(visualshelltest PRIVATE $<TARGET_PROPERTY:thothpad,COMPILE_DEFINITIONS>)
+target_link_libraries(visualshelltest PRIVATE Qt::Test $<TARGET_PROPERTY:thothpad,LINK_LIBRARIES>)
+add_test(NAME visualshelltest COMMAND visualshelltest)
+thothpad_configure_test(visualshelltest)

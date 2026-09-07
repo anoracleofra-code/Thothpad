@@ -158,6 +158,28 @@ void StyleSheetBuilder::clearCache()
     }
 }
 
+QPalette StyleSheetBuilder::widgetPalette(const ChromeColors &colors)
+{
+    QPalette palette(colors.color(ChromeColors::Fill));
+    for (const auto group : {QPalette::Active, QPalette::Inactive, QPalette::Disabled}) {
+        const auto state = group == QPalette::Disabled ? ChromeColors::DisabledState : ChromeColors::NormalState;
+        palette.setColor(group, QPalette::Window, colors.color(ChromeColors::Background));
+        palette.setColor(group, QPalette::WindowText, colors.color(ChromeColors::Label, state));
+        palette.setColor(group, QPalette::Base, colors.color(ChromeColors::Background));
+        palette.setColor(group, QPalette::AlternateBase, colors.color(ChromeColors::PanelFill));
+        palette.setColor(group, QPalette::Text, colors.color(ChromeColors::Text, state));
+        palette.setColor(group, QPalette::Button, colors.color(ChromeColors::Fill, state));
+        palette.setColor(group, QPalette::ButtonText, colors.color(ChromeColors::Text, state));
+        palette.setColor(group, QPalette::Highlight, colors.color(ChromeColors::SelectedTextBg, state));
+        palette.setColor(group, QPalette::HighlightedText, colors.color(ChromeColors::SelectedTextFg, state));
+        palette.setColor(group, QPalette::PlaceholderText, colors.color(ChromeColors::PlaceholderText, state));
+        palette.setColor(group, QPalette::ToolTipBase, colors.color(ChromeColors::SecondaryBackground));
+        palette.setColor(group, QPalette::ToolTipText, colors.color(ChromeColors::Text));
+        palette.setColor(group, QPalette::Link, colors.color(ChromeColors::Link, state));
+    }
+    return palette;
+}
+
 QString StyleSheetBuilder::widgetStyleSheet()
 {
     return compileStyleSheet(":/resources/widgets.qss");

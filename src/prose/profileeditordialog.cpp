@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #include "profileeditordialog.h"
+#include "lenslistswidget.h"
 #include "../messageboxhelper.h"
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -11,6 +12,7 @@
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QLineEdit>
+#include <QLabel>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QRegularExpression>
@@ -25,6 +27,7 @@ ProfileEditorDialog::ProfileEditorDialog(
     QWidget *parent)
     : QDialog(parent)
     , m_original(profile)
+    , m_lensLists(new LensListsWidget(profile.value(QStringLiteral("lens_lists")).toObject(), this))
     , m_name(new QLineEdit(profile.value(QStringLiteral("name")).toString(), this))
     , m_registerTarget(new QLineEdit(
           profile.value(QStringLiteral("register_target")).toString(), this))
@@ -56,9 +59,9 @@ ProfileEditorDialog::ProfileEditorDialog(
 {
     setWindowTitle(tr("Edit Prose Profile"));
     resize(760, 720);
-    m_name->setReadOnly(true);
+    m_name->setObjectName(QStringLiteral("profileSaveName"));
+    m_name->setPlaceholderText(tr("New name saves a separate profile"));
     for (QPlainTextEdit *editor : {m_hardBans, m_softFlags, m_prefer, m_avoid}) {
-        editor->setMaximumBlockCount(500);
         editor->setPlaceholderText(tr("One phrase or preference per line"));
     }
     for (QPlainTextEdit *editor : {
@@ -70,7 +73,6 @@ ProfileEditorDialog::ProfileEditorDialog(
              m_voiceStats,
              m_voiceFingerprint,
          }) {
-        editor->setMaximumBlockCount(1000);
         editor->setTabChangesFocus(true);
     }
     m_weights->setPlaceholderText(tr("JSON object mapping analyzer names to numeric weights"));
@@ -83,9 +85,8 @@ ProfileEditorDialog::ProfileEditorDialog(
     m_calibrationProfile->setPlaceholderText(tr("Saved calibration name"));
     auto *writingTab = new QWidget(this);
     auto *writingForm = new QFormLayout(writingTab);
-    writingForm->addRow(tr("Profile"), m_name);
     writingForm->addRow(tr("Register target"), m_registerTarget);
-    writingForm->addRow(tr("General rules"), m_hardBans);
+    writingForm->addRow(tr("Profile phrases (strong flags)"), m_hardBans);
     writingForm->addRow(tr("Soft flags"), m_softFlags);
     writingForm->addRow(tr("Prefer"), m_prefer);
     writingForm->addRow(tr("Avoid"), m_avoid);
@@ -102,6 +103,7 @@ ProfileEditorDialog::ProfileEditorDialog(
     presentationForm->addRow(tr("Voice fingerprint"), m_voiceFingerprint);
     presentationForm->addRow(tr("Calibration profile"), m_calibrationProfile);
     auto *tabs = new QTabWidget(this);
+    tabs->addTab(m_lensLists, tr("Lens lists"));
     tabs->addTab(writingTab, tr("Writing"));
     tabs->addTab(analysisTab, tr("Analysis"));
     tabs->addTab(presentationTab, tr("Lenses and Voice"));
@@ -110,6 +112,12 @@ ProfileEditorDialog::ProfileEditorDialog(
     connect(buttons, &QDialogButtonBox::accepted, this, &ProfileEditorDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     auto *layout = new QVBoxLayout(this);
+    auto *nameForm = new QFormLayout;
+    nameForm->addRow(tr("Save profile as"), m_name);
+    layout->addLayout(nameForm);
+    auto *hint = new QLabel(tr("Use a new name to save a separate collection of lists. Load saved collections with the sidebar Profile selector; share them using Tools → Export profile."), this);
+    hint->setWordWrap(true);
+    layout->addWidget(hint);
     layout->addWidget(tabs, 1);
     layout->addWidget(buttons);
 }
@@ -148,6 +156,8 @@ QJsonObject ProfileEditorDialog::objectValue(const QPlainTextEdit *editor)
 QJsonObject ProfileEditorDialog::profile() const
 {
     QJsonObject result = m_original;
+    const auto lists = m_lensLists->lists();
+    if (!lists.isEmpty() || m_original.contains(QStringLiteral("lens_lists"))) result.insert(QStringLiteral("lens_lists"), lists);
     result.insert(QStringLiteral("name"), m_name->text().trimmed());
     result.insert(QStringLiteral("register_target"), m_registerTarget->text().trimmed());
     result.insert(QStringLiteral("hard_bans"), textList(m_hardBans->toPlainText()));
@@ -171,6 +181,20 @@ QJsonObject ProfileEditorDialog::profile() const
 }
 void ProfileEditorDialog::accept()
 {
+    static const QRegularExpression profileName(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"));
+    if (!profileName.match(m_name->text().trimmed()).hasMatch()) {
+        MessageBoxHelper::warning(this, tr("Invalid profile name"), tr("Use 1–64 letters, numbers, hyphens or underscores, starting with a letter or number."));
+        return;
+    }
+    QString listError;
+    if (!LensListsWidget::validateLists(m_lensLists->lists(), &listError)) {
+        MessageBoxHelper::warning(this, tr("Invalid lens list"), listError);
+        return;
+    }
+    if (QJsonDocument(profile()).toJson(QJsonDocument::Compact).size() > 262144) {
+        MessageBoxHelper::warning(this, tr("Profile too large"), tr("Profiles must fit within 256 KiB. No entries have been removed."));
+        return;
+    }
     const QString calibration = m_calibrationProfile->text().trimmed();
     static const QRegularExpression calibrationName(
         QStringLiteral("^[A-Za-z0-9][A-Za-z0-9_-]{0,63}(?:\\.json)?$"));
@@ -204,5 +228,9 @@ void ProfileEditorDialog::accept()
         }
     }
     QDialog::accept();
+}
+void ProfileEditorDialog::selectLens(const QString &lens)
+{
+    m_lensLists->selectLens(lens);
 }
 }

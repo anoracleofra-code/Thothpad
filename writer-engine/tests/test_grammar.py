@@ -1,5 +1,6 @@
 import json
 import urllib.request
+from pathlib import Path
 
 import pytest
 
@@ -52,17 +53,66 @@ def test_harper_failure_is_reported_without_raising(monkeypatch):
     assert result.metrics["error"] == "bad request"
 
 
-@pytest.mark.requires_harper
-@pytest.mark.skipif(not harper_path().is_file(), reason="Harper bridge has not been built")
 def test_all_harper_segments_share_the_single_persistent_session(monkeypatch):
     from backend import grammar
 
     calls = []
+    sessions = []
 
     class FakeSession:
         def request(self, payload, timeout):
-            calls.append(json.loads(payload))
-            return {"findings": [], "version": grammar.HARPER_VERSION}
+            sessions.append(self)
+            body = json.loads(payload)
+            calls.append(body)
+            local = body["text"].index("an test")
+            return {
+                "findings": [
+                    {
+                        "kind": "grammar",
+                        "message": f"segment {len(calls) - 1} article error",
+                        "start": local,
+                        "end": local + len("an test"),
+                        "replacements": ["a"],
+                        "priority": 63,
+                    }
+                ],
+                "version": grammar.HARPER_VERSION,
+            }
+
+    fake = FakeSession()
+    constructed = []
+
+    def session_factory():
+        session = FakeSession()
+        constructed.append(session)
+        return session
+
+    monkeypatch.setattr(grammar, "_HARPER_SESSION", fake)
+    monkeypatch.setattr(grammar, "_HarperSession", session_factory)
+    monkeypatch.setattr(grammar, "harper_path", lambda: Path(__file__))
+
+    text = "This is an test. " * 6_000
+    ranges = grammar._harper_ranges(text)
+    result = analyze_grammar(text, harper_settings())
+
+    assert len(ranges) == 4
+    assert result.metrics["available"] is True
+    assert "error" not in result.metrics
+    assert sessions == [fake] * len(ranges)
+    assert constructed == []
+    assert len(calls) == len(ranges)
+    assert result.metrics["segments"] == len(calls)
+    for body, (base, end) in zip(calls, ranges, strict=True):
+        assert body["text"] == text[base:end]
+    assert len(result.flags) == len(ranges)
+    for index, (flag, body, (base, end)) in enumerate(zip(result.flags, calls, ranges, strict=True)):
+        local = body["text"].index("an test")
+        assert flag.explanation == f"segment {index} article error"
+        assert (flag.start, flag.end) == (base + local, base + local + len("an test"))
+        assert text[flag.start : flag.end] == "an test"
+        assert base <= flag.start < flag.end <= end
+        assert flag.excerpt == "an test"
+        assert flag.source == "harper-local"
 
 
 def test_release_harper_stops_only_when_running(monkeypatch):

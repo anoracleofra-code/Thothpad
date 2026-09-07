@@ -41,6 +41,8 @@ def validate_text(text: str, *, live: bool = False) -> str:
 def validate_passes(passes: int) -> int:
     if isinstance(passes, bool):
         raise ValueError(f"passes must be between 1 and {config.MAX_PASSES}")
+    if isinstance(passes, float) and not float(passes).is_integer():
+        raise ValueError(f"passes must be between 1 and {config.MAX_PASSES}")
     value = int(passes)
     if value < 1 or value > config.MAX_PASSES:
         raise ValueError(f"passes must be between 1 and {config.MAX_PASSES}")
@@ -74,6 +76,8 @@ def validate_profile(profile: dict[str, Any]) -> dict[str, Any]:
     encoded = json.dumps(profile, ensure_ascii=False).encode("utf-8")
     if len(encoded) > config.MAX_PROFILE_BYTES:
         raise ValueError(f"profile exceeds the {config.MAX_PROFILE_BYTES}-byte limit")
+    from backend.lens_lists import validate_lens_lists
+    validate_lens_lists(profile.get("lens_lists", {}))
     return profile
 
 

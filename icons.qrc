@@ -11,9 +11,23 @@
         <file>icons/clear.svg</file>
         <file>icons/close.svg</file>
         <file>icons/collapse-sidebar.svg</file>
+        <file>icons/collapse-story.svg</file>
+        <file>icons/shell-edit.svg</file>
+        <file>icons/shell-send.svg</file>
+        <file>icons/shell-sparkles.svg</file>
+        <file>icons/shell-map.svg</file>
+        <file>icons/shell-users.svg</file>
+        <file>icons/shell-chat.svg</file>
+        <file>icons/shell-folder.svg</file>
+        <file>icons/shell-outline.svg</file>
+        <file>icons/shell-statistics.svg</file>
+        <file>icons/shell-book.svg</file>
         <file>icons/code-block.svg</file>
         <file>icons/comment.svg</file>
         <file>icons/copy.svg</file>
+        <file>icons/shell-copy.svg</file>
+        <file>icons/shell-retry.svg</file>
+        <file>icons/shell-trash.svg</file>
         <file>icons/cut.svg</file>
         <file>icons/dark-mode.svg</file>
         <file>icons/dropdown-arrow.svg</file>
@@ -61,6 +75,7 @@
         <file>icons/show-sidebar.svg</file>
         <file>icons/spell-check.svg</file>
         <file>icons/status-bar-menu-arrow.svg</file>
+        <file>icons/story-intelligence.svg</file>
         <file>icons/strikethrough.svg</file>
         <file>icons/strong.svg</file>
         <file>icons/task-complete.svg</file>

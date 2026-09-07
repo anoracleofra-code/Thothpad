@@ -12,6 +12,7 @@
 #include <QWidget>
 
 class QFrame;
+class QComboBox;
 class QLabel;
 class QPlainTextEdit;
 class QPushButton;
@@ -29,13 +30,17 @@ public:
     explicit StoryIntelligenceWidget(QWidget *parent = nullptr);
 
     void setCollapseIcon(const QIcon &icon);
-    void setProviderSummary(const QString &provider, const QString &model, bool credentialConfigured);
+    void setProviderSummary(const QString &provider, const QString &model, bool credentialConfigured, const QString &authKind = QString());
     void setProjectFolder(const QString &path);
     void setSceneContext(const QJsonObject &context);
     void setCharacters(const QJsonArray &characters);
     void setActiveCharacter(const QString &characterId);
     void setAnnotations(const QJsonArray &annotations);
-    void appendChatMessage(const QString &role, const QString &text, const QString &speaker = QString());
+    void appendChatMessage(const QString &role, const QString &text, const QString &speaker = QString(), const QJsonArray &references = {}, const QString &messageId = QString());
+    void appendProposal(const QString &kind, const QJsonObject &proposal);
+    void setWorkspaceContext(const QString &mode, const QString &title, const QString &agentName, const QString &sessionTitle, const QString &scopeKind = QString());
+    void setSessions(const QJsonArray &sessions, const QString &activeSessionId);
+    void showChatError(const QString &message);
     void appendActivityCard(
         const QString &title,
         const QString &detail,
@@ -47,6 +52,14 @@ public:
 
 signals:
     void collapseRequested();
+    void workspaceRequested();
+    void newSessionRequested();
+    void deleteSessionRequested(const QString &sessionId);
+    void sessionSelected(const QString &sessionId);
+    void messageActionRequested(const QString &messageId, const QString &action);
+    void scopeModeChanged(const QString &mode);
+    void rememberRequested(const QString &text);
+    void proposalReviewRequested(const QString &kind, const QJsonObject &proposal);
     void modelSettingsRequested();
     void projectFolderRequested();
     void editSceneRequested();
@@ -60,6 +73,9 @@ signals:
     void dismissSuggestionRequested(const QString &annotationId);
     void undoAgentTransactionRequested(const QString &operationId);
 
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
 private:
     QFrame *makeCard(const QString &objectName);
     QLabel *makeSectionTitle(const QString &text);
@@ -70,6 +86,13 @@ private:
     QString characterId(const QJsonObject &character) const;
 
     QToolButton *m_collapseButton;
+    QComboBox *m_scopeCombo = nullptr;
+    QComboBox *m_sessionCombo = nullptr;
+    QLabel *m_scopeLabel = nullptr;
+    QLabel *m_contextLabel = nullptr;
+    QToolButton *m_workspaceButton = nullptr;
+    QToolButton *m_newSessionButton = nullptr;
+    QToolButton *m_deleteSessionButton = nullptr;
     QPushButton *m_modelSettingsButton;
     QLabel *m_providerLabel;
     QLabel *m_modelLabel;
@@ -90,8 +113,10 @@ private:
     QPushButton *m_sendButton;
     QLabel *m_statusLabel;
     QJsonArray m_characters;
+    QJsonArray m_sessions;
     QJsonArray m_annotations;
     QString m_activeCharacterId;
+    bool m_busy = false;
 };
 }
 

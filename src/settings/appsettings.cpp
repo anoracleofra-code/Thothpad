@@ -61,6 +61,7 @@ constexpr auto GW_PREVIEW_CODE_FONT_KEY{"Preview/codeFont"};
 constexpr auto THOTHPAD_DEFAULTS_VERSION_KEY{"Application/thothpadDefaultsVersion"};
 constexpr int THOTHPAD_DEFAULTS_VERSION = 1;
 constexpr auto GW_BACKUP_LOCATION_KEY{"Backup/location"};
+constexpr auto GW_DRAFT_LOCATION_KEY{"Draft/location"};
 }
 
 class AppSettingsPrivate
@@ -289,8 +290,8 @@ int AppSettings::tabWidth() const
 void AppSettings::setTabWidth(int width)
 {
     Q_D(AppSettings);
-    
-    if ((d->tabWidth >= MIN_TAB_WIDTH) && (d->tabWidth <= MAX_TAB_WIDTH)) {
+
+    if ((width >= MIN_TAB_WIDTH) && (width <= MAX_TAB_WIDTH)) {
         d->tabWidth = width;
         emit tabWidthChanged(width);
     }
@@ -725,9 +726,8 @@ AppSettings::AppSettings()
         }
     }
 
-    d->draftLocation =
-        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    
+    d->draftLocation = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + QStringLiteral("/ThothPad/Drafts");
+
     d->themeDirectoryPath =
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
         + "/themes";
@@ -801,6 +801,18 @@ AppSettings::AppSettings()
         appSettings.sync();
     }
 
+    // The visual-shell upgrade is applied once; subsequent font choices win.
+    if (!appSettings.value(QStringLiteral("Style/editorialShellApplied"), false).toBool()) {
+        appSettings.setValue(QStringLiteral("Style/fontBeforeEditorialShell"),
+                             appSettings.value(constants::GW_EDITOR_FONT_KEY));
+        const QString serif = d->firstAvailableFont({QStringLiteral("Georgia"),
+            QStringLiteral("Noto Serif"), QStringLiteral("Liberation Serif"), QStringLiteral("Times New Roman")});
+        appSettings.setValue(constants::GW_EDITOR_FONT_KEY, QFont(serif, 13).toString());
+        appSettings.setValue(constants::GW_EDITOR_WIDTH_KEY, EditorWidthMedium);
+        appSettings.setValue(constants::GW_INTERFACE_STYLE_KEY, InterfaceStyleRounded);
+        appSettings.setValue(QStringLiteral("Style/editorialShellApplied"), true);
+    }
+
     d->autoSaveEnabled = appSettings.value(constants::GW_AUTOSAVE_KEY, QVariant(true)).toBool();
     d->backupFileEnabled = appSettings.value(constants::GW_BACKUP_FILE_KEY, QVariant(true)).toBool();
     d->editorFont.fromString(appSettings.value(constants::GW_EDITOR_FONT_KEY, QVariant(monospaceFont)).toString());
@@ -837,6 +849,35 @@ AppSettings::AppSettings()
     }
 
     qInfo() << "Backup files will be stored in" << d->backupLocation;
+
+    // Load the draft location, honoring an explicitly configured value.
+    // The default changed from the Documents root to a dedicated
+    // "ThothPad/Drafts" subfolder; only apply the default when the key is
+    // unset so a user's explicit choice survives upgrades. A configured
+    // draft location that has become invalid falls back to the default.
+    const QString defaultDraftLocation = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + QStringLiteral("/ThothPad/Drafts");
+
+    d->draftLocation = appSettings.value(constants::GW_DRAFT_LOCATION_KEY, defaultDraftLocation).toString();
+
+    if (d->draftLocation.isEmpty()) {
+        d->draftLocation = defaultDraftLocation;
+    }
+
+    QFileInfo draftDirInfo(d->draftLocation);
+    d->draftLocation = draftDirInfo.absoluteFilePath();
+
+    if (draftDirInfo.exists()) {
+        if (!draftDirInfo.isDir()) {
+            qCritical() << "Draft file location must be a directory:" << d->draftLocation;
+            d->draftLocation = defaultDraftLocation;
+        } else if (!draftDirInfo.isWritable()) {
+            qCritical() << "Draft file location is not writeable:" << d->draftLocation;
+            d->draftLocation = defaultDraftLocation;
+        }
+    } else if (!QDir(d->draftLocation).mkpath(d->draftLocation)) {
+        qCritical() << "Could not create draft file directory:" << d->draftLocation;
+        d->draftLocation = defaultDraftLocation;
+    }
 
     if ((d->tabWidth < MIN_TAB_WIDTH) || (d->tabWidth > MAX_TAB_WIDTH)) {
         d->tabWidth = DEFAULT_TAB_WIDTH;

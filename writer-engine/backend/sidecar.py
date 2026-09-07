@@ -18,6 +18,7 @@ from typing import Any, BinaryIO
 
 from backend import config
 from backend.analysis_store import AnalysisStore
+from backend.analyzers import run_analyzers
 from backend.analyzers.dialogue import _dialogue_spans
 from backend.analyzers.possible_adverbs import spacy_model_status
 from backend.desktop_engine import (
@@ -38,7 +39,7 @@ from backend.manuscript import (
     manuscript_report_with_timeline,
     read_project_timeline,
 )
-from backend.models import AnalyzerResult, RunRequest
+from backend.models import RunRequest
 from backend.pipeline import compare_texts, run_pipeline
 from backend.profiles import (
     export_profile,
@@ -65,8 +66,6 @@ from backend.validation import (
     validate_text,
 )
 
-MAX_HEADER_COUNT = 16
-MAX_HEADER_BYTES = 16_384
 MAX_INFLIGHT = 4
 _DOCUMENTS = DocumentRegistry()
 _STORE_LOCK = threading.Lock()
@@ -89,6 +88,8 @@ from backend.config import ENGINE_VERSION  # noqa: E402
 from backend.protocol import (  # noqa: E402
     _INTERNAL_OPERATIONS,
     _STORE_ONLY_OPERATIONS,
+    MAX_HEADER_BYTES,
+    MAX_HEADER_COUNT,
     OPERATIONS,
     PROCESS_OPERATIONS,
     PROTOCOL_MAJOR,
@@ -248,96 +249,6 @@ def _worker_cancelled_check(cancel_dir: str | None, request_id: str) -> Callable
     return check
 
 
-def _create_windows_kill_job(process_id: int) -> int:
-    import ctypes
-    from ctypes import wintypes
-
-    class BasicLimitInformation(ctypes.Structure):
-        _fields_ = [
-            ("PerProcessUserTimeLimit", ctypes.c_longlong),
-            ("PerJobUserTimeLimit", ctypes.c_longlong),
-            ("LimitFlags", wintypes.DWORD),
-            ("MinimumWorkingSetSize", ctypes.c_size_t),
-            ("MaximumWorkingSetSize", ctypes.c_size_t),
-            ("ActiveProcessLimit", wintypes.DWORD),
-            ("Affinity", ctypes.c_size_t),
-            ("PriorityClass", wintypes.DWORD),
-            ("SchedulingClass", wintypes.DWORD),
-        ]
-
-    class IoCounters(ctypes.Structure):
-        _fields_ = [(name, ctypes.c_ulonglong) for name in (
-            "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
-            "ReadTransferCount", "WriteTransferCount", "OtherTransferCount",
-        )]
-
-    class ExtendedLimitInformation(ctypes.Structure):
-        _fields_ = [
-            ("BasicLimitInformation", BasicLimitInformation),
-            ("IoInfo", IoCounters),
-            ("ProcessMemoryLimit", ctypes.c_size_t),
-            ("JobMemoryLimit", ctypes.c_size_t),
-            ("PeakProcessMemoryUsed", ctypes.c_size_t),
-            ("PeakJobMemoryUsed", ctypes.c_size_t),
-        ]
-
-    job_object_extended_limit_information = 9
-    job_object_limit_kill_on_job_close = 0x00002000
-    process_set_quota = 0x0100
-    process_terminate = 0x0001
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel32.CreateJobObjectW.argtypes = (ctypes.c_void_p, wintypes.LPCWSTR)
-    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
-    kernel32.SetInformationJobObject.argtypes = (
-        wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD,
-    )
-    kernel32.SetInformationJobObject.restype = wintypes.BOOL
-    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
-    kernel32.OpenProcess.restype = wintypes.HANDLE
-    kernel32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
-    kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
-    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
-
-    job = kernel32.CreateJobObjectW(None, None)
-    if not job:
-        raise OSError(ctypes.get_last_error(), "CreateJobObjectW failed")
-    information = ExtendedLimitInformation()
-    information.BasicLimitInformation.LimitFlags = job_object_limit_kill_on_job_close
-    process_handle = None
-    try:
-        if not kernel32.SetInformationJobObject(
-            job,
-            job_object_extended_limit_information,
-            ctypes.byref(information),
-            ctypes.sizeof(information),
-        ):
-            raise OSError(ctypes.get_last_error(), "SetInformationJobObject failed")
-        process_handle = kernel32.OpenProcess(
-            process_set_quota | process_terminate, False, process_id
-        )
-        if not process_handle:
-            raise OSError(ctypes.get_last_error(), "OpenProcess failed")
-        if not kernel32.AssignProcessToJobObject(job, process_handle):
-            raise OSError(ctypes.get_last_error(), "AssignProcessToJobObject failed")
-        return int(ctypes.cast(job, ctypes.c_void_p).value)  # type: ignore[arg-type]
-    except BaseException:
-        kernel32.CloseHandle(job)
-        raise
-    finally:
-        if process_handle:
-            kernel32.CloseHandle(process_handle)
-
-
-def _close_windows_handle(handle: int | None) -> None:
-    if handle and os.name == "nt":
-        import ctypes
-        from ctypes import wintypes
-
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
-        kernel32.CloseHandle(wintypes.HANDLE(handle))
-
-
 from backend.process_supervisor import (  # noqa: E402
     _close_windows_handle,
     _create_windows_kill_job,
@@ -463,11 +374,8 @@ def _analyze_live_cancellable(
 ) -> dict[str, Any]:
     from backend.analyzers.base import (
         LIVE_ANALYZERS,
-        _analyzers,
-        _apply_thresholds,
+        validate_analyzer_names,
     )
-    from backend.analyzers.dialogue import dialogue_spans, inside_dialogue
-    from backend.analyzers.pattern_helpers import with_profile_patterns
 
     validate_text(text, live=True)
     if base_offset_utf16 < 0:
@@ -493,51 +401,12 @@ def _analyze_live_cancellable(
 
     with cancellable_analysis(cancelled.is_set), document_features(text, exclusions) as features:
         analyzer_started = time.perf_counter()
-        registry = _analyzers()
-        unknown = sorted(set(selected) - set(registry))
-        if unknown:
-            raise ValueError(f"unknown analyzers: {', '.join(unknown)}")
-        results = []
-        if lexical_rules_enabled:
-            for name in selected:
-                cancellation_checkpoint()
-                results.append(registry[name].analyze(text, profile))
-                cancellation_checkpoint()
-
-            spans: list[tuple[int, int]] | None = None
-            dialogue_settings = profile.get("dialogue_exclusions", {}) or {}
-            for result in results:
-                cancellation_checkpoint()
-                settings = profile.get(result.name, {}) or {}
-                ignore_dialogue = settings.get(
-                    "ignore_dialogue",
-                    dialogue_settings.get(result.name, dialogue_settings.get("all", False)),
-                )
-                if not ignore_dialogue:
-                    continue
-                if spans is None:
-                    spans = dialogue_spans(text)
-                original_count = len(result.flags)
-                result.flags = [
-                    flag for flag in result.flags
-                    if not inside_dialogue(flag.start, flag.end, spans)
-                ]
-                removed = original_count - len(result.flags)
-                if removed:
-                    result.score = max(0.0, result.score - removed)
-                result.metrics["ignored_dialogue"] = True
-                result.metrics["dialogue_findings_removed"] = removed
-
-        cancellation_checkpoint()
-        results.append(with_profile_patterns(
-            AnalyzerResult(name="profile_patterns", score=0.0), text, profile
-        ))
-        _apply_thresholds(results, profile)
-        for result in results:
-            result.metrics.setdefault("total_findings", len(result.flags))
-            result.metrics.setdefault("findings_truncated", False)
-            for flag in result.flags:
-                flag.analyzer = result.name
+        # Unknown names raise before any analyzer work, matching the sidecar's
+        # validate-first contract; the shared orchestration owns the registry
+        # loop, dialogue-exclusion post-pass, profile_patterns appending, and
+        # threshold application from here on.
+        validate_analyzer_names(selected)
+        results = run_analyzers(text, profile, selected if lexical_rules_enabled else ())
 
         grammar_allowed = bool(
             grammar
@@ -595,11 +464,20 @@ def _analyze_live_cancellable(
 
 
 def dispatch(
-    message: dict[str, Any], *, cancelled: threading.Event | None = None
+    message: dict[str, Any],
+    *,
+    cancelled: threading.Event | None = None,
+    internal: bool = False,
 ) -> dict[str, Any]:
     operation = str(message.get("operation", ""))
     if operation not in OPERATIONS and operation not in _INTERNAL_OPERATIONS:
         raise ValueError(f"unsupported operation: {operation}")
+    if operation in _INTERNAL_OPERATIONS and not internal:
+        # Internal operations exist for the sidecar's own worker supervision
+        # (e.g. snapshot disposal after dispose_document); they are never part
+        # of the client-facing operation set and must not be callable over
+        # the wire.
+        raise ValueError(f"operation is reserved for internal use: {operation}")
     params = _params(message)
     for boolean_name in ("persist", "overwrite", "consent", "grammar_consent"):
         if boolean_name in params:
@@ -610,6 +488,9 @@ def dispatch(
         return _capabilities()
     if operation == "capabilities":
         return _capabilities()
+    if operation == "provider_access":
+        from backend.provider_access import provider_access
+        return provider_access(params)
     if operation == "list_profiles":
         return {"profiles": list_profiles()}
     if operation == "get_profile":
@@ -798,7 +679,7 @@ def dispatch(
             raise ValueError("name must be a non-empty string")
         return {"name": name, "baselines": load_lens_baselines(name)}
     if operation == "rewrite":
-        passes = validate_passes(int(params.get("passes", 1)))
+        passes = validate_passes(params.get("passes", 1))
         mode = str(params.get("mode", "rewrite"))
         if mode not in {"rewrite", "deslop", "line_edit", "write_from_brief"}:
             raise ValueError("unsupported rewrite mode")
@@ -1329,7 +1210,11 @@ def _report_worker_main() -> int:
                 with cancellable_analysis(
                     _worker_cancelled_check(cancel_dir, str(request.get("request_id", "")))
                 ):
-                    result = dispatch(request)
+                    # The worker pipe is private to PersistentWorker.execute: it
+                    # only carries client PROCESS operations and the server's
+                    # own internal cleanup requests, so internal operations are
+                    # dispatchable here and nowhere else on the client surface.
+                    result = dispatch(request, internal=True)
                 response = {"ok": True, "result": result}
             except BaseException as exc:
                 response = {

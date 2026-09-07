@@ -13,11 +13,17 @@ from backend import config
 from backend.validation import bounded_int as _bounded_int
 
 OPENAI_KINDS = {"openai_compatible", "openai", "openrouter", "lmstudio", "llama_cpp"}
-SUPPORTED_KINDS = OPENAI_KINDS | {"anthropic", "ollama", "gemini"}
+SUPPORTED_KINDS = OPENAI_KINDS | {
+    "anthropic", "ollama", "gemini", "gemini_oauth", "codex", "opencode_zen", "opencode_go",
+}
 DEFAULT_ENDPOINTS = {
+    "opencode_zen": "https://opencode.ai/zen/v1",
+    "opencode_go": "https://opencode.ai/zen/go/v1",
     "anthropic": "https://api.anthropic.com/v1",
     "ollama": "http://127.0.0.1:11434/api",
     "gemini": "https://generativelanguage.googleapis.com/v1beta",
+    "gemini_oauth": "https://generativelanguage.googleapis.com/v1beta",
+    "codex": "https://chatgpt.com",
 }
 
 
@@ -59,7 +65,7 @@ def _provider(provider_config: dict[str, Any] | None) -> dict[str, Any]:
     kind = str(merged.get("provider", "openai_compatible"))
     if kind in DEFAULT_ENDPOINTS and not supplied.get("base_url"):
         merged["base_url"] = DEFAULT_ENDPOINTS[kind]
-    if kind in {"anthropic", "ollama", "gemini"} and "api_key" not in supplied:
+    if kind in {"anthropic", "ollama", "gemini", "gemini_oauth", "codex"} and "api_key" not in supplied:
         merged["api_key"] = ""
     return merged
 
@@ -103,6 +109,9 @@ def _validated_url(value: Any) -> str:
 
 def provider_is_remote(provider_config: dict[str, Any] | None) -> bool:
     provider = _provider(provider_config)
+    if provider.get("provider") == "codex":
+        # The local CLI still sends the requested text to OpenAI.
+        return True
     parsed = urllib.parse.urlsplit(_validated_url(provider.get("base_url")))
     return not _is_loopback(parsed.hostname)
 
@@ -162,6 +171,26 @@ def _request_json(
     return value
 
 
+def _provider_http_guidance(kind: str, error: urllib.error.HTTPError) -> str:
+    """Translate known provider failures without echoing server data or secrets."""
+    try:
+        payload = json.loads(error.read(config.MAX_LLM_RESPONSE_BYTES + 1).decode("utf-8"))
+        if not isinstance(payload, dict):
+            payload = {}
+        detail = payload.get("error", payload)
+        if isinstance(detail, dict):
+            detail = detail.get("message", "")
+        detail = str(detail).casefold()
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError):
+        detail = ""
+    if kind in {"opencode_zen", "opencode_go"}:
+        if "model is unavailable" in detail or "not supported" in detail:
+            return "OpenCode reports that this model is unavailable upstream. Choose another model or try again later."
+        if "rate limit" in detail or "usage limit" in detail:
+            return "OpenCode reports that this free-tier model is rate limited. Wait, or choose another free model."
+    return ""
+
+
 def _anthropic_messages(messages: list[dict[str, str]]) -> tuple[str, list[dict[str, str]]]:
     system_parts: list[str] = []
     conversation: list[dict[str, str]] = []
@@ -210,13 +239,55 @@ def complete_chat(
 
     try:
         base_url = _validated_url(provider.get("base_url"))
-        temperature_limit = 1.0 if kind == "anthropic" else 2.0
+        api_key = str(provider.get("api_key", "")).strip()
+        if kind == "openrouter" and not api_key:
+            raise ValueError(
+                "OpenRouter requires an API key, including for :free models. Open Model Settings, "
+                "sign in or enter your OpenRouter key, choose the model, then Save."
+            )
+        wire_kind = kind
+        if kind in {"opencode_zen", "opencode_go"}:
+            if base_url != DEFAULT_ENDPOINTS[kind]:
+                raise ValueError(
+                    "OpenCode providers require their official endpoint. Use OpenAI compatible for custom servers."
+                )
+            if not api_key:
+                raise ValueError(
+                    "Enter your OpenCode API key in Model Settings and Save. "
+                    "Go also requires an active subscription; free-priced Zen models still require account access."
+                )
+            # OpenCode publishes different wire formats by model family; the Go
+            # MiniMax route differs from Zen. No cross-provider/model retry occurs.
+            if model.startswith(("claude-", "qwen")) or (kind == "opencode_go" and model.startswith("minimax-")):
+                wire_kind = "anthropic"
+            elif model.startswith("gemini-"):
+                wire_kind = "gemini"
+            elif model.startswith(("gpt-", "grok-", "muse-")):
+                wire_kind = "responses"
+            else:
+                wire_kind = "openai_compatible"
+        temperature_limit = 1.0 if wire_kind == "anthropic" else 2.0
         temperature = _bounded_float(provider.get("temperature", 0.7), "temperature", 0.0, temperature_limit)
         max_tokens = _bounded_int(provider.get("max_tokens", 4096), "max_tokens", 1, 32768)
         timeout = _bounded_float(provider.get("timeout", 180), "timeout", 1.0, 600.0)
-        api_key = str(provider.get("api_key", ""))
 
-        if kind == "anthropic":
+        if kind == "codex":
+            from backend.codex_provider import CodexSession
+            with CodexSession(timeout=timeout) as session:
+                text = session.complete(messages, model)
+        elif wire_kind == "responses":
+            data = _request_json(
+                _endpoint(base_url, "/responses"),
+                {"model": model, "input": messages, "max_output_tokens": max_tokens, "store": False},
+                {"Authorization": f"Bearer {api_key}"}, timeout,
+            )
+            text = "".join(
+                part["text"]
+                for item in data.get("output", []) if isinstance(item, dict) and item.get("type") == "message"
+                for part in item.get("content", [])
+                if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str)
+            )
+        elif wire_kind == "anthropic":
             system, conversation = _anthropic_messages(messages)
             payload: dict[str, Any] = {
                 "model": model,
@@ -240,7 +311,7 @@ def complete_chat(
                 for block in blocks
                 if isinstance(block, dict) and block.get("type") == "text"
             )
-        elif kind == "gemini":
+        elif wire_kind in {"gemini", "gemini_oauth"}:
             system, contents = _gemini_messages(messages)
             if not contents:
                 raise ValueError("Gemini request requires at least one user/assistant message")
@@ -254,10 +325,14 @@ def complete_chat(
             if system:
                 payload["systemInstruction"] = {"parts": [{"text": system}]}
             model_path = urllib.parse.quote(model.strip(), safe="")
+            headers = {"x-goog-api-key": api_key}
+            if kind == "gemini_oauth":
+                from backend.provider_access import google_headers
+                headers = google_headers(api_key, base_url)
             data = _request_json(
                 _endpoint(base_url, f"/models/{model_path}:generateContent"),
                 payload,
-                {"x-goog-api-key": api_key},
+                headers,
                 timeout,
             )
             candidates = data.get("candidates")
@@ -308,11 +383,26 @@ def complete_chat(
                 timeout,
             )
             try:
-                text = str(data["choices"][0]["message"]["content"])
+                content = data["choices"][0]["message"]["content"]
+                text = content if isinstance(content, str) else ""
             except (KeyError, IndexError, TypeError) as exc:
                 raise ValueError("response did not contain choices[0].message.content") from exc
         if not text.strip():
             raise ValueError("provider returned no text")
         return LLMResponse(text.strip(), kind, model)
+    except urllib.error.HTTPError as exc:
+        provider_guidance = _provider_http_guidance(kind, exc)
+        guidance = {
+            401: "Authentication failed. Enter your API key or sign in again in Model Settings, then Save.",
+            402: "Provider credit or subscription is required. Check your provider account.",
+            403: "Access denied. Check your key, account permissions and selected model.",
+            404: "Model or endpoint not found. Update the model list and choose an available model.",
+            429: "Provider rate limit reached. Wait before retrying or choose another available model.",
+        }.get(exc.code, "Provider rejected the request. Check the model, token limit and provider status.")
+        if provider_guidance:
+            guidance = provider_guidance
+        return LLMResponse("", kind, model, f"HTTP {exc.code}: {guidance}")
+    except OSError:
+        return LLMResponse("", kind, model, "Provider connection or runtime failed. Check settings and sign-in.")
     except (ValueError, TypeError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         return LLMResponse("", kind, model, str(exc))

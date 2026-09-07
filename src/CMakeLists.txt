@@ -46,6 +46,7 @@ target_sources(thothpad PRIVATE
     prose/proseawarenesswidget.cpp
     prose/prosecontroller.cpp
     prose/profileeditordialog.cpp
+    prose/lenslistswidget.cpp
     prose/providersettingsdialog.cpp
     prose/rewritereviewdialog.cpp
     prose/writerengineclient.cpp
@@ -54,6 +55,9 @@ target_sources(thothpad PRIVATE
     story/storyintelligencecontroller.cpp
     story/storyintelligencewidget.cpp
     story/storytoolharness.cpp
+    story/storyworkspace.cpp
+    story/storyworkspacecontroller.cpp
+    story/storyworkspacedialog.cpp
     settings/appsettings.cpp
     settings/localedialog.cpp
     settings/preferencesdialog.cpp
@@ -63,6 +67,8 @@ target_sources(thothpad PRIVATE
     spelling/spellcheckdialog.cpp
     statistics/abstractstatisticswidget.cpp
     statistics/documentstatistics.cpp
+    statistics/writinganalysis.cpp
+    statistics/writingworkbench.cpp
     statistics/documentstatisticswidget.cpp
     statistics/sessionstatistics.cpp
     statistics/sessionstatisticswidget.cpp
@@ -155,10 +161,13 @@ else()
     )
 endif()
 
+find_package(Qt6 REQUIRED COMPONENTS Network)
+
 target_link_libraries(thothpad PRIVATE
     Qt::Concurrent
     Qt::Core
     Qt::Gui
+    Qt::Network
     Qt::Svg
     Qt::Widgets
     KF${KF_MAJOR_VERSION}::ConfigCore

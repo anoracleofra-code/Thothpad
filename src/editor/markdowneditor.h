@@ -75,6 +75,7 @@ public:
      * Normal edits use a short debounce instead.
      */
     void ensureDocumentParsed();
+    bool isDocumentParsed() const;
 
     /** Returns a normalized text snapshot assembled away from the GUI thread. */
     QFuture<QString> textSnapshot() const;

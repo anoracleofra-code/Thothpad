@@ -17,7 +17,6 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QSettings>
-#include <QStyle>
 #include <QTextCursor>
 #include <QTranslator>
 #include <QWindow>
@@ -40,16 +39,18 @@
 #include "story/storyintelligencewidget.h"
 #include "story/storytoolharness.h"
 
+#include "statistics/writingworkbench.h"
+
 namespace
 {
 void installStoryIntelligence(ghostwriter::MainWindow *window)
 {
-    auto *editor = window->findChild<ghostwriter::MarkdownEditor *>();
-    auto *documentManager = window->findChild<ghostwriter::DocumentManager *>();
-    auto *proseController = window->findChild<ghostwriter::ProseController *>();
-    auto *proseWidget = window->findChild<ghostwriter::ProseAwarenessWidget *>();
-    auto *engine = proseController ? proseController->findChild<ghostwriter::WriterEngineClient *>() : nullptr;
-    auto *credentials = proseController ? proseController->findChild<ghostwriter::CredentialStore *>() : nullptr;
+    auto *editor = window->mainEditor();
+    auto *documentManager = window->mainDocumentManager();
+    auto *proseController = window->mainProseController();
+    auto *proseWidget = window->mainProseAwarenessWidget();
+    auto *engine = proseController ? proseController->engineClient() : nullptr;
+    auto *credentials = proseController ? proseController->credentialStore() : nullptr;
     if (!editor || !documentManager || !proseController || !proseWidget || !engine || !credentials) {
         qWarning() << "Story Intelligence could not attach to the editor/engine services.";
         return;
@@ -58,9 +59,10 @@ void installStoryIntelligence(ghostwriter::MainWindow *window)
     auto *dock = new QDockWidget(window);
     dock->setObjectName(QStringLiteral("storyIntelligenceDock"));
     dock->setAllowedAreas(Qt::RightDockWidgetArea);
-    dock->setFeatures(QDockWidget::NoDockWidgetFeatures);
-    dock->setMinimumWidth(320);
-    dock->setMaximumWidth(320);
+    // The dock separator remains draggable; the custom header only replaces the
+    // title bar and does not constrain the user's chosen panel width.
+    dock->setFeatures(QDockWidget::DockWidgetClosable);
+    dock->setMinimumWidth(280);
 
     // The reference UI carries its own quiet header, so suppress the native
     // dock title bar while retaining QDockWidget's robust edge-layout logic.
@@ -69,9 +71,18 @@ void installStoryIntelligence(ghostwriter::MainWindow *window)
     dock->setTitleBarWidget(nativeTitleBarReplacement);
 
     auto *widget = new ghostwriter::StoryIntelligenceWidget(dock);
-    widget->setCollapseIcon(window->style()->standardIcon(QStyle::SP_ArrowRight));
+    widget->setCollapseIcon(window->themedIcon(QStringLiteral("collapse-story")));
     dock->setWidget(widget);
     window->addDockWidget(Qt::RightDockWidgetArea, dock);
+    // MainWindow restores its state before this optional dock is installed.
+    // Restore again now that the named dock exists so Qt can recover its width.
+    QSettings windowSettings;
+    const QByteArray state = windowSettings.value(QStringLiteral("Window/mainWindowState")).toByteArray();
+    if (!state.isEmpty()) {
+        window->restoreState(state);
+    } else {
+        window->resizeDocks({dock}, {360}, Qt::Horizontal);
+    }
 
     auto *transactions = new ghostwriter::AgentEditTransactionManager(
         editor, documentManager, dock);
@@ -97,6 +108,7 @@ void installStoryIntelligence(ghostwriter::MainWindow *window)
             activity->resetForContext();
         });
     controller->start();
+    new ghostwriter::WritingWorkbench(editor, proseWidget, controller, transactions, window);
 
     // Keep the native services discoverable under the Story Intelligence dock
     // for diagnostics and tests without exposing arbitrary QObject access to
@@ -201,24 +213,43 @@ void installStoryIntelligence(ghostwriter::MainWindow *window)
     });
 
     QObject::connect(widget, &ghostwriter::StoryIntelligenceWidget::collapseRequested,
-                     dock, &QDockWidget::hide);
+                     dock, [dock]() {
+                         QSettings().setValue(QStringLiteral("story/visible"), false);
+                         dock->hide();
+                     });
 
     QAction *toggleAction = dock->toggleViewAction();
     toggleAction->setText(QCoreApplication::translate("main", "Story Intelligence"));
-    toggleAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Alt+I")));
+    toggleAction->setIcon(window->themedIcon(QStringLiteral("story-intelligence")));
+    toggleAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+A")));
     toggleAction->setShortcutContext(Qt::WindowShortcut);
+    toggleAction->setToolTip(QCoreApplication::translate("main", "Show or hide the AI writing panel"));
+    // Register with the visible window too, so hiding the dock cannot disable
+    // the shortcut used to bring it back.
+    window->addAction(toggleAction);
 
-    // Put the recovery/toggle affordance alongside the existing View tools.
-    for (QAction *menuAction : window->menuBar()->actions()) {
-        QMenu *menu = menuAction->menu();
-        if (!menu) {
-            continue;
-        }
-        QString title = menu->title();
-        title.remove(QChar('&'));
-        if (title.compare(QStringLiteral("View"), Qt::CaseInsensitive) == 0) {
-            menu->addSeparator();
-            menu->addAction(toggleAction);
+    // Keep the two primary side-panel controls together in the View menu.
+    // Locate the View menu through the sidebar action's object identity so
+    // insertion does not depend on translated menu titles.
+    QAction *sidebarAction = window->appAction(ghostwriter::AppActions::ShowSidebar);
+    if (nullptr != sidebarAction) {
+        const QList<QMenu *> menus = window->findChildren<QMenu *>();
+        for (QMenu *menu : menus) {
+            const QList<QAction *> viewActions = menu->actions();
+            const int sidebarIndex = viewActions.indexOf(sidebarAction);
+            if (sidebarIndex < 0) {
+                continue;
+            }
+            // Insert directly under "Show Sidebar", with a separator after
+            // the toggle so the sidebar-visibility pair stays grouped
+            // before the outline/statistics entries (matches the View-menu
+            // group style in MainWindow::setupMenuBar). When the sidebar
+            // action is last, insertBefore is null so the toggle appends.
+            // (If the sidebar action itself is absent there is no View-menu
+            // identity anchor, so the toggle stays unplaced.)
+            QAction *insertBefore = (sidebarIndex + 1 < viewActions.size()) ? viewActions.at(sidebarIndex + 1) : nullptr;
+            menu->insertAction(insertBefore, toggleAction);
+            menu->insertSeparator(insertBefore);
             break;
         }
     }
@@ -226,8 +257,9 @@ void installStoryIntelligence(ghostwriter::MainWindow *window)
     QSettings settings;
     const bool visible = settings.value(QStringLiteral("story/visible"), true).toBool();
     dock->setVisible(visible);
-    QObject::connect(dock, &QDockWidget::visibilityChanged, dock, [](bool nowVisible) {
-        QSettings().setValue(QStringLiteral("story/visible"), nowVisible);
+    // Save user intent, not visibilityChanged(false) emitted during shutdown.
+    QObject::connect(toggleAction, &QAction::triggered, dock, [](bool requestedVisible) {
+        QSettings().setValue(QStringLiteral("story/visible"), requestedVisible);
     });
 }
 }

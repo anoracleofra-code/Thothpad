@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+* Hardened the live HTML preview against hostile Markdown files. The preview now renders cmark-gfm output in safe mode, so raw HTML (including event-handler attributes like `onerror=`), `javascript:`/`vbscript:`/`file:`/non-image `data:` link targets, meta-refresh redirects, and iframe/script markup in an untrusted document are escaped or stripped instead of executing. Deliberate exports (HTML file export, "Copy as HTML") still preserve the document's own raw HTML. The preview web page additionally rejects all navigations except re-displays of its internal wrapper page and hands link clicks to the system browser, closing scripted- and redirect-based navigation of the preview (which had file:// access) to remote or local URLs.
+
 ### Added
 
 * Repetition pairs now highlight **both** occurrences of close word repeats, on the live lane and in snapshot reports; the earlier occurrence shifts correctly with edits.
@@ -24,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+* Sidecar live analysis now delegates its analyzer orchestration (registry loop, dialogue-exclusion post-pass, thresholds, profile patterns) to the engine's shared `run_analyzers` implementation instead of maintaining a byte-compatibility copy; golden equivalence tests pin both paths to identical envelopes.
+* Untitled-document drafts (autosave and session restore) now save to a dedicated `<Documents>/ThothPad/Drafts` folder instead of the root of the Documents folder, so user files named `untitled-*.md` anywhere in Documents are no longer mistaken for app drafts (which redirected Save to Save As). Users who already configured an explicit draft location keep it; for those who relied on the old default, existing `untitled-*.md` files in the Documents root will no longer be treated as drafts.
 * Idle document analysis is no longer cancelled by killing the engine worker: cooperative cancellation keeps spaCy, WordNet, and Harper caches warm across pauses, eliminating cold-restart churn while typing.
 * Harper's grammar session stays warm after engine initialize and across documents.
 * Document edits coalesce into batched `patch_document` frames (25 ms window) instead of one IPC round trip per keystroke.
@@ -38,10 +44,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+* Analyzer scores now declare their semantics (`score_semantics`: `count`, `per_1000`, or `composite`). Previously every result was treated as a flag count: thresholds proportionally rescaled and dialogue exclusion subtracted from scores that were not counts — stylometry's 0-100 uniformity composite and slop_score's per-1000-words rate got corrupted by count math. Non-count scores now stay unchanged when their findings are filtered (findings still filter; the removal is still recorded in `threshold_findings_removed` / `dialogue_findings_removed`), and the serialized-row rescale after exclusion-range filtering applies only to count scores.
+* Removed the dead duplicate Windows process-supervision helpers and protocol header constants from the engine sidecar; the live implementations in `backend.process_supervisor` and `backend.protocol` are now the single source.
+* Deleted the superseded unguarded `run_story_intelligence` entry point from `backend.story_intelligence`; the pipeline only ever routes Story Intelligence turns through the sanitized boundary in `backend.story_runtime`.
+* Saved-run Markdown reports render "No flags." again for analyses with zero findings (the old header-length check could never fire after the report header grew).
+* The MCP `prose_rewrite` tool now validates `passes` and `mode` exactly like the desktop sidecar: JSON booleans and fractional pass counts are rejected, and only supported rewrite modes are accepted.
+* The engine sidecar rejects client requests for internal-only operations (such as `dispose_document_snapshots`) with `invalid_request`; the internal snapshot-disposal path after `dispose_document` continues to work unchanged.
+* The engine README's protocol version (1.2) and the README/agent-setup MCP tool lists now match the eleven tools the MCP server actually exposes, with a regression test pinning them.
+* The vacuous single-persistent-session test for Harper's segmented analysis now asserts session identity, per-segment request counts, and global offset stitching; it previously passed without testing anything. (It also runs without the built Harper binary by mocking at the session boundary.)
 * The backup-location error dialog displayed a literal "%d" instead of the failing path.
 * The document outline now repopulates when the background parse completes (previously it stayed stale until the next edit), and a dangling signal connection during teardown was removed.
 * Development builds deploy the Sonnet hunspell plugin and en_US dictionaries automatically, restoring spell checking in non-packaged builds.
 * The Repetition lens is visible as a primary lens row (it was hidden behind "More lenses" while its findings rendered), followed by Grammar, which is now enabled by default.
+* Provider credential-id derivation is unified in `CredentialStore::providerCredentialId` (previously three drifting copies in the provider dialog, prose controller, and story intelligence controller).
+* The engine client reuses a single log-file handle instead of opening and closing `thothpad-engine.log` for every frame; per-frame head hex dumps are gated behind `THOTHPAD_ENGINE_TRACE`.
+* Authored panel chrome surfaces are keyed by theme name instead of exact background hex values, so custom themes sharing a built-in's background no longer silently inherit its hand-tuned surfaces.
+* Preview command-line options are saved per exporter, so params no longer bleed between markdown flavors when switching.
+* Story Intelligence installs through `MainWindow` accessors and menu-object identity instead of `findChild` name lookups and translated-title matching.
+* The Story Intelligence dock now follows the app theme: its widget-local system-palette stylesheet was removed and equivalent rules using the same theme surfaces as the left prose sidebar were added to the app-wide stylesheet, so the rail matches the panel/card colors in every built-in theme and dark mode instead of rendering white cards on white.
+* The Story Intelligence View-menu toggle now sits directly under "Show Sidebar" (with a grouping separator), carries the theme-aware `story-intelligence` sparkles icon, and uses `Ctrl+Shift+A` (was `Ctrl+Alt+I`).
 
 ## [24.08.0]
 

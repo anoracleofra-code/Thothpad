@@ -110,5 +110,7 @@ def agent_setup() -> dict[str, Any]:
             "prose_get_run",
             "prose_analyze_manuscript",
             "prose_calibrate_corpus",
+            "prose_quality_timeline",
+            "prose_lens_baselines",
         ],
     }

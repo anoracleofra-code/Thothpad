@@ -119,8 +119,23 @@ def _apply_thresholds(results: list[AnalyzerResult], profile: dict[str, Any]) ->
         removed = original_count - len(kept)
         if removed:
             result.metrics["threshold_findings_removed"] = removed
-            if original_count:
+            # Proportional rescale is only coherent for flag-count scores;
+            # rates and composites keep their score (thresholds stay a
+            # finding-level control for them).
+            if result.score_semantics == "count" and original_count:
                 result.score *= len(kept) / original_count
+
+
+def validate_analyzer_names(
+    names: Iterable[str],
+    registry: dict[str, Analyzer] | None = None,
+) -> None:
+    """Raise ValueError for any requested names missing from the registry."""
+    if registry is None:
+        registry = _analyzers()
+    unknown = sorted(set(names) - set(registry))
+    if unknown:
+        raise ValueError(f"unknown analyzers: {', '.join(unknown)}")
 
 
 def run_analyzers(
@@ -133,9 +148,7 @@ def run_analyzers(
     with document_features(text):
         registry = _analyzers()
         selected = tuple(dict.fromkeys(names)) if names is not None else tuple(registry)
-        unknown = sorted(set(selected) - set(registry))
-        if unknown:
-            raise ValueError(f"unknown analyzers: {', '.join(unknown)}")
+        validate_analyzer_names(selected, registry)
         active_profile = profile or {}
         results = []
         for name in selected:
@@ -159,11 +172,13 @@ def run_analyzers(
                 if not inside_dialogue(flag.start, flag.end, spans)
             ]
             removed = original_count - len(result.flags)
-            if removed:
+            if removed and result.score_semantics == "count":
                 result.score = max(0.0, result.score - removed)
             result.metrics["ignored_dialogue"] = True
             result.metrics["dialogue_findings_removed"] = removed
         results.append(with_profile_patterns(AnalyzerResult(name="profile_patterns", score=0.0), text, profile))
+        from backend.lens_lists import apply_lens_lists
+        apply_lens_lists(results, text, active_profile.get("lens_lists", {}))
         _apply_thresholds(results, active_profile)
 
         for result in results:

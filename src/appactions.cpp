@@ -102,6 +102,8 @@ AppActions::AppActions(KActionCollection *collection, SvgIconTheme *iconTheme, Q
     d->addAction(CopyHTML, "edit_copy_html", tr("Copy &HTML"), NO_ICON, tr("SHIFT+CTRL+C"));
     d->addAction(SelectAll, KStandardAction::SelectAll, "select-all");
     d->addAction(Deselect, KStandardAction::Deselect, "deselect");
+    // Ctrl+Shift+A belongs to Story Intelligence; avoid an ambiguous shortcut.
+    collection->setDefaultShortcut(get(Deselect), QKeySequence(QStringLiteral("Ctrl+Alt+Shift+A")));
     d->addAction(InsertImage, "edit_insert_image", tr("&Insert Image..."), "insert-image");
     d->addAction(Find, KStandardAction::Find, "find");
     d->addAction(Replace, KStandardAction::Replace, "find-replace");

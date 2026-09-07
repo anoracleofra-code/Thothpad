@@ -147,7 +147,7 @@ void SpellCheckDecorator::settingsChanged()
 
     if (d->settings) {
         delete d->settings;
-        d->settings = new Sonnet::Settings(this);
+        d->settings = new Sonnet::Settings();
     }
 
     d->speller->setLanguage(d->settings->defaultLanguage());

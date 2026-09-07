@@ -60,7 +60,7 @@ Sidebar::Sidebar(QWidget *parent)
     d->tabs = new QVBoxLayout();
     d->tabs->setObjectName("sidebarTabs");
     d->tabs->setAlignment(Qt::AlignTop | Qt::AlignCenter);
-    d->tabs->setSpacing(0);
+    d->tabs->setSpacing(4);
     d->tabs->setContentsMargins(0, 0, 0, 0);
     d->tabs->setSizeConstraint(QLayout::SetMinimumSize);
 
@@ -88,7 +88,7 @@ Sidebar::Sidebar(QWidget *parent)
     QVBoxLayout *leftBarLayout = new QVBoxLayout();
     leftBarLayout->setAlignment(Qt::AlignCenter | Qt::AlignTop);
     leftBarLayout->setSpacing(0);
-    leftBarLayout->setContentsMargins(0, 0, 0, 0);
+    leftBarLayout->setContentsMargins(0, 12, 0, 12);
     leftBarLayout->setSizeConstraint(QLayout::SetMinimumSize);
     leftBarLayout->addLayout(d->tabs);
     leftBarLayout->addStretch(1);
@@ -153,18 +153,20 @@ void Sidebar::removeTab(int index)
 
     if (index < 0) {
         index = 0;
-    } else if (index > d->tabs->count()) {
+    } else if (index >= d->tabs->count()) {
         index = d->tabs->count() - 1;
     }
 
-    int activeTabIndex = 0;
+    int activeTabIndex = d->stack->currentIndex();
 
-    if (d->stack->currentIndex() == activeTabIndex) {        
+    if (activeTabIndex == index) {
         if (activeTabIndex > 0) {
             activeTabIndex--;
         } else {
             activeTabIndex = 0;
         }
+    } else if (index < activeTabIndex) {
+        activeTabIndex--;
     }
 
     if (nullptr != d->stack->widget(index)) {
@@ -179,8 +181,9 @@ void Sidebar::removeTab(int index)
     }
 
     if (d->stack->count() > 0) {
+        activeTabIndex = qBound(0, activeTabIndex, d->stack->count() - 1);
         d->stack->setCurrentIndex(activeTabIndex);
-        QPushButton *tab = (QPushButton *) d->tabs->itemAt(activeTabIndex);
+        QPushButton *tab = (QPushButton *)d->tabs->itemAt(activeTabIndex)->widget();
 
         if (nullptr != tab) {
             tab->setChecked(true);
@@ -194,7 +197,7 @@ void Sidebar::setCurrentTabIndex(int index)
 
     if (index < 0) {
         index = 0;
-    } else if (index > d->tabs->count()) {
+    } else if (index >= d->tabs->count()) {
         index = d->tabs->count() - 1;
     }
 

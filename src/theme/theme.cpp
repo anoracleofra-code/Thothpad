@@ -131,12 +131,12 @@ void Theme::setLightColorScheme(const ColorScheme &colors)
 
 const ChromeColors Theme::lightChromeColors() const
 {
-    return ChromeColors(d->lightColors);
+    return ChromeColors(d->lightColors, d->name);
 }
 
 const ChromeColors Theme::darkChromeColors() const
 {
-    return ChromeColors(d->darkColors);
+    return ChromeColors(d->darkColors, d->name);
 }
 
 } // namespace ghostwriter

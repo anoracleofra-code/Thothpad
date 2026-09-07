@@ -98,7 +98,7 @@ DocumentStatistics::DocumentStatistics(MarkdownDocument *document, QObject *pare
     d->readTimeMinutes = 0;
 
     connect(d->document, SIGNAL(contentsChange(int, int, int)), this, SLOT(onTextChanged(int, int, int)));
-    connect(d->document, &MarkdownDocument::cleared, [d]() {
+    connect(d->document, &MarkdownDocument::cleared, this, [d]() {
         d->rebuildAllStatistics();
     });
     d->rebuildAllStatistics();

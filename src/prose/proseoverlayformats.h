@@ -7,6 +7,7 @@
 
 #include <QHash>
 #include <QList>
+#include <QSet>
 #include <QTextCharFormat>
 #include <QTextLayout>
 
@@ -14,6 +15,40 @@
 
 namespace ghostwriter
 {
+
+// Source-cache metadata: category identity must not depend on a customizable
+// color or translated tooltip. The renderer strips this private property.
+constexpr int ProseOverlayCategoryProperty = QTextFormat::UserProperty + 0x5753;
+
+inline void updateAppliedOverlayFormats(QHash<int, QList<QTextLayout::FormatRange>> &applied,
+                                       const QHash<int, QList<QTextLayout::FormatRange>> &updates)
+{
+    for (auto it = updates.constBegin(); it != updates.constEnd(); ++it) {
+        if (it.value().isEmpty()) {
+            applied.remove(it.key());
+        } else {
+            applied.insert(it.key(), it.value());
+        }
+    }
+}
+
+// Return only changed blocks, including empty lists to remove their overlays.
+// This runs synchronously before starting an asynchronous snapshot refresh.
+inline QHash<int, QList<QTextLayout::FormatRange>>
+overlayUpdatesForVisibleCategories(const QHash<int, QList<QTextLayout::FormatRange>> &applied, const QSet<QString> &visible)
+{
+    QHash<int, QList<QTextLayout::FormatRange>> updates;
+    for (auto it = applied.constBegin(); it != applied.constEnd(); ++it) {
+        auto ranges = it.value();
+        ranges.removeIf([&visible](const QTextLayout::FormatRange &range) {
+            return !visible.contains(range.format.property(ProseOverlayCategoryProperty).toString());
+        });
+        if (ranges.size() != it.value().size()) {
+            updates.insert(it.key(), ranges);
+        }
+    }
+    return updates;
+}
 
 // Compares two per-block format lists independent of the order in which spans
 // landed, so a rehydrated snapshot with identical content compares equal even

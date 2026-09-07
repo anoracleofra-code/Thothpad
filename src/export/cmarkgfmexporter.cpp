@@ -28,9 +28,9 @@ CmarkGfmExporter::~CmarkGfmExporter()
 
 }
 
-void CmarkGfmExporter::exportToHtml(const QString &text, QString &html)
+void CmarkGfmExporter::exportToHtml(const QString &text, QString &html, bool smartTypographyEnabled, bool safeMode)
 {
-    html = CmarkGfmAPI::instance()->renderToHtml(text, this->m_smartTypographyEnabled);
+    html = CmarkGfmAPI::instance()->renderToHtml(text, smartTypographyEnabled, safeMode);
 }
 
 void CmarkGfmExporter::exportToFile
@@ -52,7 +52,7 @@ void CmarkGfmExporter::exportToFile
         return;
     }
 
-    exportToHtml(text, html);
+    exportToHtml(text, html, this->m_smartTypographyEnabled);
 
     if (html.isNull()) {
         err = QObject::tr("Export failed");

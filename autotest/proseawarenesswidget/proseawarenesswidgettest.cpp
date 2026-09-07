@@ -53,8 +53,11 @@ private slots:
     void lensColorsUseCompactSwatches();
     void advancedControlsStayInMenus();
     void narrowLayoutKeepsControlsInsideViewport();
-    void sidebarKeepsListsCompactWithoutOuterScrolling();
+    void sidebarKeepsListsCompactAndActionsReachable();
     void partOfSpeechLensesUseConciseLabels();
+    void allLensesAreDirectlyAvailableWithoutGrammar();
+    void editListsIsDirectlyAvailable();
+    void lensHintExplainsRightClickEditing();
     void selectedLensShowsOnlyOrderedOccurrences();
     void largeLensLoadsSuggestionsInPages();
     void snapshotCountsAreIndependentOfLoadedRows();
@@ -78,6 +81,54 @@ private slots:
     void scanButtonDisabledWhenEngineNotReady();
     void scanButtonAnchorsReviewSetupAndShortcutWorks();
 };
+
+void ProseAwarenessWidgetTest::editListsIsDirectlyAvailable()
+{
+    ProseAwarenessWidget widget;
+    widget.setEngineReady(true);
+    auto *button = widget.findChild<QPushButton *>(QStringLiteral("editLensListsButton"));
+    QVERIFY(button);
+    QVERIFY(!button->isHidden());
+    QSignalSpy requests(&widget, &ProseAwarenessWidget::editProfileRequested);
+    button->click();
+    QCOMPARE(requests.count(), 1);
+    widget.setEngineReady(false);
+    QVERIFY(!button->isEnabled());
+}
+
+void ProseAwarenessWidgetTest::lensHintExplainsRightClickEditing()
+{
+    ProseAwarenessWidget widget;
+    auto *tree = widget.findChild<QTreeWidget *>(QStringLiteral("proseAwarenessCategoryTree"));
+    auto *hint = widget.findChild<QLabel *>(QStringLiteral("proseAwarenessHelperLabel"));
+    QVERIFY(tree);
+    QVERIFY(hint);
+    QVERIFY(hint->wordWrap());
+    QVERIFY(hint->text().contains(QStringLiteral("Right-click any lens")));
+    QVERIFY(hint->text().contains(QStringLiteral("edit its lists")));
+    QVERIFY(tree->accessibleDescription().contains(QStringLiteral("Right-click a lens")));
+    QCOMPARE(tree->contextMenuPolicy(), Qt::CustomContextMenu);
+}
+
+void ProseAwarenessWidgetTest::allLensesAreDirectlyAvailableWithoutGrammar()
+{
+    ProseAwarenessWidget widget;
+    auto *tree = widget.findChild<QTreeWidget *>(QStringLiteral("proseAwarenessCategoryTree"));
+    QVERIFY(tree);
+    QSet<QString> categories;
+    for (int index = 0; index < tree->topLevelItemCount(); ++index) {
+        auto *item = tree->topLevelItem(index);
+        QVERIFY(!item->isHidden());
+        QCOMPARE(item->childCount(), 0);
+        QVERIFY(item->flags().testFlag(Qt::ItemIsUserCheckable));
+        categories.insert(item->data(0, Qt::UserRole + 1).toString());
+    }
+    QVERIFY(categories.contains(QStringLiteral("body_cinematic")));
+    QVERIFY(categories.contains(QStringLiteral("abstraction_agency")));
+    QVERIFY(categories.contains(QStringLiteral("metaphor_texture")));
+    QVERIFY(!categories.contains(QStringLiteral("grammar_mechanics")));
+    QCOMPARE(widget.categoryFindingLabel(QStringLiteral("general_rules")), QStringLiteral("Profile phrase"));
+}
 
 void ProseAwarenessWidgetTest::partOfSpeechLensesUseConciseLabels()
 {
@@ -117,14 +168,15 @@ void ProseAwarenessWidgetTest::continuityNotesStayOutOfTheSidebar()
     QCOMPARE(widget.lockedFacts(), QStringList({QStringLiteral("Lazan keeps the brass monocle")}));
 }
 
-void ProseAwarenessWidgetTest::sidebarKeepsListsCompactWithoutOuterScrolling()
+void ProseAwarenessWidgetTest::sidebarKeepsListsCompactAndActionsReachable()
 {
     ProseAwarenessWidget widget;
     widget.resize(320, 1200);
     widget.show();
     QTest::qWait(50);
 
-    QVERIFY(!widget.findChild<QScrollArea *>(QStringLiteral("proseAwarenessScrollArea")));
+    auto *scroll = widget.findChild<QScrollArea *>(QStringLiteral("proseAwarenessScrollArea"));
+    QVERIFY(scroll);
 
     QTreeWidget *lensTree = nullptr;
     for (QTreeWidget *tree : widget.findChildren<QTreeWidget *>()) {
@@ -136,8 +188,19 @@ void ProseAwarenessWidgetTest::sidebarKeepsListsCompactWithoutOuterScrolling()
     QListView *findingView = findFindingView(widget);
     QVERIFY(lensTree);
     QVERIFY(findingView);
-    QCOMPARE(lensTree->height(), 322);
-    QCOMPARE(findingView->height(), 210);
+    QVERIFY(lensTree->height() >= 140 && lensTree->height() <= 260);
+    auto *lensesSurface = widget.findChild<QWidget *>("proseAwarenessLensesSurface");
+    QVERIFY(lensesSurface);
+    auto *hint = lensesSurface->findChild<QLabel *>("proseAwarenessHelperLabel");
+    auto *editLists = lensesSurface->findChild<QPushButton *>("editLensListsButton");
+    QVERIFY(hint && editLists);
+    for (const int height : {1200, 1600}) {
+        widget.resize(320, height);
+        QTest::qWait(25);
+        QVERIFY(hint->y() - editLists->geometry().bottom() <= 14);
+        QVERIFY(lensTree->y() - hint->geometry().bottom() <= 8);
+    }
+    QVERIFY(findingView->height() >= 70 && findingView->height() <= 140);
     QCOMPARE(lensTree->verticalScrollBarPolicy(), Qt::ScrollBarAsNeeded);
     QCOMPARE(findingView->verticalScrollBarPolicy(), Qt::ScrollBarAsNeeded);
 
@@ -145,6 +208,52 @@ void ProseAwarenessWidgetTest::sidebarKeepsListsCompactWithoutOuterScrolling()
     lensTree->topLevelItem(1)->setCheckState(0, Qt::Unchecked);
     QCoreApplication::processEvents();
     QCOMPARE(findingView->mapTo(&widget, QPoint(0, 0)).y(), findingsTop);
+    widget.resize(320, 600);
+    QTest::qWait(25);
+    QVERIFY(scroll->verticalScrollBar()->maximum() > 0);
+    auto *next = widget.findChild<QToolButton *>(QStringLiteral("nextObservationButton"));
+    QVERIFY(next);
+    QVERIFY(widget.rect().contains(QRect(next->mapTo(&widget, QPoint()), next->size())));
+
+    ProseDiagnostic diagnostic;
+    diagnostic.id = QStringLiteral("compact-layout-finding");
+    diagnostic.category = QStringLiteral("possible_adverbs");
+    diagnostic.ruleId = QStringLiteral("possible_adverbs.compact");
+    diagnostic.excerpt = QStringLiteral("quietly");
+    diagnostic.explanation = QStringLiteral("Decide whether the adverb adds needed precision.");
+    diagnostic.suggestion = QStringLiteral("Use a more specific verb if it better carries the meaning.");
+    widget.setEngineReady(true);
+    widget.setDiagnostics({diagnostic});
+    widget.selectDiagnostic(diagnostic);
+    widget.resize(320, 1050);
+    QTest::qWait(25);
+    auto *details = widget.findChild<QScrollArea *>("proseAwarenessDetailsScroll");
+    QVERIFY(details);
+    const int normalDetailHeight = details->height();
+    widget.resize(320, 1450);
+    QTest::qWait(25);
+    QVERIFY(details->height() >= normalDetailHeight + 300);
+    auto *deleteButton = widget.findChild<QToolButton *>("deleteActionButton");
+    auto *backButton = widget.findChild<QToolButton *>("backObservationButton");
+    QCOMPARE(deleteButton->toolButtonStyle(), Qt::ToolButtonIconOnly);
+    QVERIFY(backButton->x() - deleteButton->geometry().right() <= 8);
+    widget.resize(320, 1050);
+    QTest::qWait(25);
+    QVERIFY2(scroll->verticalScrollBar()->maximum() == 0,
+             qPrintable(QStringLiteral("The whole panel must fit on a standard desktop; vertical overflow is %1 px.")
+                 .arg(scroll->verticalScrollBar()->maximum())));
+    for (const QString &name : {QStringLiteral("deleteActionButton"),
+                                QStringLiteral("backObservationButton"),
+                                QStringLiteral("nextObservationButton"),
+                                QStringLiteral("undoActionButton"),
+                                QStringLiteral("findingActionsButton")}) {
+        auto *action = widget.findChild<QToolButton *>(name);
+        QVERIFY(action);
+        const QRect actionRect(action->mapTo(&widget, QPoint()), action->size());
+        QVERIFY2(widget.rect().contains(actionRect),
+                 qPrintable(name + QStringLiteral(" is outside the visible panel at %1,%2 %3x%4")
+                     .arg(actionRect.x()).arg(actionRect.y()).arg(actionRect.width()).arg(actionRect.height())));
+    }
 }
 
 void ProseAwarenessWidgetTest::programmaticLensUpdatesDoNotEmitUserChanges()
@@ -204,8 +313,11 @@ void ProseAwarenessWidgetTest::advancedControlsStayInMenus()
         }
     }
     QVERIFY(toolsButton);
-    QVERIFY(toolsButton->menu());
-    QVERIFY(toolsButton->menu()->actions().size() >= 8);
+    QVERIFY(!toolsButton->menu());
+    QCOMPARE(toolsButton->contextMenuPolicy(), Qt::CustomContextMenu);
+    auto *toolsMenu = toolsButton->findChild<QMenu *>();
+    QVERIFY(toolsMenu);
+    QVERIFY(toolsMenu->actions().size() >= 8);
 
     for (QPushButton *button : widget.findChildren<QPushButton *>()) {
         if (button->text() == QStringLiteral("Model settings") || button->text() == QStringLiteral("Grammar settings")
@@ -285,6 +397,9 @@ void ProseAwarenessWidgetTest::narrowLayoutKeepsControlsInsideViewport()
         QVERIFY(lensTree->columnWidth(0) > lensTree->viewport()->width() * 3 / 4);
 
         for (QWidget *control : controls) {
+            auto *scroll = widget.findChild<QScrollArea *>(QStringLiteral("proseAwarenessScrollArea"));
+            QVERIFY(scroll);
+            scroll->ensureWidgetVisible(control);
             const QRect geometry(control->mapTo(&widget, QPoint(0, 0)), control->size());
             QVERIFY2(widget.rect().contains(geometry),
                      qPrintable(QStringLiteral("%1 extends outside the %2 px sidebar: %3,%4 %5x%6")
@@ -339,7 +454,7 @@ void ProseAwarenessWidgetTest::selectedLensShowsOnlyOrderedOccurrences()
         if (!item->data(0, Qt::UserRole + 1).isValid()) {
             continue;
         }
-        QVERIFY(item->text(0).size() <= 15);
+        QVERIFY(item->text(0).size() <= 18);
         QVERIFY(item->toolTip(0).contains(QLatin1Char('\n')));
         if (item->text(0) == QStringLiteral("Filter/filler")) {
             filterLens = item;
@@ -898,7 +1013,7 @@ void ProseAwarenessWidgetTest::emptyLensUsesOneTruthfulStatus()
     QCOMPARE(findings->model()->rowCount(), 0);
     QLabel *hint = widget.findChild<QLabel *>(QStringLiteral("proseAwarenessFindingsHint"));
     QVERIFY(hint);
-    QCOMPARE(hint->text(), QStringLiteral("No observations in General rules."));
+    QCOMPARE(hint->text(), QStringLiteral("No observations in Profile phrases."));
     QFrame *actions = widget.findChild<QFrame *>(QStringLiteral("proseAwarenessFindingActions"));
     QVERIFY(actions);
     QVERIFY(actions->isHidden());

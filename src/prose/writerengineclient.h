@@ -14,6 +14,8 @@
 #include <QTimer>
 #include <QUuid>
 
+class QFile;
+
 class WriterEngineClientTest;
 
 namespace ghostwriter
@@ -61,6 +63,7 @@ private:
     void abortEngine(const QString &reason);
     void forceTerminateProcessTree();
     QString resolveEngineProgram(QStringList &arguments, QString &workingDirectory) const;
+    QFile &engineLog();
 
     QProcess m_process;
     QByteArray m_buffer;
@@ -77,6 +80,7 @@ private:
     quint64 m_processGeneration = 0;
     int m_negotiatedProtocolMinor = 0;
     QSet<QString> m_operations;
+    QFile *m_engineLog = nullptr;
 };
 }
 

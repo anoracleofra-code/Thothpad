@@ -254,3 +254,36 @@ def test_payload_must_have_nonempty_prompt():
     value["prompt"] = "   "
     with pytest.raises(ValueError, match="non-empty"):
         try_parse_story_payload(json.dumps(value))
+
+
+def test_agent_workspace_reaches_model_without_credentials_or_other_private_memory():
+    value = _payload()
+    value["co_writer"] = {"id": "mara", "name": "Mara", "instructions": "Soul text",
+                         "api_key": "excluded-key", "avatar": "excluded-image"}
+    value["scope"] = {"id": "scene-1", "title": "Night watch", "start": 0, "end": 100}
+    value["memories"] = [
+        {"body": "approved fact", "agent_id": "mara", "state": "approved", "kind": "private"},
+        {"body": "other secret", "agent_id": "bezu", "state": "approved", "kind": "private"},
+        {"body": "unreviewed idea", "agent_id": "mara", "state": "proposed"},
+        {"body": "ownerless private", "state": "approved", "kind": "private"},
+    ]
+    payload = try_parse_story_payload(json.dumps(value))
+    assert payload is not None
+    text = "\n".join(m["content"] for m in build_story_messages(payload, []))
+    assert "Soul text" in text and "Night watch" in text and "approved fact" in text
+    for excluded in ("excluded-key", "excluded-image", "other secret", "unreviewed idea", "ownerless private"):
+        assert excluded not in text
+    assert "Soul text" not in build_story_messages(payload, [])[0]["content"]
+
+
+def test_memory_proposals_have_no_approval_or_scope_authority_and_can_be_disabled():
+    payload = _validated()
+    response = json.dumps({"message": "An idea.", "memory_proposals": [
+        {"title": "Idea", "body": "Unconfirmed.", "state": "approved", "scope_id": "other",
+         "agent_id": "other", "command": "bad", "kind": "invalid"},
+        {"body": True},
+    ]})
+    proposals = validate_story_response(response, payload)["memory_proposals"]
+    assert proposals == [{"title": "Idea", "body": "Unconfirmed.", "kind": "preference"}]
+    payload["co_writer"] = {"memory_policy": "off"}
+    assert validate_story_response(response, payload)["memory_proposals"] == []

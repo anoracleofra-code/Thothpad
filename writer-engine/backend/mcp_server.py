@@ -12,11 +12,12 @@ from backend.manuscript import (
     read_project_timeline,
 )
 from backend.models import RunRequest
-from backend.pipeline import compare_texts, run_pipeline
+from backend.pipeline import REWRITE_MODES, compare_texts, run_pipeline
 from backend.profiles import list_profiles
 from backend.storage import load_run
 from backend.validation import reject_json_constant as _reject_json_constant
 from backend.validation import strict_bool_arg as _strict_bool
+from backend.validation import validate_passes as _validate_passes
 from backend.voice_profile import build_voice_profile
 
 TOOLS = [
@@ -39,7 +40,10 @@ def tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
         overrides = args.get("overrides") if isinstance(args.get("overrides"), dict) else None
         return run_pipeline(RunRequest(text=args["text"], profile=args.get("profile", config.DEFAULT_PROFILE), mode="diagnose", persist=_strict_bool(args, "persist"), overrides=overrides))
     if name == "prose_rewrite":
-        return run_pipeline(RunRequest(text=args["text"], profile=args.get("profile", config.DEFAULT_PROFILE), mode=args.get("mode", "rewrite"), passes=int(args.get("passes", 1)), persist=_strict_bool(args, "persist")))
+        mode = str(args.get("mode", "rewrite"))
+        if mode not in REWRITE_MODES:
+            raise ValueError("unsupported rewrite mode")
+        return run_pipeline(RunRequest(text=args["text"], profile=args.get("profile", config.DEFAULT_PROFILE), mode=mode, passes=_validate_passes(args.get("passes", 1)), persist=_strict_bool(args, "persist")))
     if name == "prose_deslop":
         return run_pipeline(RunRequest(text=args["text"], profile=args.get("profile", config.DEFAULT_PROFILE), mode="deslop", aggressiveness=args.get("aggressiveness", "medium"), persist=_strict_bool(args, "persist")))
     if name == "prose_compare":

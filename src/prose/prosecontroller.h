@@ -89,6 +89,11 @@ struct ReportOverlaySuppressionState {
 };
 
 struct AgentProseSnapshotContract {
+    static bool regionalAnalysisCanReplacePresentation(const QString &analysisId, const QHash<QString, int> &completeCounts)
+    {
+        return analysisId.isEmpty() && completeCounts.isEmpty();
+    }
+
     static bool snapshotAvailable(const QString &analysisId)
     {
         return !analysisId.isEmpty();
@@ -121,6 +126,17 @@ public:
     void reviewDocument();
     void reviewSelection();
     void reviewFolder();
+
+    // Engine/credential accessors for co-installed subsystems (Story
+    // Intelligence) so they do not findChild-fish for private members.
+    WriterEngineClient *engineClient() const
+    {
+        return m_engine;
+    }
+    CredentialStore *credentialStore() const
+    {
+        return m_credentials;
+    }
 
     /**
      * Story Intelligence uses this local-only review path instead of the
@@ -247,6 +263,7 @@ private:
     QJsonObject automaticGrammarSettings() const;
     void acceptDiagnostics(const QList<ProseDiagnostic> &diagnostics, const RequestContext &context);
     void applyHighlights(bool updateWidget = true);
+    bool categoryVisible(const QString &category) const;
     void queryFindings(const QString &category, const QString &cursor = QString());
     void queryOverlaySpans(const QString &cursor = QString());
     void restartOverlayHydration();
@@ -341,6 +358,7 @@ private:
     PendingRevision m_pendingRevision;
     PendingGrammarReview m_pendingGrammarReview;
     QJsonObject m_activeProfile;
+    QStringList m_profileNames;
     QJsonObject m_baseLenses;
     QJsonObject m_lastReport;
     QHash<QString, int> m_snapshotCategoryCounts;
@@ -353,6 +371,8 @@ private:
     bool m_overlayRequestInFlight = false;
     bool m_overlayHasMore = false;
     int m_overlayHydrationGeneration = 0;
+    // Authoritative source formats last committed to the renderer. Never
+    // replace this with an incomplete incoming snapshot on a refresh restart.
     QHash<int, QList<QTextLayout::FormatRange>> m_overlayBaselineFormats;
     QVector<int> m_pendingOverlayUpdates;
     bool m_overlayDiffPending = false;

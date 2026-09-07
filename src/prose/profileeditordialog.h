@@ -16,6 +16,7 @@ class QPlainTextEdit;
 
 namespace ghostwriter
 {
+class LensListsWidget;
 class ProfileEditorDialog : public QDialog
 {
     Q_OBJECT
@@ -24,6 +25,7 @@ public:
     explicit ProfileEditorDialog(const QJsonObject &profile, QWidget *parent = nullptr);
 
     QJsonObject profile() const;
+    void selectLens(const QString &lens);
 
 public slots:
     void accept() override;
@@ -35,6 +37,7 @@ private:
     static QJsonObject objectValue(const QPlainTextEdit *editor);
 
     QJsonObject m_original;
+    LensListsWidget *m_lensLists;
     QLineEdit *m_name;
     QLineEdit *m_registerTarget;
     QPlainTextEdit *m_hardBans;

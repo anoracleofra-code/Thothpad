@@ -87,11 +87,20 @@ public:
 
     /**
      * Override this method to transform the given text into HTML for
-     * use in the Live HTML Preview.  By default, this method will set the
-     * html parameter to have HTML-formatted error text indicating that HTML
-     * is not supported by the export processor.
+     * use in the Live HTML Preview.  Pass in true for
+     * smartTypographyEnabled to render with smart typography enabled.
+     * The setting is passed per call rather than read from the
+     * exporter's state so that callers on worker threads do not race
+     * with GUI-thread updates of that state.  Pass in true for
+     * safeMode to render untrusted content defensively (e.g., escape
+     * raw HTML); the live preview must always do this since it renders
+     * whatever document is open, while deliberate exports of the
+     * user's own document keep the default (false) so that their raw
+     * HTML is preserved in the output.  By default, this method
+     * will set the html parameter to have HTML-formatted error text
+     * indicating that HTML is not supported by the export processor.
      */
-    virtual void exportToHtml(const QString &text, QString &html);
+    virtual void exportToHtml(const QString &text, QString &html, bool smartTypographyEnabled, bool safeMode = false);
 
     /**
      * Implement this method to export the given text to a file of the

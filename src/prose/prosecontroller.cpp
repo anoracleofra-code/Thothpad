@@ -149,7 +149,6 @@ ProseController::ProseController(MarkdownEditor *editor, ProseAwarenessWidget *w
         {QStringLiteral("body_cinematic"), QColor("#B66E7D")},
         {QStringLiteral("abstraction_agency"), QColor("#6096A4")},
         {QStringLiteral("metaphor_texture"), QColor("#739764")},
-        {QStringLiteral("grammar_mechanics"), QColor("#B8685F")},
         {QStringLiteral("repetition"), QColor("#A76D87")},
     };
     m_enabledCategories = {
@@ -162,7 +161,6 @@ ProseController::ProseController(MarkdownEditor *editor, ProseAwarenessWidget *w
         QStringLiteral("formulaic_patterns"),
         QStringLiteral("repetition_rhythm"),
         QStringLiteral("body_cinematic"),
-        QStringLiteral("grammar_mechanics"),
         QStringLiteral("repetition"),
     };
     m_editor->setAccessibleName(tr("Document editor"));
@@ -442,7 +440,6 @@ void ProseController::documentChanged(int position, int removed, int added)
         payload.insert(QStringLiteral("analysis_id"), m_analysisId);
         m_engine->send(QStringLiteral("dispose_analysis"), payload);
         m_analysisId.clear();
-        m_snapshotCategoryCounts.clear();
         resetSnapshotLoading();
     }
     if (!m_pendingRevision.sourceText.isEmpty()) {
@@ -455,12 +452,12 @@ void ProseController::documentChanged(int position, int removed, int added)
         clearObservations();
         return;
     }
-    if (hadSnapshot) {
-        m_diagnostics.clear();
-        m_widget->setDiagnostics({});
-        m_widget->setCategoryCounts({});
-    } else {
-        m_diagnostics = adjustedDiagnosticsAfterEdit(m_diagnostics, position, removed, added);
+    m_diagnostics = adjustedDiagnosticsAfterEdit(m_diagnostics, position, removed, added);
+    if (!m_snapshotCategoryCounts.isEmpty()) {
+        // Preserve the last document-wide presentation, not its invalidated
+        // analysis identity. Tools must still wait for a current snapshot.
+        refreshSelectedFindings();
+        m_widget->setEngineMessage(tr("Updating document analysis..."));
     }
     m_liveTimer.start();
     m_idleTimer.start();
@@ -918,7 +915,8 @@ void ProseController::requestAnalysis(bool fullDocument, bool confirmAdverbs, bo
     }
     const QJsonObject overrides = analysisOverrides(currentFolderProfileOverrides());
     const QString selectedProfile = m_widget->profile().isEmpty() ? QStringLiteral("creative-default") : m_widget->profile();
-    const QJsonObject resolvedGrammar = grammar.isEmpty() ? automaticGrammarSettings() : grammar;
+    // Grammar is opt-in through an explicit review, never part of lens scans.
+    const QJsonObject resolvedGrammar = grammar.isEmpty() ? QJsonObject{{QStringLiteral("enabled"), false}} : grammar;
 #ifdef THOTHPAD_INSTRUMENTATION
     ProseInstrumentation::instance()->recordGuiThreadWork(guiWorkTimer.elapsed());
 #endif
@@ -1109,6 +1107,7 @@ void ProseController::handleResponse(const QString &requestId, const QJsonObject
                 profiles.append(name);
             }
         }
+        m_profileNames = profiles;
         const QString selectedProfile = QSettings().value(QStringLiteral("prose/profile"), QStringLiteral("creative-default")).toString();
         m_widget->setProfiles(profiles, profiles.contains(selectedProfile) ? selectedProfile : QStringLiteral("creative-default"));
         requestProfilePresentation();
@@ -1124,19 +1123,25 @@ void ProseController::handleResponse(const QString &requestId, const QJsonObject
             editableProfile.insert(QStringLiteral("lenses"), lensProfileSettings());
         }
         ProfileEditorDialog dialog(editableProfile, m_widget);
-        if (dialog.exec() == QDialog::Accepted) {
+        dialog.selectLens(m_widget->selectedCategory());
+        while (dialog.exec() == QDialog::Accepted) {
             const QJsonObject savedProfile = dialog.profile();
-            if (savedProfile.value(QStringLiteral("name")).toString() == m_widget->profile()) {
-                m_activeProfile = savedProfile;
+            const QString name = savedProfile.value(QStringLiteral("name")).toString();
+            if (name != profile.value(QStringLiteral("name")).toString() && m_profileNames.contains(name)
+                && MessageBoxHelper::question(m_widget, tr("Replace existing profile?"),
+                    tr("A profile named %1 already exists. Replace its lists and settings?").arg(name),
+                    QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) {
+                continue; // Keep the draft open so the user can choose a different name.
             }
-            applyLensProfileSettings(profile.value(QStringLiteral("name")).toString(), savedProfile.value(QStringLiteral("lenses")).toObject());
+            m_profileSaveTimer.stop();
             QJsonObject payload;
-            payload.insert(QStringLiteral("name"), profile.value(QStringLiteral("name")));
+            payload.insert(QStringLiteral("name"), name);
             payload.insert(QStringLiteral("profile"), savedProfile);
             const QString saveId = m_engine->send(QStringLiteral("save_profile"), payload);
             if (!saveId.isEmpty()) {
                 m_requests.insert(saveId, {QStringLiteral("save_profile"), m_revision, 0, 0});
             }
+            break;
         }
         return;
     }
@@ -1164,17 +1169,25 @@ void ProseController::handleResponse(const QString &requestId, const QJsonObject
         return;
     }
     if (context.operation == QStringLiteral("save_profile")) {
+        const QString saved = result.value(QStringLiteral("name")).toString();
+        if (!saved.isEmpty()) {
+            m_lensPresentationDirty = false;
+            m_activeProfile = result.value(QStringLiteral("profile")).toObject();
+            QSettings().setValue(QStringLiteral("prose/profile"), saved);
+            applyLensProfileSettings(saved, m_activeProfile.value(QStringLiteral("lenses")).toObject());
+        }
         const QString listId = m_engine->send(QStringLiteral("list_profiles"));
         if (!listId.isEmpty()) {
             m_requests.insert(listId, {QStringLiteral("list_profiles"), m_revision, 0, 0});
         }
-        requestAnalysis(true, true);
         return;
     }
     if (context.operation == QStringLiteral("save_profile_presentation")) {
         return;
     }
     if (context.operation == QStringLiteral("import_profile")) {
+        m_profileSaveTimer.stop();
+        m_lensPresentationDirty = false;
         const QString imported = result.value(QStringLiteral("name")).toString();
         if (!imported.isEmpty()) {
             QSettings().setValue(QStringLiteral("prose/profile"), imported);
@@ -1201,7 +1214,10 @@ void ProseController::handleResponse(const QString &requestId, const QJsonObject
     if (context.revision != m_revision || response.value(QStringLiteral("document_revision")).toInt(-1) != m_revision) {
         return;
     }
-    if (context.operation == QStringLiteral("analyze_region") && !m_analysisId.isEmpty()) {
+    if (context.operation == QStringLiteral("analyze_region")
+        && !AgentProseSnapshotContract::regionalAnalysisCanReplacePresentation(m_analysisId, m_snapshotCategoryCounts)) {
+        // A neighborhood scan cannot replace full-document counts/overlays,
+        // including while an edit is waiting for the next idle snapshot.
         return;
     }
     if (context.operation == QStringLiteral("analyze_region") && context.sequence > 0 && context.sequence < m_lastAppliedSequence) {
@@ -1345,6 +1361,7 @@ void ProseController::handleResponse(const QString &requestId, const QJsonObject
         }
         m_analysisId = result.value(QStringLiteral("analysis_id")).toString();
         m_snapshotDisplayLane = context.operation == QStringLiteral("analyze_idle") ? QStringLiteral("idle") : QStringLiteral("report");
+        m_displayLane = m_snapshotDisplayLane;
         m_snapshotCategoryCounts = categoryCounts(result.value(QStringLiteral("counts_by_analyzer")).toObject());
         m_diagnostics.clear();
         m_widget->setDiagnostics({});
@@ -1416,9 +1433,15 @@ void ProseController::queryOverlaySpans(const QString &cursor)
     }
     QSet<QString> analyzerNames;
     for (const QString &category : std::as_const(m_enabledCategories)) {
+        if (!categoryVisible(category)) {
+            continue;
+        }
         for (const QString &analyzer : analyzersForCategory(category)) {
             analyzerNames.insert(analyzer);
         }
+    }
+    if (analyzerNames.isEmpty()) {
+        return;
     }
     QJsonArray categories;
     for (const QString &analyzer : std::as_const(analyzerNames)) {
@@ -1464,11 +1487,23 @@ void ProseController::restartOverlayHydration()
     // incoming snapshot is accumulated fresh and diffed against what is on
     // screen block by block. Only blocks whose incoming span-set differs are
     // repainted.
-    m_overlayBaselineFormats = std::move(m_snapshotOverlayFormats);
+    // The baseline is the last PAINTED state, not the partially downloaded
+    // snapshot. Keep it across interrupted hydration and pending diff commits.
     m_snapshotOverlayFormats.clear();
     m_pendingOverlayUpdates.clear();
     m_overlayDiffPending = true;
     m_overlayViewportAnchor = overlayViewportAnchor();
+    QSet<QString> visible;
+    for (const QString &category : std::as_const(m_enabledCategories)) {
+        if (categoryVisible(category)) {
+            visible.insert(category);
+        }
+    }
+    const auto removals = overlayUpdatesForVisibleCategories(m_overlayBaselineFormats, visible);
+    if (!removals.isEmpty()) {
+        m_editor->textFormatOverlayController()->updateChannelFormats(ProseChannel, removals);
+        updateAppliedOverlayFormats(m_overlayBaselineFormats, removals);
+    }
     if (m_engine->supportsOperation(QStringLiteral("query_overlay_spans"))) {
         queryOverlaySpans();
     }
@@ -1523,7 +1558,6 @@ void ProseController::diffOverlaySnapshot()
         return qAbs(left - anchor) < qAbs(right - anchor);
     });
     m_pendingOverlayUpdates += updatedPositions;
-    m_overlayBaselineFormats.clear();
 #ifdef THOTHPAD_INSTRUMENTATION
     ProseInstrumentation::instance()->recordBlocksPreserved(preservedBlocks);
 #endif
@@ -1534,12 +1568,7 @@ void ProseController::adjustCachedOverlayFormats(int position, int removed, int 
         return;
     }
     m_snapshotOverlayFormats = adjustedOverlayFormatsAfterEdit(m_snapshotOverlayFormats, position, removed, added);
-    // While a delta hydration is running, the painted overlays live in the
-    // baseline until the diff swaps them in; keep it aligned with the edit.
-    const bool hydrating = !m_overlayBaselineFormats.isEmpty();
-    if (hydrating) {
-        m_overlayBaselineFormats = adjustedOverlayFormatsAfterEdit(m_overlayBaselineFormats, position, removed, added);
-    }
+    m_overlayBaselineFormats = adjustedOverlayFormatsAfterEdit(m_overlayBaselineFormats, position, removed, added);
     // Mirror the TextFormatOverlayController::onContentsChange eviction zone
     // and push surviving adjusted ranges back so painted highlights do not
     // blink out until the next snapshot refresh reapplies them.
@@ -1552,7 +1581,7 @@ void ProseController::adjustCachedOverlayFormats(int position, int removed, int 
             break;
         }
     }
-    const QHash<int, QList<QTextLayout::FormatRange>> &paintedState = hydrating ? m_overlayBaselineFormats : m_snapshotOverlayFormats;
+    const auto &paintedState = m_overlayBaselineFormats;
     QHash<int, QList<QTextLayout::FormatRange>> reapplied;
     for (const int blockPosition : std::as_const(evictedPositions)) {
         const auto survivors = paintedState.constFind(blockPosition);
@@ -1636,7 +1665,7 @@ void ProseController::processOverlayBatch()
             continue;
         }
         const QString category = lensCategory(categoryNames.at(categoryIndex).toString());
-        if (!m_enabledCategories.contains(category)) {
+        if (!categoryVisible(category)) {
             continue;
         }
         const QString ruleId = rule.value(QStringLiteral("rule_id")).toString();
@@ -1651,6 +1680,7 @@ void ProseController::processOverlayBatch()
                 QTextLayout::FormatRange formatRange;
                 formatRange.start = rangeStart - block.position();
                 formatRange.length = rangeEnd - rangeStart;
+                formatRange.format.setProperty(ProseOverlayCategoryProperty, category);
                 const QString decoration = m_decorations.value(category, QStringLiteral("background"));
                 if (decoration != QStringLiteral("underline")) {
                     QColor background = categoryColor(category);
@@ -1700,6 +1730,7 @@ void ProseController::processOverlayBatch()
         ProseInstrumentation::instance()->recordSpansApplied(appliedSpans);
 #endif
         m_editor->textFormatOverlayController()->updateChannelFormats(ProseChannel, changedBlocks);
+        updateAppliedOverlayFormats(m_overlayBaselineFormats, changedBlocks);
     }
     if (!m_currentOverlayPage.isEmpty() || !m_overlayPages.isEmpty()) {
         m_overlayApplyTimer.start(0);
@@ -1779,7 +1810,6 @@ void ProseController::resetSnapshotLoading()
     m_overlayCursor.clear();
     m_overlayRequestInFlight = false;
     m_overlayHasMore = false;
-    m_overlayBaselineFormats.clear();
     m_pendingOverlayUpdates.clear();
     m_overlayDiffPending = false;
 }
@@ -1851,6 +1881,7 @@ void ProseController::applyHighlights(bool updateWidget)
                     QTextLayout::FormatRange formatRange;
                     formatRange.start = rangeStart - block.position();
                     formatRange.length = rangeEnd - rangeStart;
+                    formatRange.format.setProperty(ProseOverlayCategoryProperty, diagnostic.category);
                     const QString decoration = m_decorations.value(diagnostic.category, QStringLiteral("background"));
                     if (decoration != QStringLiteral("underline")) {
                         QColor background = categoryColor(diagnostic.category);
@@ -1883,6 +1914,8 @@ void ProseController::applyHighlights(bool updateWidget)
         }
     }
     overlays->replaceChannelFormats(ProseChannel, blockFormats);
+    m_overlayBaselineFormats = blockFormats;
+    m_snapshotOverlayFormats = blockFormats;
     if (updateWidget) {
         m_widget->setDiagnostics(visibleDiagnostics);
         QHash<QString, int> counts;
@@ -1895,6 +1928,7 @@ void ProseController::applyHighlights(bool updateWidget)
 void ProseController::clearObservations()
 {
     m_diagnostics.clear();
+    m_snapshotCategoryCounts.clear();
     m_snapshotOverlayFormats.clear();
     m_overlayBaselineFormats.clear();
     m_pendingOverlayUpdates.clear();
@@ -2052,6 +2086,10 @@ void ProseController::importProfile()
     QJsonObject payload;
     payload.insert(QStringLiteral("name"), name);
     payload.insert(QStringLiteral("profile"), profile);
+    if (m_profileNames.contains(name)
+        && MessageBoxHelper::question(m_widget, tr("Replace existing profile?"),
+            tr("Importing will replace the saved profile %1. Continue?").arg(name),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) return;
     const QString requestId = m_engine->send(QStringLiteral("import_profile"), payload);
     if (!requestId.isEmpty()) {
         m_requests.insert(requestId,
@@ -2180,7 +2218,6 @@ void ProseController::loadLensSettings()
         {QStringLiteral("abstraction_agency"), QColor("#6096A4")},
         {QStringLiteral("metaphor_texture"), QColor("#739764")},
         {QStringLiteral("repetition"), QColor("#A76D87")},
-        {QStringLiteral("grammar_mechanics"), QColor("#B8685F")},
     };
     static const QSet<QString> liveDefaults = {
         QStringLiteral("general_rules"),
@@ -2192,7 +2229,6 @@ void ProseController::loadLensSettings()
         QStringLiteral("formulaic_patterns"),
         QStringLiteral("body_cinematic"),
         QStringLiteral("repetition"),
-        QStringLiteral("grammar_mechanics"),
     };
     static const QSet<QString> idleDefaults = {
         QStringLiteral("repetition_rhythm"),
@@ -2225,7 +2261,7 @@ void ProseController::loadLensSettings()
         QString decoration =
             settings
                 .value(prefix + category + QStringLiteral("/decoration"),
-                       category == QStringLiteral("grammar_mechanics") || inventoryLens ? QStringLiteral("underline") : QStringLiteral("background"))
+                       inventoryLens ? QStringLiteral("underline") : QStringLiteral("background"))
                 .toString();
         if (migrateInventoryDecoration && inventoryLens) {
             decoration = QStringLiteral("underline");
@@ -2491,13 +2527,19 @@ QJsonObject ProseController::providerSettings() const
 }
 QString ProseController::providerCredentialId(const QJsonObject &provider) const
 {
-    const QUrl url(provider.value(QStringLiteral("base_url")).toString());
-    const QString origin = QStringLiteral("%1://%2:%3")
-                               .arg(url.scheme().toLower(), url.host().toLower())
-                               .arg(url.port(url.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) == 0 ? 443 : 80));
-    const QString endpointId = QString::fromLatin1(QCryptographicHash::hash(origin.toUtf8(), QCryptographicHash::Sha256).toHex().left(16));
-    return QStringLiteral("provider/%1/%2/%3")
-        .arg(provider.value(QStringLiteral("provider")).toString(), endpointId, provider.value(QStringLiteral("model")).toString());
+    const QString kind = provider.value(QStringLiteral("provider")).toString();
+    if (kind == QStringLiteral("opencode_zen") || kind == QStringLiteral("opencode_go")) {
+        QSettings settings;
+        settings.beginGroup(QStringLiteral("prose/provider"));
+        const QString storedKind = settings.value(QStringLiteral("provider")).toString();
+        const QString storedId = settings.value(QStringLiteral("credential_id")).toString();
+        settings.endGroup();
+        if (storedKind == kind && !storedId.isEmpty())
+            return storedId;
+    }
+    return CredentialStore::providerCredentialId(provider.value(QStringLiteral("provider")).toString(),
+                                                 QUrl(provider.value(QStringLiteral("base_url")).toString().trimmed()),
+                                                 provider.value(QStringLiteral("model")).toString().trimmed());
 }
 void ProseController::requestRevision(const ProseDiagnostic &diagnostic)
 {
@@ -2563,7 +2605,8 @@ void ProseController::confirmPendingRevision(const QJsonObject &profile)
     }
     const QUrl url(endpoint);
     const QString host = url.host().toLower();
-    if (host == QStringLiteral("localhost") || host == QStringLiteral("127.0.0.1") || host == QStringLiteral("::1")) {
+    if (m_pendingRevision.provider.value(QStringLiteral("provider")) == QStringLiteral("codex")
+        || host == QStringLiteral("localhost") || host == QStringLiteral("127.0.0.1") || host == QStringLiteral("::1")) {
         const PendingRevision pending = m_pendingRevision;
         m_pendingRevision = {};
         sendRevision(pending, QString());
@@ -2629,6 +2672,7 @@ void ProseController::setMode(ProseAwarenessWidget::Mode mode)
         ProseInstrumentation::instance()->recordClearChannel(ProseChannel);
 #endif
         m_editor->textFormatOverlayController()->clearChannel(ProseChannel);
+        m_overlayBaselineFormats.clear();
     }
 }
 void ProseController::previewFinding(const ProseDiagnostic &diagnostic)
@@ -2748,6 +2792,7 @@ QJsonObject ProseController::folderProfileOverrides(const QDir &directory) const
         QStringLiteral("cliches"),
         QStringLiteral("cliche_categories"),
         QStringLiteral("lenses"),
+        QStringLiteral("lens_lists"),
         QStringLiteral("voice_stats"),
         QStringLiteral("voice_fingerprint"),
         QStringLiteral("calibration_profile"),
@@ -2797,12 +2842,16 @@ bool ProseController::categoryEnabled(const QString &category) const
 {
     return m_enabledCategories.contains(category);
 }
-bool ProseController::diagnosticVisible(const ProseDiagnostic &diagnostic) const
+bool ProseController::categoryVisible(const QString &category) const
 {
-    const QString mode = m_categoryModes.value(diagnostic.category, QStringLiteral("live"));
+    const QString mode = m_categoryModes.value(category, QStringLiteral("live"));
     const bool laneVisible = mode == QStringLiteral("live") || (mode == QStringLiteral("idle") && m_displayLane != QStringLiteral("live"))
         || (mode == QStringLiteral("report") && m_displayLane == QStringLiteral("report"));
-    return categoryEnabled(diagnostic.category) && laneVisible && !m_disabledRules.contains(diagnostic.ruleId) && !m_dismissedIds.contains(diagnostic.id)
+    return categoryEnabled(category) && laneVisible;
+}
+bool ProseController::diagnosticVisible(const ProseDiagnostic &diagnostic) const
+{
+    return categoryVisible(diagnostic.category) && !m_disabledRules.contains(diagnostic.ruleId) && !m_dismissedIds.contains(diagnostic.id)
         && !isPersistentlyIgnored(diagnostic) && !isAllowedPhrase(diagnostic);
 }
 }
