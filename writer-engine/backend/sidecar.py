@@ -49,6 +49,29 @@ from backend.profiles import (
     load_profile,
     save_profile,
 )
+from backend.story.model_routing import route_story_model
+from backend.story.service import (
+    add_story_branch_overlay,
+    apply_story_branch_merge,
+    apply_story_writer_mutation,
+    call_story_tool,
+    create_story_branch,
+    observe_story_writer_model,
+    prepare_story_branch_merge,
+    rebase_story_branch,
+)
+from backend.story.service import (
+    project_sources as story_project_sources,
+)
+from backend.story.service import (
+    project_understanding as story_project_understanding,
+)
+from backend.story.service import (
+    set_manuscript_order as story_set_manuscript_order,
+)
+from backend.story.service import (
+    set_source_override as story_set_source_override,
+)
 from backend.text_utils import (
     AnalysisCancelled,
     cancellable_analysis,
@@ -491,6 +514,221 @@ def dispatch(
     if operation == "provider_access":
         from backend.provider_access import provider_access
         return provider_access(params)
+    if operation == "story_project_understanding":
+        root = params.get("project_root")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        return story_project_understanding(root)
+    if operation == "story_project_sources":
+        root = params.get("project_root")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        role = params.get("role")
+        if role is not None and not isinstance(role, str):
+            raise ValueError("role must be a string")
+        return story_project_sources(
+            root,
+            offset=params.get("offset", 0),
+            limit=params.get("limit", 100),
+            role=role,
+        )
+    if operation == "story_set_source_override":
+        root = params.get("project_root")
+        path = params.get("path")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(path, str) or not path.strip():
+            raise ValueError("path must be a non-empty string")
+        roles = params.get("roles")
+        if roles is not None and (
+            not isinstance(roles, list) or any(not isinstance(role, str) for role in roles)
+        ):
+            raise ValueError("roles must be an array of strings")
+        authority = params.get("authority")
+        if authority is not None and not isinstance(authority, str):
+            raise ValueError("authority must be a string")
+        pattern = params.get("pattern")
+        if pattern is not None and not isinstance(pattern, str):
+            raise ValueError("pattern must be a string")
+        return story_set_source_override(
+            root,
+            path,
+            roles=roles,
+            authority=authority,
+            pattern=pattern if isinstance(pattern, str) and pattern.strip() else None,
+        )
+    if operation == "story_set_manuscript_order":
+        root = params.get("project_root")
+        paths = params.get("paths")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(paths, list) or not all(isinstance(path, str) for path in paths):
+            raise ValueError("paths must be an array of strings")
+        return story_set_manuscript_order(root, paths)
+    if operation == "story_branch_create":
+        root = params.get("project_root")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        parent_branch = params.get("parent_branch", "mainline")
+        fork_story_unit = params.get("fork_story_unit")
+        assumptions = params.get("assumptions", [])
+        branch_id = params.get("branch_id")
+        if not isinstance(parent_branch, str) or not parent_branch.strip():
+            raise ValueError("parent_branch must be a non-empty string")
+        if fork_story_unit is not None and not isinstance(fork_story_unit, str):
+            raise ValueError("fork_story_unit must be a string")
+        if branch_id is not None and not isinstance(branch_id, str):
+            raise ValueError("branch_id must be a string")
+        if not isinstance(assumptions, list) or not all(isinstance(item, str) for item in assumptions):
+            raise ValueError("assumptions must be an array of strings")
+        return create_story_branch(
+            root,
+            parent_branch=parent_branch,
+            fork_story_unit=fork_story_unit,
+            assumptions=assumptions,
+            branch_id=branch_id,
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
+    if operation == "story_branch_add_overlay":
+        root = params.get("project_root")
+        branch_id = params.get("branch_id")
+        record_kind = params.get("record_kind")
+        record_id = params.get("record_id")
+        change = params.get("operation")
+        payload = params.get("payload", {})
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(branch_id, str) or not branch_id.strip():
+            raise ValueError("branch_id must be a non-empty string")
+        if not isinstance(record_kind, str) or not record_kind.strip():
+            raise ValueError("record_kind must be a non-empty string")
+        if not isinstance(record_id, str) or not record_id.strip():
+            raise ValueError("record_id must be a non-empty string")
+        if not isinstance(change, str) or not change.strip():
+            raise ValueError("operation must be a non-empty string")
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+        return add_story_branch_overlay(
+            root,
+            branch_id=branch_id,
+            record_kind=record_kind,
+            record_id=record_id,
+            operation=change,
+            payload=payload,
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
+    if operation == "story_branch_rebase":
+        root = params.get("project_root")
+        branch_id = params.get("branch_id")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(branch_id, str) or not branch_id.strip():
+            raise ValueError("branch_id must be a non-empty string")
+        return rebase_story_branch(
+            root,
+            branch_id,
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
+    if operation == "story_branch_prepare_merge":
+        root = params.get("project_root")
+        branch_id = params.get("branch_id")
+        overlay_ids = params.get("overlay_ids")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(branch_id, str) or not branch_id.strip():
+            raise ValueError("branch_id must be a non-empty string")
+        if not isinstance(overlay_ids, list) or not all(isinstance(item, str) for item in overlay_ids):
+            raise ValueError("overlay_ids must be an array of strings")
+        return prepare_story_branch_merge(root, branch_id, overlay_ids)
+    if operation == "story_branch_apply_merge":
+        root = params.get("project_root")
+        branch_id = params.get("branch_id")
+        overlay_ids = params.get("overlay_ids")
+        expected = params.get("expected_parent_revision")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(branch_id, str) or not branch_id.strip():
+            raise ValueError("branch_id must be a non-empty string")
+        if not isinstance(overlay_ids, list) or not all(isinstance(item, str) for item in overlay_ids):
+            raise ValueError("overlay_ids must be an array of strings")
+        if not isinstance(expected, str) or not expected.strip():
+            raise ValueError("expected_parent_revision must be a non-empty string")
+        return apply_story_branch_merge(
+            root,
+            branch_id,
+            overlay_ids,
+            expected_parent_revision=expected,
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
+    if operation == "story_writer_mutation":
+        root = params.get("project_root")
+        mutation = params.get("mutation")
+        payload = params.get("payload", {})
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(mutation, str) or not mutation.strip():
+            raise ValueError("mutation must be a non-empty string")
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+        return apply_story_writer_mutation(
+            root,
+            mutation,
+            payload,
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
+    if operation == "story_writer_model_observe":
+        root = params.get("project_root")
+        events = params.get("events", [])
+        scope_kind = params.get("scope_kind", "project")
+        scope_id = params.get("scope_id", "")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(events, list) or not all(isinstance(item, dict) for item in events):
+            raise ValueError("events must be an array of objects")
+        if not isinstance(scope_kind, str) or not isinstance(scope_id, str):
+            raise ValueError("writer-model scope must use strings")
+        return observe_story_writer_model(
+            root,
+            events,
+            scope_kind=scope_kind,
+            scope_id=scope_id,
+        )
+    if operation == "story_model_route":
+        prompt = params.get("prompt", "")
+        candidates = params.get("candidates", [])
+        fallback = params.get("fallback")
+        task = params.get("task")
+        quality = params.get("quality", "balanced")
+        privacy = params.get("privacy", "prefer_local")
+        if not isinstance(prompt, str):
+            raise ValueError("prompt must be a string")
+        if not isinstance(candidates, list) or not all(isinstance(item, dict) for item in candidates):
+            raise ValueError("candidates must be an array of objects")
+        if fallback is not None and not isinstance(fallback, dict):
+            raise ValueError("fallback must be an object")
+        if task is not None and not isinstance(task, str):
+            raise ValueError("task must be a string")
+        if not isinstance(quality, str) or not isinstance(privacy, str):
+            raise ValueError("quality and privacy must be strings")
+        return route_story_model(
+            prompt=prompt,
+            candidates=candidates,
+            fallback=fallback,
+            task=task,
+            quality=quality,
+            privacy=privacy,
+        )
+    if operation == "story_tool":
+        root = params.get("project_root")
+        tool_id = params.get("tool_id")
+        arguments = params.get("arguments", {})
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(tool_id, str) or not tool_id.strip():
+            raise ValueError("tool_id must be a non-empty string")
+        if not isinstance(arguments, dict):
+            raise ValueError("arguments must be an object")
+        return call_story_tool(root, tool_id, arguments)
     if operation == "list_profiles":
         return {"profiles": list_profiles()}
     if operation == "get_profile":

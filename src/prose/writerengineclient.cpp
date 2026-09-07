@@ -1,4 +1,4 @@
-/*
+﻿/*
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -28,7 +28,7 @@ namespace ghostwriter
 namespace
 {
 constexpr int ProtocolMajor = 1;
-constexpr int ProtocolMinor = 2;
+constexpr int ProtocolMinor = 6;
 constexpr qsizetype MaxRequestFrameBytes = 64 * 1024 * 1024;
 constexpr qsizetype MaxResponseFrameBytes = 64 * 1024 * 1024;
 constexpr qsizetype MaxHeaderBytes = 16 * 1024;
@@ -143,16 +143,11 @@ WriterEngineClient::WriterEngineClient(QObject *parent)
         }
     });
     m_deadlineTimer.start();
-    connect(&m_process, &QProcess::readyReadStandardOutput,
-        this, &WriterEngineClient::readStandardOutput);
-    connect(&m_process, &QProcess::readyReadStandardError,
-        this, &WriterEngineClient::readStandardError);
-    connect(&m_process, &QProcess::started,
-        this, &WriterEngineClient::processStarted);
-    connect(&m_process, &QProcess::finished,
-        this, &WriterEngineClient::processFinished);
-    connect(&m_process, &QProcess::errorOccurred,
-        this, &WriterEngineClient::processError);
+    connect(&m_process, &QProcess::readyReadStandardOutput, this, &WriterEngineClient::readStandardOutput);
+    connect(&m_process, &QProcess::readyReadStandardError, this, &WriterEngineClient::readStandardError);
+    connect(&m_process, &QProcess::started, this, &WriterEngineClient::processStarted);
+    connect(&m_process, &QProcess::finished, this, &WriterEngineClient::processFinished);
+    connect(&m_process, &QProcess::errorOccurred, this, &WriterEngineClient::processError);
 }
 
 WriterEngineClient::~WriterEngineClient()
@@ -197,9 +192,7 @@ void WriterEngineClient::setEnginePath(const QString &path)
     m_enginePath = path;
 }
 
-QString WriterEngineClient::resolveEngineProgram(
-    QStringList &arguments,
-    QString &workingDirectory) const
+QString WriterEngineClient::resolveEngineProgram(QStringList &arguments, QString &workingDirectory) const
 {
     if (!m_enginePath.isEmpty()) {
         return m_enginePath;
@@ -212,11 +205,9 @@ QString WriterEngineClient::resolveEngineProgram(
 
     const QString appDirectory = QCoreApplication::applicationDirPath();
 #ifdef Q_OS_WIN
-    const QString bundled = QDir(appDirectory).filePath(
-        QStringLiteral("writer-engine/writer-engine.exe"));
+    const QString bundled = QDir(appDirectory).filePath(QStringLiteral("writer-engine/writer-engine.exe"));
 #else
-    const QString bundled = QDir(appDirectory).filePath(
-        QStringLiteral("writer-engine/writer-engine"));
+    const QString bundled = QDir(appDirectory).filePath(QStringLiteral("writer-engine/writer-engine"));
 #endif
     if (QFileInfo::exists(bundled)) {
         return bundled;
@@ -228,8 +219,7 @@ QString WriterEngineClient::resolveEngineProgram(
         QDir(appDirectory).absoluteFilePath(QStringLiteral("../../../writer-engine")),
     };
     for (const QString &developmentEngine : developmentCandidates) {
-        if (!QFileInfo::exists(QDir(developmentEngine).filePath(
-                QStringLiteral("backend/sidecar.py")))) {
+        if (!QFileInfo::exists(QDir(developmentEngine).filePath(QStringLiteral("backend/sidecar.py")))) {
             continue;
         }
         workingDirectory = developmentEngine;
@@ -330,13 +320,11 @@ QString WriterEngineClient::send(const QString &operation, const QJsonObject &pa
         timeoutSeconds = 300;
     } else if (operation == QStringLiteral("rewrite")) {
         const QJsonObject provider = payload.value(QStringLiteral("provider")).toObject();
-        const int providerTimeout = qBound(5,
-            provider.value(QStringLiteral("timeout")).toInt(180), 600);
+        const int providerTimeout = qBound(5, provider.value(QStringLiteral("timeout")).toInt(180), 600);
         const int passes = qBound(1, payload.value(QStringLiteral("passes")).toInt(1), 5);
         timeoutSeconds = providerTimeout * passes + 30;
     }
-    m_deadlines.insert(requestId,
-        QDateTime::currentMSecsSinceEpoch() + static_cast<qint64>(timeoutSeconds) * 1000);
+    m_deadlines.insert(requestId, QDateTime::currentMSecsSinceEpoch() + static_cast<qint64>(timeoutSeconds) * 1000);
     return requestId;
 }
 
@@ -406,7 +394,7 @@ void WriterEngineClient::parseMessages()
                 const QByteArray preview = m_buffer.mid(m_bufferOffset, 96);
                 if ((m_buffer.size() - m_bufferOffset) < MaxResponseFrameBytes) {
                     // Mid-body desync and the next frame header has not
-                    // arrived yet: keep the bytes and wait — the parser
+                    // arrived yet: keep the bytes and wait â€” the parser
                     // resyncs when the next "Content-Length:" lands.
                     QFile &engineLog = this->engineLog();
                     if (engineLog.isOpen()) {
@@ -494,8 +482,7 @@ void WriterEngineClient::parseMessages()
         }
 
         bool ok = false;
-        const qlonglong contentLength = header.mid(sizeof("Content-Length:") - 1)
-                                            .trimmed().toLongLong(&ok);
+        const qlonglong contentLength = header.mid(sizeof("Content-Length:") - 1).trimmed().toLongLong(&ok);
         if (!ok || contentLength < 0 || contentLength > MaxResponseFrameBytes) {
             m_buffer.clear();
             m_bufferOffset = 0;
@@ -669,13 +656,11 @@ void WriterEngineClient::abortEngine(const QString &reason)
     const QStringList requestIds = m_pendingOperations.keys();
     for (const QString &requestId : requestIds) {
         const QString operation = m_pendingOperations.value(requestId);
-        if (operation != QStringLiteral("cancel")
-            && operation != QStringLiteral("shutdown")) {
+        if (operation != QStringLiteral("cancel") && operation != QStringLiteral("shutdown")) {
             QJsonObject cancelRequest;
             cancelRequest.insert(QStringLiteral("protocol_major"), ProtocolMajor);
             cancelRequest.insert(QStringLiteral("protocol_minor"), ProtocolMinor);
-            cancelRequest.insert(QStringLiteral("request_id"),
-                QUuid::createUuid().toString(QUuid::WithoutBraces));
+            cancelRequest.insert(QStringLiteral("request_id"), QUuid::createUuid().toString(QUuid::WithoutBraces));
             cancelRequest.insert(QStringLiteral("operation"), QStringLiteral("cancel"));
             cancelRequest.insert(QStringLiteral("target_request_id"), requestId);
             cancelRequest.insert(QStringLiteral("persist"), false);
@@ -685,8 +670,7 @@ void WriterEngineClient::abortEngine(const QString &reason)
     QJsonObject shutdownRequest;
     shutdownRequest.insert(QStringLiteral("protocol_major"), ProtocolMajor);
     shutdownRequest.insert(QStringLiteral("protocol_minor"), ProtocolMinor);
-    shutdownRequest.insert(QStringLiteral("request_id"),
-        QUuid::createUuid().toString(QUuid::WithoutBraces));
+    shutdownRequest.insert(QStringLiteral("request_id"), QUuid::createUuid().toString(QUuid::WithoutBraces));
     shutdownRequest.insert(QStringLiteral("operation"), QStringLiteral("shutdown"));
     shutdownRequest.insert(QStringLiteral("persist"), false);
     writeMessage(shutdownRequest);

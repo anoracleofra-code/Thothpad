@@ -50,7 +50,7 @@ ThothPad launches the engine without a listening port:
 python -m backend.sidecar
 ```
 
-Messages are UTF-8 JSON framed as `Content-Length: N\r\n\r\n<body>`. Protocol 1.2 supports
+Messages are UTF-8 JSON framed as `Content-Length: N\r\n\r\n<body>`. Protocol 1.3 supports
 initialize, capabilities, profile management, region/document/manuscript analysis, rewrite,
 compare, cancellation, and shutdown. Cancellation is cooperative: the supervisor flags the
 request and the persistent report worker aborts at its next checkpoint without restarting,
@@ -104,6 +104,45 @@ Tools:
 - `prose_calibrate_corpus`
 - `prose_quality_timeline`
 - `prose_lens_baselines`
+- `story_project_understanding`
+- `story_resolve_entity`
+- `story_find_evidence`
+- `story_query_claims`
+- `story_get_context`
+- `story_get_character_knowledge`
+- `story_get_character_beliefs`
+- `story_get_reader_state`
+- `story_query_timeline`
+- `story_get_world_state`
+- `story_where_is_entity`
+- `story_who_has_object`
+- `story_list_threads`
+- `story_list_reader_questions`
+- `story_list_dramatic_promises`
+- `story_trace_causality`
+- `story_get_decision_history`
+- `story_get_opposition_state`
+- `story_get_scene_contract`
+- `story_get_author_decisions`
+- `story_audit_scene`
+- `story_audit_chapter`
+- `story_list_branches`
+- `story_compare_branch`
+- `story_get_retcon_impact`
+- `story_cold_reader_at`
+- `story_audit_reveal_fairness`
+- `story_get_reader_expectations`
+- `story_get_dramatic_irony`
+- `story_get_writer_model`
+- `story_explain_writer_preference`
+- `story_run_editorial_council`
+- `story_list_lenses`
+- `story_get_lens`
+- `story_run_lens`
+- `story_get_reader_experience`
+- `story_get_reader_experience_timeline`
+
+Story MCP tools are read-only and operate only on project roots the writer has already initialized in ThothPad. Naming an arbitrary machine directory over MCP does not create or authorize a Story Project.
 
 ## Analysis Policy
 

@@ -4,13 +4,12 @@
 
 #include "storyintelligencewidget.h"
 
-#include <QDir>
 #include <QApplication>
 #include <QClipboard>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
-#include <QSignalBlocker>
+#include <QDir>
 #include <QEvent>
 #include <QFrame>
 #include <QGridLayout>
@@ -25,11 +24,12 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QShortcut>
+#include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QSplitter>
-#include <QTabWidget>
-#include <QTabBar>
 #include <QStringList>
+#include <QTabBar>
+#include <QTabWidget>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -172,6 +172,11 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
     providerRow->addStretch(1);
     m_modelSettingsButton->setObjectName(QStringLiteral("storyIntelligenceApiKeyButton"));
     m_modelSettingsButton->setFlat(true);
+    m_routingSettingsButton = new QPushButton(tr("Routing…"), configuration);
+    m_routingSettingsButton->setObjectName(QStringLiteral("storyIntelligenceApiKeyButton"));
+    m_routingSettingsButton->setFlat(true);
+    m_routingSettingsButton->setToolTip(tr("Configure task-aware Story Intelligence model routing, quality, and privacy"));
+    providerRow->addWidget(m_routingSettingsButton);
     providerRow->addWidget(m_modelSettingsButton);
     configurationLayout->addLayout(providerRow);
 
@@ -289,6 +294,116 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
     charactersOuter->setContentsMargins(16, 12, 16, 12);
     charactersOuter->addStretch(1);
 
+    auto *projectSection = new QWidget(body);
+    projectSection->setObjectName(QStringLiteral("storyIntelligenceContextPage"));
+    auto *projectOuter = new QVBoxLayout(projectSection);
+    projectOuter->setContentsMargins(16, 12, 16, 12);
+    projectOuter->setSpacing(8);
+    projectOuter->addWidget(makeSectionTitle(tr("Project Understanding")));
+    auto *projectUnderstandingCard = makeCard(QStringLiteral("storyIntelligenceSceneCard"));
+    auto *projectUnderstandingLayout = new QVBoxLayout(projectUnderstandingCard);
+    projectUnderstandingLayout->setContentsMargins(12, 12, 12, 12);
+    projectUnderstandingLayout->setSpacing(7);
+    m_projectUnderstandingLabel = plainLabel(tr("Choose a project folder to let ThothPad compile its story sources."),
+                                             projectUnderstandingCard,
+                                             QStringLiteral("storyProjectUnderstandingSummary"));
+    m_projectUnderstandingLabel->setWordWrap(true);
+    m_projectRolesLabel = plainLabel(QString(), projectUnderstandingCard, QStringLiteral("storyIntelligenceMutedLabel"));
+    m_projectRolesLabel->setWordWrap(true);
+    m_projectRolesLabel->setVisible(false);
+    m_projectReviewButton = new QPushButton(tr("Review understanding"), projectUnderstandingCard);
+    m_projectReviewButton->setObjectName(QStringLiteral("storyIntelligencePrimaryButton"));
+    m_projectReviewButton->setEnabled(false);
+    m_manuscriptOrderButton = new QPushButton(tr("Manuscript order…"), projectUnderstandingCard);
+    m_manuscriptOrderButton->setObjectName(QStringLiteral("storyIntelligencePrimaryButton"));
+    m_manuscriptOrderButton->setEnabled(false);
+    m_storyLabButton = new QPushButton(tr("Open Story Lab…"), projectUnderstandingCard);
+    m_storyLabButton->setObjectName(QStringLiteral("storyIntelligencePrimaryButton"));
+    m_storyLabButton->setEnabled(false);
+    projectUnderstandingLayout->addWidget(m_projectUnderstandingLabel);
+    projectUnderstandingLayout->addWidget(m_projectRolesLabel);
+    auto *projectActions = new QHBoxLayout;
+    projectActions->addWidget(m_projectReviewButton);
+    projectActions->addWidget(m_manuscriptOrderButton);
+    projectActions->addWidget(m_storyLabButton);
+    projectActions->addStretch(1);
+    projectUnderstandingLayout->addLayout(projectActions);
+    projectOuter->addWidget(projectUnderstandingCard);
+
+    auto *branchCard = makeCard(QStringLiteral("storyIntelligenceSceneCard"));
+    auto *branchLayout = new QVBoxLayout(branchCard);
+    branchLayout->setContentsMargins(12, 12, 12, 12);
+    branchLayout->setSpacing(7);
+    branchLayout->addWidget(plainLabel(tr("Story branch"), branchCard, QStringLiteral("storyIntelligenceCardHeading")));
+    m_branchCombo = new QComboBox(branchCard);
+    m_branchCombo->setObjectName(QStringLiteral("storyBranchCombo"));
+    m_branchCombo->addItem(tr("Mainline"), QStringLiteral("mainline"));
+    m_branchCombo->setToolTip(tr("Choose the story continuity Story Intelligence may reason inside"));
+    branchLayout->addWidget(m_branchCombo);
+    auto *branchActions = new QHBoxLayout;
+    m_branchCreateButton = new QPushButton(tr("New alternate…"), branchCard);
+    m_branchCreateButton->setObjectName(QStringLiteral("storyIntelligencePrimaryButton"));
+    m_branchCreateButton->setEnabled(false);
+    m_branchDetailsButton = new QPushButton(tr("Details…"), branchCard);
+    m_branchDetailsButton->setObjectName(QStringLiteral("storyIntelligencePrimaryButton"));
+    m_branchDetailsButton->setEnabled(false);
+    branchActions->addWidget(m_branchCreateButton);
+    branchActions->addWidget(m_branchDetailsButton);
+    branchActions->addStretch(1);
+    branchLayout->addLayout(branchActions);
+    auto *branchHelp = plainLabel(tr("Alternate branches are isolated overlays. Branch-only facts never become Mainline unless you explicitly merge them."),
+                                  branchCard,
+                                  QStringLiteral("storyIntelligenceMutedLabel"));
+    branchHelp->setWordWrap(true);
+    branchLayout->addWidget(branchHelp);
+    projectOuter->addWidget(branchCard);
+
+    auto *projectHelp = plainLabel(tr("Folder names are hints, never authority. Corrections here become writer-owned project rules."),
+                                   projectSection,
+                                   QStringLiteral("storyIntelligenceMutedLabel"));
+    projectHelp->setWordWrap(true);
+    projectOuter->addWidget(projectHelp);
+    projectOuter->addStretch(1);
+
+    auto *contextSection = new QWidget(body);
+    contextSection->setObjectName(QStringLiteral("storyIntelligenceContextPage"));
+    auto *contextOuter = new QVBoxLayout(contextSection);
+    contextOuter->setContentsMargins(16, 12, 16, 12);
+    contextOuter->setSpacing(8);
+    contextOuter->addWidget(makeSectionTitle(tr("What the AI sees")));
+    auto *modeCard = makeCard(QStringLiteral("storyIntelligenceSceneCard"));
+    auto *modeLayout = new QVBoxLayout(modeCard);
+    modeLayout->setContentsMargins(12, 12, 12, 12);
+    modeLayout->setSpacing(6);
+    modeLayout->addWidget(plainLabel(tr("Epistemic perspective"), modeCard, QStringLiteral("storyIntelligenceCardHeading")));
+    m_epistemicCombo = new QComboBox(modeCard);
+    m_epistemicCombo->setObjectName(QStringLiteral("storyEpistemicModeCombo"));
+    m_epistemicCombo->addItem(tr("Author omniscient"), QStringLiteral("author_omniscient"));
+    m_epistemicCombo->addItem(tr("Current POV"), QStringLiteral("current_pov"));
+    m_epistemicCombo->addItem(tr("Active character"), QStringLiteral("character"));
+    m_epistemicCombo->addItem(tr("Reader at this point"), QStringLiteral("reader"));
+    m_epistemicCombo->addItem(tr("Cold reader"), QStringLiteral("cold_reader"));
+    m_epistemicCombo->addItem(tr("Manuscript only"), QStringLiteral("manuscript_only"));
+    m_epistemicCombo->addItem(tr("World/reference only"), QStringLiteral("world_reference_only"));
+    modeLayout->addWidget(m_epistemicCombo);
+    contextOuter->addWidget(modeCard);
+    auto *contextCard = makeCard(QStringLiteral("storyIntelligenceSceneCard"));
+    auto *contextCardLayout = new QVBoxLayout(contextCard);
+    contextCardLayout->setContentsMargins(12, 12, 12, 12);
+    contextCardLayout->setSpacing(6);
+    m_contextInspectorLabel = plainLabel(tr("Send a Story Intelligence message to inspect the compiled context used for that response."),
+                                         contextCard,
+                                         QStringLiteral("storyContextInspectorSummary"));
+    m_contextInspectorLabel->setWordWrap(true);
+    m_contextSourcesLabel = plainLabel(QString(), contextCard, QStringLiteral("storyIntelligenceMutedLabel"));
+    m_contextSourcesLabel->setWordWrap(true);
+    m_contextSourcesLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_contextSourcesLabel->setVisible(false);
+    contextCardLayout->addWidget(m_contextInspectorLabel);
+    contextCardLayout->addWidget(m_contextSourcesLabel);
+    contextOuter->addWidget(contextCard);
+    contextOuter->addStretch(1);
+
     auto *annotationsOuter = new QVBoxLayout(m_annotationsSection);
     annotationsOuter->setContentsMargins(0, 0, 0, 0);
     annotationsOuter->setSpacing(7);
@@ -315,6 +430,8 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
     };
     addContextTab(sceneSection, tr("Scene Context"));
     addContextTab(charactersSection, tr("Characters"));
+    addContextTab(projectSection, tr("Project"));
+    addContextTab(contextSection, tr("AI Context"));
     auto *chatPanel = new QWidget(this);
     chatPanel->setObjectName(QStringLiteral("storyIntelligenceChatPanel"));
     chatPanel->setAttribute(Qt::WA_StyledBackground, true);
@@ -459,7 +576,19 @@ StoryIntelligenceWidget::StoryIntelligenceWidget(QWidget *parent)
 
     connect(m_collapseButton, &QToolButton::clicked, this, &StoryIntelligenceWidget::collapseRequested);
     connect(m_modelSettingsButton, &QPushButton::clicked, this, &StoryIntelligenceWidget::modelSettingsRequested);
+    connect(m_routingSettingsButton, &QPushButton::clicked, this, &StoryIntelligenceWidget::routingSettingsRequested);
     connect(openProject, &QPushButton::clicked, this, &StoryIntelligenceWidget::projectFolderRequested);
+    connect(m_projectReviewButton, &QPushButton::clicked, this, &StoryIntelligenceWidget::projectUnderstandingReviewRequested);
+    connect(m_manuscriptOrderButton, &QPushButton::clicked, this, &StoryIntelligenceWidget::manuscriptOrderRequested);
+    connect(m_storyLabButton, &QPushButton::clicked, this, &StoryIntelligenceWidget::storyLabRequested);
+    connect(m_branchCombo, &QComboBox::currentIndexChanged, this, [this](int index) {
+        emit branchChanged(m_branchCombo->itemData(index).toString());
+    });
+    connect(m_branchCreateButton, &QPushButton::clicked, this, &StoryIntelligenceWidget::createBranchRequested);
+    connect(m_branchDetailsButton, &QPushButton::clicked, this, &StoryIntelligenceWidget::branchDetailsRequested);
+    connect(m_epistemicCombo, &QComboBox::currentIndexChanged, this, [this](int index) {
+        emit epistemicModeChanged(m_epistemicCombo->itemData(index).toString());
+    });
     connect(editScene, &QToolButton::clicked, this, &StoryIntelligenceWidget::editSceneRequested);
     connect(addCharacter, &QToolButton::clicked, this, &StoryIntelligenceWidget::addCharacterRequested);
     connect(editCharacters, &QToolButton::clicked, this, &StoryIntelligenceWidget::editCharactersRequested);
@@ -475,8 +604,7 @@ bool StoryIntelligenceWidget::eventFilter(QObject *watched, QEvent *event)
 {
     if (watched == m_chatInput && event->type() == QEvent::KeyPress) {
         const auto *key = static_cast<QKeyEvent *>(event);
-        if ((key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter)
-            && !(key->modifiers() & (Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier))) {
+        if ((key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter) && !(key->modifiers() & (Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier))) {
             submitChat();
             return true;
         }
@@ -524,11 +652,190 @@ void StoryIntelligenceWidget::setProjectFolder(const QString &path)
     if (path.isEmpty()) {
         m_projectPathLabel->setText(tr("No project selected"));
         m_projectPathLabel->setToolTip(QString());
+        if (m_projectUnderstandingLabel) {
+            m_projectUnderstandingLabel->setText(tr("Choose a project folder to let ThothPad compile its story sources."));
+        }
+        if (m_projectRolesLabel) {
+            m_projectRolesLabel->clear();
+            m_projectRolesLabel->setVisible(false);
+        }
+        if (m_projectReviewButton) {
+            m_projectReviewButton->setEnabled(false);
+        }
+        if (m_manuscriptOrderButton) {
+            m_manuscriptOrderButton->setEnabled(false);
+        }
+        if (m_branchCreateButton) {
+            m_branchCreateButton->setEnabled(false);
+        }
+        if (m_branchDetailsButton) {
+            m_branchDetailsButton->setEnabled(false);
+        }
+        setBranches({}, QStringLiteral("mainline"));
         return;
     }
     const QString normalized = QDir::toNativeSeparators(path);
     m_projectPathLabel->setText(normalized.length() > 34 ? QStringLiteral("…") + normalized.right(33) : normalized);
     m_projectPathLabel->setToolTip(normalized);
+}
+
+void StoryIntelligenceWidget::setProjectUnderstanding(const QJsonObject &understanding)
+{
+    if (!m_projectUnderstandingLabel || !m_projectRolesLabel || !m_projectReviewButton || !m_manuscriptOrderButton || !m_storyLabButton) {
+        return;
+    }
+    if (understanding.isEmpty()) {
+        m_projectUnderstandingLabel->setText(tr("Project understanding is not available yet."));
+        m_projectRolesLabel->clear();
+        m_projectRolesLabel->setVisible(false);
+        m_projectReviewButton->setEnabled(false);
+        m_manuscriptOrderButton->setEnabled(false);
+        m_storyLabButton->setEnabled(false);
+        return;
+    }
+
+    const int sources = understanding.value(QStringLiteral("source_count")).toInt();
+    const int entities = understanding.value(QStringLiteral("entity_count")).toInt();
+    const int conflicts = understanding.value(QStringLiteral("open_conflict_count")).toInt();
+    m_projectUnderstandingLabel->setText(tr("%1 sources · %2 entities · %3 open conflicts").arg(sources).arg(entities).arg(conflicts));
+
+    const QJsonObject roles = understanding.value(QStringLiteral("role_counts")).toObject();
+    QStringList lines;
+    for (auto iterator = roles.constBegin(); iterator != roles.constEnd(); ++iterator) {
+        QString label = iterator.key();
+        label.replace(QChar('_'), QChar(' '));
+        if (!label.isEmpty()) {
+            label[0] = label.at(0).toUpper();
+        }
+        lines << tr("%1: %2").arg(label).arg(iterator.value().toInt());
+    }
+    m_projectRolesLabel->setText(lines.join(QStringLiteral(" · ")));
+    m_projectRolesLabel->setVisible(!lines.isEmpty());
+    m_projectReviewButton->setEnabled(sources > 0);
+    m_manuscriptOrderButton->setEnabled(roles.value(QStringLiteral("manuscript")).toInt() > 0);
+    m_storyLabButton->setEnabled(sources > 0);
+    if (m_branchCreateButton) {
+        m_branchCreateButton->setEnabled(sources > 0);
+    }
+}
+
+void StoryIntelligenceWidget::setBranches(const QJsonArray &branches, const QString &activeBranch)
+{
+    if (!m_branchCombo || !m_branchDetailsButton) {
+        return;
+    }
+    const QSignalBlocker blocker(m_branchCombo);
+    m_branchCombo->clear();
+    m_branchCombo->addItem(tr("Mainline"), QStringLiteral("mainline"));
+    for (const QJsonValue &value : branches) {
+        const QJsonObject branch = value.toObject();
+        const QString id = branch.value(QStringLiteral("branch_id")).toString();
+        if (id.isEmpty() || id == QStringLiteral("mainline")) {
+            continue;
+        }
+        const QString status = branch.value(QStringLiteral("status")).toString();
+        const bool stale = branch.value(QStringLiteral("freshness")).toObject().value(QStringLiteral("stale")).toBool();
+        if (status == QStringLiteral("DISCARDED")) {
+            continue;
+        }
+        QString label = id;
+        if (stale || status == QStringLiteral("STALE_NEEDS_REBASE")) {
+            label += tr(" · stale");
+        } else if (status == QStringLiteral("MERGED")) {
+            label += tr(" · merged");
+        } else if (status == QStringLiteral("DISCARDED")) {
+            label += tr(" · discarded");
+        }
+        m_branchCombo->addItem(label, id);
+    }
+    const QString selected = activeBranch.isEmpty() ? QStringLiteral("mainline") : activeBranch;
+    int index = m_branchCombo->findData(selected);
+    if (index < 0) {
+        index = 0;
+    }
+    m_branchCombo->setCurrentIndex(index);
+    m_branchDetailsButton->setEnabled(m_branchCombo->currentData().toString() != QStringLiteral("mainline"));
+}
+
+void StoryIntelligenceWidget::setContextInspector(const QJsonObject &inspector)
+{
+    if (!m_contextInspectorLabel || !m_contextSourcesLabel) {
+        return;
+    }
+    if (inspector.isEmpty()) {
+        m_contextInspectorLabel->setText(tr("Send a Story Intelligence message to inspect the compiled context used for that response."));
+        m_contextSourcesLabel->clear();
+        m_contextSourcesLabel->setVisible(false);
+        return;
+    }
+
+    QString mode = inspector.value(QStringLiteral("mode")).toString();
+    mode.replace(QChar('_'), QChar(' '));
+    const QJsonObject budget = inspector.value(QStringLiteral("budget")).toObject();
+    const int used = budget.value(QStringLiteral("used_chars")).toInt();
+    const int maximum = budget.value(QStringLiteral("maximum_chars")).toInt();
+    const QJsonArray included = inspector.value(QStringLiteral("included")).toArray();
+    const QJsonArray excluded = inspector.value(QStringLiteral("excluded")).toArray();
+    QString summary = tr("%1 · %2 / %3 characters · %4 sources included · %5 excluded")
+                          .arg(mode.isEmpty() ? tr("Context") : mode)
+                          .arg(used)
+                          .arg(maximum)
+                          .arg(included.size())
+                          .arg(excluded.size());
+    const QString activeBranch =
+        inspector.value(QStringLiteral("active_branch")).toString(inspector.value(QStringLiteral("branch_id")).toString(QStringLiteral("mainline")));
+    const int branchOverlays = inspector.value(QStringLiteral("branch_overlay_count")).toInt();
+    if (activeBranch != QStringLiteral("mainline")) {
+        summary += tr("\nBranch: %1 · %2 branch-only change(s)").arg(activeBranch).arg(branchOverlays);
+    }
+    const QJsonObject boundary = inspector.value(QStringLiteral("epistemic_boundary")).toObject();
+    if (boundary.value(QStringLiteral("position_bounded")).toBool()) {
+        const QString order = boundary.value(QStringLiteral("cross_file_order")).toString();
+        if (order == QStringLiteral("writer_owned")) {
+            summary += tr("\nBounded at active story position · writer-owned manuscript order");
+        } else if (order == QStringLiteral("unresolved")) {
+            summary += tr("\nBounded at active story position · other manuscript files withheld until Manuscript Order is set");
+        } else {
+            summary += tr("\nBounded at active story position");
+        }
+    }
+    if (inspector.value(QStringLiteral("current_document_masked")).toBool()) {
+        summary += tr(" · later current-document text withheld");
+    }
+    m_contextInspectorLabel->setText(summary);
+
+    QStringList sourceLines;
+    for (const QJsonValue &value : included) {
+        const QJsonObject record = value.toObject();
+        const QString path = record.value(QStringLiteral("path")).toString();
+        if (path.isEmpty()) {
+            continue;
+        }
+        const QString authority = record.value(QStringLiteral("authority")).toString();
+        const QString reason = record.value(QStringLiteral("reason")).toString();
+        sourceLines << QStringLiteral("✓ %1\n  %2 · %3").arg(path, authority, reason);
+        if (sourceLines.size() >= 12) {
+            break;
+        }
+    }
+    if (included.size() > sourceLines.size()) {
+        sourceLines << tr("…and %1 more included sources").arg(included.size() - sourceLines.size());
+    }
+    int excludedShown = 0;
+    for (const QJsonValue &value : excluded) {
+        const QJsonObject record = value.toObject();
+        const QString path = record.value(QStringLiteral("path")).toString();
+        const QString reason = record.value(QStringLiteral("reason")).toString();
+        if (path.isEmpty() || reason.isEmpty()) {
+            continue;
+        }
+        sourceLines << QStringLiteral("× %1\n  %2").arg(path, reason);
+        if (++excludedShown >= 4) {
+            break;
+        }
+    }
+    m_contextSourcesLabel->setText(sourceLines.join(QChar('\n')));
+    m_contextSourcesLabel->setVisible(!sourceLines.isEmpty());
 }
 
 void StoryIntelligenceWidget::setSceneContext(const QJsonObject &context)
@@ -572,14 +879,16 @@ QString StoryIntelligenceWidget::characterId(const QJsonObject &character) const
 
 void StoryIntelligenceWidget::setCharacters(const QJsonArray &characters)
 {
-    if (m_characters == characters && m_charactersLayout->count() > 0) return;
+    if (m_characters == characters && m_charactersLayout->count() > 0)
+        return;
     m_characters = characters;
     rebuildCharacters();
 }
 
 void StoryIntelligenceWidget::setActiveCharacter(const QString &characterId)
 {
-    if (m_activeCharacterId == characterId) return;
+    if (m_activeCharacterId == characterId)
+        return;
     m_activeCharacterId = characterId;
     rebuildCharacters();
 }
@@ -599,7 +908,9 @@ void StoryIntelligenceWidget::rebuildCharacters()
     }
 
     if (m_characters.isEmpty()) {
-        auto *empty = plainLabel(tr("No characters yet. Add one to ground voice and knowledge checks."), m_charactersContainer, QStringLiteral("storyIntelligenceMutedLabel"));
+        auto *empty = plainLabel(tr("No characters yet. Add one to ground voice and knowledge checks."),
+                                 m_charactersContainer,
+                                 QStringLiteral("storyIntelligenceMutedLabel"));
         empty->setWordWrap(true);
         m_charactersLayout->addWidget(empty);
         return;
@@ -653,7 +964,8 @@ void StoryIntelligenceWidget::rebuildCharacters()
 
 void StoryIntelligenceWidget::setAnnotations(const QJsonArray &annotations)
 {
-    if (m_annotations == annotations && m_annotationsLayout->count() > 0) return;
+    if (m_annotations == annotations && m_annotationsLayout->count() > 0)
+        return;
     m_annotations = annotations;
     rebuildAnnotations();
 }
@@ -743,7 +1055,11 @@ void StoryIntelligenceWidget::scrollChatToBottom()
     });
 }
 
-void StoryIntelligenceWidget::appendChatMessage(const QString &role, const QString &text, const QString &speaker, const QJsonArray &references, const QString &messageId)
+void StoryIntelligenceWidget::appendChatMessage(const QString &role,
+                                                const QString &text,
+                                                const QString &speaker,
+                                                const QJsonArray &references,
+                                                const QString &messageId)
 {
     if (text.trimmed().isEmpty()) {
         return;
@@ -755,7 +1071,11 @@ void StoryIntelligenceWidget::appendChatMessage(const QString &role, const QStri
     auto *layout = new QVBoxLayout(bubble);
     layout->setContentsMargins(12, 10, 12, 10);
     layout->setSpacing(8);
-    auto *speakerLabel = plainLabel(role == QStringLiteral("error") ? tr("Connection / model error") : user ? tr("You") : (speaker.isEmpty() ? tr("AI") : tr("%1 · simulation").arg(speaker)), bubble, QStringLiteral("storyIntelligenceBubbleSpeaker"));
+    auto *speakerLabel = plainLabel(role == QStringLiteral("error") ? tr("Connection / model error")
+                                        : user                      ? tr("You")
+                                                                    : (speaker.isEmpty() ? tr("AI") : tr("%1 · simulation").arg(speaker)),
+                                    bubble,
+                                    QStringLiteral("storyIntelligenceBubbleSpeaker"));
     auto *message = plainLabel(text, bubble, QStringLiteral("storyIntelligenceBubbleText"));
     message->setWordWrap(true);
     message->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
@@ -787,8 +1107,14 @@ void StoryIntelligenceWidget::appendChatMessage(const QString &role, const QStri
     };
     addAction(QStringLiteral("copy"), tr("Copy message"), QIcon(QStringLiteral(":/icons/shell-copy.svg")), false);
     if (!messageId.isEmpty()) {
-        addAction(QStringLiteral("edit"), user ? tr("Edit and resend in a new conversation branch") : tr("Edit response in a new conversation branch"), QIcon(QStringLiteral(":/icons/shell-edit.svg")), true);
-        addAction(QStringLiteral("retry"), user ? tr("Resend from here in a new conversation branch") : tr("Regenerate response in a new conversation branch"), QIcon(QStringLiteral(":/icons/shell-retry.svg")), true);
+        addAction(QStringLiteral("edit"),
+                  user ? tr("Edit and resend in a new conversation branch") : tr("Edit response in a new conversation branch"),
+                  QIcon(QStringLiteral(":/icons/shell-edit.svg")),
+                  true);
+        addAction(QStringLiteral("retry"),
+                  user ? tr("Resend from here in a new conversation branch") : tr("Regenerate response in a new conversation branch"),
+                  QIcon(QStringLiteral(":/icons/shell-retry.svg")),
+                  true);
     } else if (role == QStringLiteral("error")) {
         addAction(QStringLiteral("retry"), tr("Retry the last prompt"), QIcon(QStringLiteral(":/icons/shell-retry.svg")), true);
     }
@@ -798,13 +1124,15 @@ void StoryIntelligenceWidget::appendChatMessage(const QString &role, const QStri
     for (const auto &value : references) {
         const auto reference = value.toObject();
         const QString quote = reference.value(QStringLiteral("quote")).toString();
-        if (quote.isEmpty()) continue;
+        if (quote.isEmpty())
+            continue;
         auto *link = new QPushButton(tr("↗ %1").arg(quote.simplified().left(55)), bubble);
         link->setObjectName(QStringLiteral("storyQuoteLink"));
         link->setToolTip(quote);
         connect(link, &QPushButton::clicked, this, [this, reference, quote]() {
             emit annotationNavigationRequested(reference.value(QStringLiteral("start_utf16")).toInt(-1),
-                reference.value(QStringLiteral("end_utf16")).toInt(-1), quote);
+                                               reference.value(QStringLiteral("end_utf16")).toInt(-1),
+                                               quote);
         });
         layout->addWidget(link);
     }
@@ -816,7 +1144,9 @@ void StoryIntelligenceWidget::appendChatMessage(const QString &role, const QStri
         remember->setProperty("chatMutation", true);
         remember->setEnabled(!m_busy);
         remember->setToolTip(tr("Review the text and choose whether to approve it as a scoped memory"));
-        connect(remember, &QToolButton::clicked, this, [this, text]() { emit rememberRequested(text); });
+        connect(remember, &QToolButton::clicked, this, [this, text]() {
+            emit rememberRequested(text);
+        });
         actions->addWidget(remember);
     }
     m_chatLayout->insertWidget(qMax(0, m_chatLayout->count() - 1), bubble);
@@ -825,16 +1155,13 @@ void StoryIntelligenceWidget::appendChatMessage(const QString &role, const QStri
 
 void StoryIntelligenceWidget::showChatError(const QString &message)
 {
-    appendChatMessage(QStringLiteral("error"), message.trimmed().isEmpty()
-        ? tr("Story Intelligence request failed. Check Model Settings and try again.") : message.left(2000));
+    appendChatMessage(QStringLiteral("error"),
+                      message.trimmed().isEmpty() ? tr("Story Intelligence request failed. Check Model Settings and try again.") : message.left(2000));
     setBusy(false);
     setStatusMessage(tr("Response failed · check Model Settings"));
 }
 
-void StoryIntelligenceWidget::appendActivityCard(
-    const QString &title,
-    const QString &detail,
-    const QString &operationId)
+void StoryIntelligenceWidget::appendActivityCard(const QString &title, const QString &detail, const QString &operationId)
 {
     if (title.trimmed().isEmpty() && detail.trimmed().isEmpty()) {
         return;
@@ -904,7 +1231,11 @@ void StoryIntelligenceWidget::setBusy(bool busy)
     m_statusLabel->setVisible(busy);
 }
 
-void StoryIntelligenceWidget::setWorkspaceContext(const QString &mode, const QString &title, const QString &agentName, const QString &sessionTitle, const QString &scopeKind)
+void StoryIntelligenceWidget::setWorkspaceContext(const QString &mode,
+                                                  const QString &title,
+                                                  const QString &agentName,
+                                                  const QString &sessionTitle,
+                                                  const QString &scopeKind)
 {
     const QSignalBlocker blocker(m_scopeCombo);
     QString displayTitle = title;
@@ -913,7 +1244,8 @@ void StoryIntelligenceWidget::setWorkspaceContext(const QString &mode, const QSt
     m_scopeCombo->setItemText(1, tr("Current chapter"));
     const auto kind = scopeKind.isEmpty() ? mode : scopeKind;
     QString heading = kind == QStringLiteral("scene") ? tr("Scene: %1").arg(displayTitle)
-        : kind == QStringLiteral("chapter") ? tr("Chapter: %1").arg(displayTitle) : tr("Whole manuscript");
+        : kind == QStringLiteral("chapter")           ? tr("Chapter: %1").arg(displayTitle)
+                                                      : tr("Whole manuscript");
     if (mode != QStringLiteral("manuscript") && kind == QStringLiteral("manuscript"))
         heading = tr("No chapter heading here. Using manuscript context.");
     m_contextLabel->setText(heading);
@@ -925,8 +1257,7 @@ void StoryIntelligenceWidget::setWorkspaceContext(const QString &mode, const QSt
 
 void StoryIntelligenceWidget::setSessions(const QJsonArray &sessions, const QString &activeSessionId)
 {
-    if (m_sessions == sessions && m_sessionCombo->count() > 0
-        && m_sessionCombo->currentData().toString() == activeSessionId)
+    if (m_sessions == sessions && m_sessionCombo->count() > 0 && m_sessionCombo->currentData().toString() == activeSessionId)
         return;
     m_sessions = sessions;
     const QSignalBlocker blocker(m_sessionCombo);
@@ -945,13 +1276,15 @@ void StoryIntelligenceWidget::setSessions(const QJsonArray &sessions, const QStr
 
 void StoryIntelligenceWidget::appendProposal(const QString &kind, const QJsonObject &proposal)
 {
-    auto *button = new QPushButton(kind == QStringLiteral("memory") ? tr("Review proposed memory…")
-        : kind == QStringLiteral("scene") ? tr("Review proposed scene context…") : tr("Review proposed character…"), m_chatContainer);
+    auto *button = new QPushButton(kind == QStringLiteral("memory")      ? tr("Review proposed memory…")
+                                       : kind == QStringLiteral("scene") ? tr("Review proposed scene context…")
+                                                                         : tr("Review proposed character…"),
+                                   m_chatContainer);
     button->setObjectName(QStringLiteral("storyProposalButton"));
     connect(button, &QPushButton::clicked, this, [this, kind, proposal]() {
         emit proposalReviewRequested(kind, proposal);
     });
-    m_chatLayout->insertWidget(qMax(0, m_chatLayout->count()-1), button);
+    m_chatLayout->insertWidget(qMax(0, m_chatLayout->count() - 1), button);
 }
 
 void StoryIntelligenceWidget::setStatusMessage(const QString &message)
