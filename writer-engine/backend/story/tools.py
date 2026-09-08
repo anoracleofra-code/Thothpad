@@ -7,21 +7,27 @@ from backend.story.compatibility import compatibility_status
 from backend.story.context import ContextCompiler, EpistemicMode
 from backend.story.explain import StoryExplainer
 from backend.story.indexing import indexing_status
+from backend.story.interface_fingerprint import interface_fingerprint
 from backend.story.migrations import migration_status
 from backend.story.observability import observability_report
 from backend.story.offline import offline_readiness
 from backend.story.operational_acceptance import OperationalAcceptance
 from backend.story.path_resilience import path_resilience_report
 from backend.story.performance import StoryPerformanceProbe
+from backend.story.performance_budget import performance_budget_report
 from backend.story.privacy import EgressInspector
 from backend.story.proposals import list_story_proposals
 from backend.story.query import StoryQueryEngine
 from backend.story.recovery import recovery_status
 from backend.story.release_candidate import ReleaseCandidateAcceptance
+from backend.story.release_readiness import ReleaseReadiness
 from backend.story.release_validation import ReleaseProjectValidator
+from backend.story.relocation import relocation_readiness
 from backend.story.resource_budget import story_resource_policy
 from backend.story.retrieval import retrieval_capabilities
 from backend.story.security import ProjectSecurityAudit
+from backend.story.soak import run_soak_replay
+from backend.story.support_bundle import build_support_bundle
 from backend.story.validation_matrix import project_model_fingerprint
 
 
@@ -340,6 +346,42 @@ def story_tool_manifest() -> list[dict[str, Any]]:
             "id": "run_release_candidate_acceptance",
             "risk": "R0",
             "description": "Run the engine-level ten-step release-candidate acceptance harness for phases 36-45.",
+        },
+        {
+            "id": "run_soak_replay",
+            "risk": "R0",
+            "description": (
+                "Replay deterministic Story Engine reads across fresh store handles and verify stable state."
+            ),
+        },
+        {
+            "id": "get_support_bundle",
+            "risk": "R0",
+            "description": "Return a content-free support bundle with engineering diagnostics and no source paths.",
+        },
+        {
+            "id": "get_interface_fingerprint",
+            "risk": "R0",
+            "description": "Fingerprint the sidecar protocol, persisted schemas, and read-only Story Tool surface.",
+        },
+        {
+            "id": "get_performance_budget",
+            "risk": "R0",
+            "description": "Evaluate indexed-query and reference-machine lookup budgets without scoring story quality.",
+        },
+        {
+            "id": "get_relocation_readiness",
+            "risk": "R0",
+            "description": (
+                "Verify portable Story metadata does not serialize manuscript bytes or machine-specific paths."
+            ),
+        },
+        {
+            "id": "get_release_readiness",
+            "risk": "R0",
+            "description": (
+                "Report internal release-hardening gates and explicitly list missing external platform evidence."
+            ),
         },
         {
             "id": "get_story_context",
@@ -754,6 +796,37 @@ def invoke_story_tool(
         return {"compatibility": compatibility_status(query.project)}
     if tool_id == "run_release_candidate_acceptance":
         return {"release_candidate": ReleaseCandidateAcceptance(query.project, query.store).run()}
+    if tool_id == "run_soak_replay":
+        cycles = _bounded_limit(arguments.get("cycles", 3), default=3, maximum=20)
+        return {"soak": run_soak_replay(query.project.root, cycles=cycles)}
+    if tool_id == "get_support_bundle":
+        return {"support_bundle": build_support_bundle(query.project, query.store)}
+    if tool_id == "get_interface_fingerprint":
+        return {"interface": interface_fingerprint(story_tool_manifest())}
+    if tool_id == "get_performance_budget":
+        budget = arguments.get("source_lookup_100_budget_ms", 1000.0)
+        try:
+            parsed_budget = float(budget)
+        except (TypeError, ValueError):
+            parsed_budget = 1000.0
+        parsed_budget = max(1.0, min(parsed_budget, 60_000.0))
+        return {
+            "performance_budget": performance_budget_report(
+                query.project,
+                query.store,
+                lookup_100_budget_ms=parsed_budget,
+            )
+        }
+    if tool_id == "get_relocation_readiness":
+        return {"relocation": relocation_readiness(query.project, query.store)}
+    if tool_id == "get_release_readiness":
+        return {
+            "release_readiness": ReleaseReadiness(
+                query.project,
+                query.store,
+                story_tool_manifest(),
+            ).report()
+        }
     if tool_id == "get_story_context":
         compiled = context.compile(
             prompt=str(arguments.get("prompt", "")),

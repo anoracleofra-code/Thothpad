@@ -292,7 +292,9 @@ The engine is covered by `ruff`, `mypy`, and pytest gates, while the desktop app
 - [writer-engine/README.md](writer-engine/README.md) — engine CLI, MCP, sidecar, grammar, and provider details
 - [docs/story-engine/ARCHITECTURE.md](docs/story-engine/ARCHITECTURE.md) — Universal Story Engine authority, provenance, epistemic, branch, and lifecycle invariants
 - [docs/story-engine/PHASES_16_25.md](docs/story-engine/PHASES_16_25.md) — Story Explorer through executable Phase-25 acceptance certification
-- [docs/story-engine/PHASES_26_35.md](docs/story-engine/PHASES_26_35.md) ? migration, resumable indexing, trust/privacy, proposal review, explainability, and protocol-1.8 certification
+- [docs/story-engine/PHASES_26_35.md](docs/story-engine/PHASES_26_35.md) - migration, resumable indexing, trust/privacy, proposal review, explainability, and protocol-1.8 certification
+- [docs/story-engine/PHASES_36_45.md](docs/story-engine/PHASES_36_45.md) - recovery, observability, accessibility, offline/path hardening, compatibility, and protocol-1.9 certification
+- [docs/story-engine/PHASES_46_55.md](docs/story-engine/PHASES_46_55.md) - soak/supportability, compatibility fingerprints, network evidence, performance/relocation, package/update contracts, and explicit release readiness
 
 ---
 

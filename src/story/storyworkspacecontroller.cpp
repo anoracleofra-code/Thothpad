@@ -1098,6 +1098,26 @@ QJsonArray StoryIntelligenceController::storyEngineReadManifest() const
     result.append(QJsonObject{{"id", "run_release_candidate_acceptance"},
                               {"risk", "R0"},
                               {"description", "Run the read-only engine release-candidate harness for Story Engine phases 36–45."}});
+    result.append(QJsonObject{{"id", "run_soak_replay"},
+                              {"risk", "R0"},
+                              {"description", "Replay deterministic Story Engine reads and verify semantic/durable-state stability."},
+                              {"arguments", "cycles?: integer"}});
+    result.append(QJsonObject{{"id", "get_support_bundle"},
+                              {"risk", "R0"},
+                              {"description", "Read content-free support diagnostics with no manuscript text, prompts, source paths, or credentials."}});
+    result.append(QJsonObject{{"id", "get_interface_fingerprint"},
+                              {"risk", "R0"},
+                              {"description", "Fingerprint protocol, persisted schemas, and the read-only Story Tool contract."}});
+    result.append(QJsonObject{{"id", "get_performance_budget"},
+                              {"risk", "R0"},
+                              {"description", "Evaluate indexed query and reference-machine lookup budgets."},
+                              {"arguments", "source_lookup_100_budget_ms?: number"}});
+    result.append(QJsonObject{{"id", "get_relocation_readiness"},
+                              {"risk", "R0"},
+                              {"description", "Verify portable Story metadata contains no manuscript bytes or machine-specific paths."}});
+    result.append(QJsonObject{{"id", "get_release_readiness"},
+                              {"risk", "R0"},
+                              {"description", "Report internal release-hardening gates and explicitly list missing external platform evidence."}});
     return result;
 }
 

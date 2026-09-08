@@ -856,6 +856,50 @@ TOOLS = [
         "description": "Run the read-only engine release-candidate harness for phases 36-45.",
         "inputSchema": {"type": "object", "properties": {"project_root": {"type": "string"}}, "required": ["project_root"]},
     },
+    {
+        "name": "story_run_soak_replay",
+        "description": "Replay deterministic Story Engine reads and verify stable semantic/durable state.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_root": {"type": "string"},
+                "cycles": {"type": "integer", "minimum": 1, "maximum": 20},
+            },
+            "required": ["project_root"],
+        },
+    },
+    {
+        "name": "story_get_support_bundle",
+        "description": "Read content-free Story Engine support diagnostics with no manuscript text or source paths.",
+        "inputSchema": {"type": "object", "properties": {"project_root": {"type": "string"}}, "required": ["project_root"]},
+    },
+    {
+        "name": "story_get_interface_fingerprint",
+        "description": "Fingerprint the sidecar protocol, persisted schemas, and read-only Story Tool contract.",
+        "inputSchema": {"type": "object", "properties": {"project_root": {"type": "string"}}, "required": ["project_root"]},
+    },
+    {
+        "name": "story_get_performance_budget",
+        "description": "Evaluate indexed-query and reference-machine Story Engine performance budgets.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_root": {"type": "string"},
+                "source_lookup_100_budget_ms": {"type": "number", "minimum": 1, "maximum": 60000},
+            },
+            "required": ["project_root"],
+        },
+    },
+    {
+        "name": "story_get_relocation_readiness",
+        "description": "Verify portable Story metadata contains no manuscript bytes or machine-specific paths.",
+        "inputSchema": {"type": "object", "properties": {"project_root": {"type": "string"}}, "required": ["project_root"]},
+    },
+    {
+        "name": "story_get_release_readiness",
+        "description": "Report internal release hardening and explicitly list missing external platform evidence.",
+        "inputSchema": {"type": "object", "properties": {"project_root": {"type": "string"}}, "required": ["project_root"]},
+    },
 ]
 
 
@@ -927,6 +971,12 @@ def tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
             "story_get_offline_readiness": "get_offline_readiness",
             "story_get_compatibility_status": "get_compatibility_status",
             "story_run_release_candidate_acceptance": "run_release_candidate_acceptance",
+            "story_run_soak_replay": "run_soak_replay",
+            "story_get_support_bundle": "get_support_bundle",
+            "story_get_interface_fingerprint": "get_interface_fingerprint",
+            "story_get_performance_budget": "get_performance_budget",
+            "story_get_relocation_readiness": "get_relocation_readiness",
+            "story_get_release_readiness": "get_release_readiness",
         }
         tool_id = mapping.get(name)
         if tool_id is None:

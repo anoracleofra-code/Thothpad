@@ -1832,6 +1832,11 @@ QJsonObject StoryIntelligenceController::boundedStoryEngineArguments(const QStri
         const QString prompt = boundedString(arguments.value(QStringLiteral("prompt")), 4000);
         if (!prompt.isEmpty())
             safe.insert(QStringLiteral("prompt"), prompt);
+    } else if (toolId == QStringLiteral("run_soak_replay")) {
+        safe.insert(QStringLiteral("cycles"), boundedLimit(arguments.value(QStringLiteral("cycles")), 3, 20));
+    } else if (toolId == QStringLiteral("get_performance_budget")) {
+        const double value = arguments.value(QStringLiteral("source_lookup_100_budget_ms")).toDouble(1000.0);
+        safe.insert(QStringLiteral("source_lookup_100_budget_ms"), qBound(1.0, value, 60000.0));
     } else if (toolId == QStringLiteral("get_project_health") || toolId == QStringLiteral("get_index_status")
                || toolId == QStringLiteral("get_migration_status") || toolId == QStringLiteral("get_indexing_status")
                || toolId == QStringLiteral("get_performance_report") || toolId == QStringLiteral("get_security_audit")
@@ -1840,7 +1845,9 @@ QJsonObject StoryIntelligenceController::boundedStoryEngineArguments(const QStri
                || toolId == QStringLiteral("get_recovery_status") || toolId == QStringLiteral("get_observability_report")
                || toolId == QStringLiteral("get_resource_policy") || toolId == QStringLiteral("get_path_resilience")
                || toolId == QStringLiteral("get_offline_readiness") || toolId == QStringLiteral("get_compatibility_status")
-               || toolId == QStringLiteral("run_release_candidate_acceptance")) {
+               || toolId == QStringLiteral("run_release_candidate_acceptance") || toolId == QStringLiteral("get_support_bundle")
+               || toolId == QStringLiteral("get_interface_fingerprint") || toolId == QStringLiteral("get_relocation_readiness")
+               || toolId == QStringLiteral("get_release_readiness")) {
         // These diagnostics take no model-controlled arguments beyond the
         // branch inserted below.
     }

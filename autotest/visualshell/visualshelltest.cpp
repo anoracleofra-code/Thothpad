@@ -127,6 +127,17 @@ private slots:
             QJsonObject{{QStringLiteral("branch_id"), QStringLiteral("ALT-ATTACK")}, {QStringLiteral("unexpected"), QStringLiteral("ignored")}});
         QCOMPARE(diagnosticArgs.value(QStringLiteral("branch_id")).toString(), QStringLiteral("ALT-TRUSTED"));
         QVERIFY(!diagnosticArgs.contains(QStringLiteral("unexpected")));
+        const QJsonObject soakArgs =
+            controller.boundedStoryEngineArguments(QStringLiteral("run_soak_replay"),
+                                                   QJsonObject{{QStringLiteral("cycles"), 999}, {QStringLiteral("branch_id"), QStringLiteral("ALT-ATTACK")}});
+        QCOMPARE(soakArgs.value(QStringLiteral("cycles")).toInt(), 20);
+        QCOMPARE(soakArgs.value(QStringLiteral("branch_id")).toString(), QStringLiteral("ALT-TRUSTED"));
+        const QJsonObject budgetArgs = controller.boundedStoryEngineArguments(
+            QStringLiteral("get_performance_budget"),
+            QJsonObject{{QStringLiteral("source_lookup_100_budget_ms"), 999999.0}, {QStringLiteral("unexpected"), true}});
+        QCOMPARE(budgetArgs.value(QStringLiteral("source_lookup_100_budget_ms")).toDouble(), 60000.0);
+        QCOMPARE(budgetArgs.value(QStringLiteral("branch_id")).toString(), QStringLiteral("ALT-TRUSTED"));
+        QVERIFY(!budgetArgs.contains(QStringLiteral("unexpected")));
         controller.m_activeBranch = QStringLiteral("mainline");
         controller.m_epistemicMode = QStringLiteral("cold_reader");
 
@@ -176,6 +187,7 @@ private slots:
 
         auto *tabs = dialog.findChild<QTabWidget *>(QStringLiteral("storyLabTabs"));
         auto *readerRun = dialog.findChild<QPushButton *>(QStringLiteral("storyLabReaderRun"));
+        auto *advancedAction = dialog.findChild<QComboBox *>(QStringLiteral("storyLabAdvancedAction"));
         auto *advancedRun = dialog.findChild<QPushButton *>(QStringLiteral("storyLabAdvancedRun"));
         auto *advancedOutput = dialog.findChild<QPlainTextEdit *>(QStringLiteral("storyLabAdvancedOutput"));
         auto *proposalTable = dialog.findChild<QTableWidget *>(QStringLiteral("storyLabProposalTable"));
@@ -183,12 +195,20 @@ private slots:
         auto *recover = dialog.findChild<QPushButton *>(QStringLiteral("storyLabStateRecover"));
         auto *restore = dialog.findChild<QPushButton *>(QStringLiteral("storyLabStateRestore"));
 
-        QVERIFY(tabs && readerRun && advancedRun && advancedOutput && proposalTable && backup && recover && restore);
+        QVERIFY(tabs && readerRun && advancedAction && advancedRun && advancedOutput && proposalTable && backup && recover && restore);
         QVERIFY(!tabs->accessibleName().isEmpty());
         QVERIFY(!readerRun->accessibleName().isEmpty());
         QVERIFY(!advancedRun->accessibleName().isEmpty());
         QVERIFY(!advancedOutput->accessibleName().isEmpty());
         QVERIFY(!proposalTable->accessibleName().isEmpty());
+        for (const auto &tool : {QStringLiteral("run_soak_replay"),
+                                 QStringLiteral("get_support_bundle"),
+                                 QStringLiteral("get_interface_fingerprint"),
+                                 QStringLiteral("get_performance_budget"),
+                                 QStringLiteral("get_relocation_readiness"),
+                                 QStringLiteral("get_release_readiness")}) {
+            QVERIFY2(advancedAction->findData(tool) >= 0, qPrintable(QStringLiteral("Story Lab is missing %1").arg(tool)));
+        }
         QVERIFY(!backup->accessibleName().isEmpty());
         QVERIFY(!recover->accessibleName().isEmpty());
         QVERIFY(!restore->accessibleName().isEmpty());

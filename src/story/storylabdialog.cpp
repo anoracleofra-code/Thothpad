@@ -277,6 +277,13 @@ StoryLabDialog::StoryLabDialog(WriterEngineClient *engine, QWidget *parent)
     m_advancedAction->addItem(tr("Offline / egress readiness"), QStringLiteral("get_offline_readiness"));
     m_advancedAction->addItem(tr("Upgrade / rollback compatibility"), QStringLiteral("get_compatibility_status"));
     m_advancedAction->addItem(tr("Phases 36–45 release-candidate acceptance"), QStringLiteral("run_release_candidate_acceptance"));
+    m_advancedAction->insertSeparator(m_advancedAction->count());
+    m_advancedAction->addItem(tr("Deterministic soak replay"), QStringLiteral("run_soak_replay"));
+    m_advancedAction->addItem(tr("Privacy-safe support bundle"), QStringLiteral("get_support_bundle"));
+    m_advancedAction->addItem(tr("Wire / Story API fingerprint"), QStringLiteral("get_interface_fingerprint"));
+    m_advancedAction->addItem(tr("Performance budget regression"), QStringLiteral("get_performance_budget"));
+    m_advancedAction->addItem(tr("Backup / relocation readiness"), QStringLiteral("get_relocation_readiness"));
+    m_advancedAction->addItem(tr("Phases 46–55 release readiness"), QStringLiteral("get_release_readiness"));
     m_advancedQuery->setPlaceholderText(tr("Explorer/egress prompt, or record kind for Why"));
     m_advancedCharacter->setPlaceholderText(tr("Character/entity A, or record ID for Why"));
     m_advancedOtherEntity->setPlaceholderText(tr("Entity B for relationship arc"));
@@ -813,7 +820,10 @@ void StoryLabDialog::handleResponse(const QString &requestId, const QJsonObject 
                || kind == QStringLiteral("get_recovery_status") || kind == QStringLiteral("get_observability_report")
                || kind == QStringLiteral("get_resource_policy") || kind == QStringLiteral("get_path_resilience")
                || kind == QStringLiteral("get_offline_readiness") || kind == QStringLiteral("get_compatibility_status")
-               || kind == QStringLiteral("run_release_candidate_acceptance")) {
+               || kind == QStringLiteral("run_release_candidate_acceptance") || kind == QStringLiteral("run_soak_replay")
+               || kind == QStringLiteral("get_support_bundle") || kind == QStringLiteral("get_interface_fingerprint")
+               || kind == QStringLiteral("get_performance_budget") || kind == QStringLiteral("get_relocation_readiness")
+               || kind == QStringLiteral("get_release_readiness")) {
         m_advancedOutput->setPlainText(formatJson(result));
     }
     setReady();
@@ -997,6 +1007,10 @@ void StoryLabDialog::runAdvancedTool()
         if (!prompt.isEmpty()) {
             arguments.insert(QStringLiteral("prompt"), prompt);
         }
+    } else if (tool == QStringLiteral("run_soak_replay")) {
+        arguments.insert(QStringLiteral("cycles"), 3);
+    } else if (tool == QStringLiteral("get_performance_budget")) {
+        arguments.insert(QStringLiteral("source_lookup_100_budget_ms"), 1000.0);
     }
     requestTool(tool, arguments);
 }

@@ -163,5 +163,11 @@ def agent_setup() -> dict[str, Any]:
             "story_get_offline_readiness",
             "story_get_compatibility_status",
             "story_run_release_candidate_acceptance",
+            "story_run_soak_replay",
+            "story_get_support_bundle",
+            "story_get_interface_fingerprint",
+            "story_get_performance_budget",
+            "story_get_relocation_readiness",
+            "story_get_release_readiness",
         ],
     }
