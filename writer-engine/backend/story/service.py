@@ -14,14 +14,15 @@ from backend.story.exchange import export_story_bundle, import_story_bundle
 from backend.story.indexing import run_index_batch
 from backend.story.ingest import ProjectIngestor
 from backend.story.lenses import put_story_lens
+from backend.story.locking import story_project_lock
 from backend.story.maintenance import rebuild_story_index
 from backend.story.migrations import bind_legacy_workspace
-from backend.story.persistence import persist_writer_state
+from backend.story.persistence import commit_writer_state
 from backend.story.project import StoryProject
 from backend.story.promises import upsert_promise_item
 from backend.story.proposals import mark_proposal_reviewed, proposal, submit_story_proposal
 from backend.story.query import StoryQueryEngine
-from backend.story.recovery import recover_story_project
+from backend.story.recovery import begin_recovery_operation, complete_recovery_operation, recover_story_project
 from backend.story.store import StoryStore
 from backend.story.threads import upsert_thread
 from backend.story.timeline import set_world_state
@@ -85,6 +86,8 @@ def _bounded_writer_value(value: Any, *, depth: int = 0) -> Any:
     if isinstance(value, str):
         return value[:10_000]
     if isinstance(value, int):
+        if value.bit_length() > 4096:
+            raise ValueError("writer mutation integer is too large")
         return value
     if isinstance(value, float):
         if not (-1e12 <= value <= 1e12):
@@ -120,6 +123,8 @@ def _writer_mutation_result(kind: str, record_id: str, result: Any = None) -> di
 
 def _relative_source_path(value: str) -> str:
     normalized = value.replace("\\", "/").strip()
+    if len(normalized) > 4_096:
+        raise ValueError("source path exceeds the supported length")
     path = PurePosixPath(normalized)
     if not normalized or path.is_absolute() or ".." in path.parts:
         raise ValueError("source path must be a project-relative path")
@@ -133,16 +138,17 @@ def story_runtime(
     initialize: bool = True,
     ingest: bool = True,
 ) -> Iterator[tuple[StoryProject, StoryStore]]:
-    if not initialize and not StoryProject.is_initialized(root):
-        raise PermissionError("Story Project has not been initialized by ThothPad")
-    project = StoryProject.open(root)
-    store = StoryStore(project.cache_path)
-    try:
-        if ingest:
-            ProjectIngestor(project, store).ingest()
-        yield project, store
-    finally:
-        store.close()
+    with story_project_lock(root):
+        if not initialize and not StoryProject.is_initialized(root):
+            raise PermissionError("Story Project has not been initialized by ThothPad")
+        project = StoryProject.open(root)
+        store = StoryStore(project.cache_path)
+        try:
+            if ingest:
+                ProjectIngestor(project, store).ingest()
+            yield project, store
+        finally:
+            store.close()
 
 
 def export_story_project(root: str | Path) -> dict[str, Any]:
@@ -151,7 +157,8 @@ def export_story_project(root: str | Path) -> dict[str, Any]:
 
 
 def backup_story_project_state(root: str | Path) -> dict[str, Any]:
-    return create_story_state_backup(root)
+    with story_project_lock(root):
+        return create_story_state_backup(root)
 
 
 def restore_story_project_state(
@@ -160,11 +167,13 @@ def restore_story_project_state(
     *,
     writer_confirmed: bool = False,
 ) -> dict[str, Any]:
-    return restore_story_state_backup(root, backup_name, writer_confirmed=writer_confirmed)
+    with story_project_lock(root):
+        return restore_story_state_backup(root, backup_name, writer_confirmed=writer_confirmed)
 
 
 def recover_story_project_state(root: str | Path, *, writer_confirmed: bool = False) -> dict[str, Any]:
-    return recover_story_project(root, writer_confirmed=writer_confirmed)
+    with story_project_lock(root):
+        return recover_story_project(root, writer_confirmed=writer_confirmed)
 
 
 def import_story_project(
@@ -173,9 +182,10 @@ def import_story_project(
     *,
     writer_confirmed: bool = False,
 ) -> dict[str, Any]:
-    if not StoryProject.is_initialized(root):
-        raise PermissionError("Story Project has not been initialized by ThothPad")
-    return import_story_bundle(root, bundle, writer_confirmed=writer_confirmed)
+    with story_project_lock(root):
+        if not StoryProject.is_initialized(root):
+            raise PermissionError("Story Project has not been initialized by ThothPad")
+        return import_story_bundle(root, bundle, writer_confirmed=writer_confirmed)
 
 
 def rebuild_story_project_index(
@@ -183,9 +193,10 @@ def rebuild_story_project_index(
     *,
     writer_confirmed: bool = False,
 ) -> dict[str, Any]:
-    if not StoryProject.is_initialized(root):
-        raise PermissionError("Story Project has not been initialized by ThothPad")
-    return rebuild_story_index(root, writer_confirmed=writer_confirmed)
+    with story_project_lock(root):
+        if not StoryProject.is_initialized(root):
+            raise PermissionError("Story Project has not been initialized by ThothPad")
+        return rebuild_story_index(root, writer_confirmed=writer_confirmed)
 
 
 def bind_legacy_story_workspace(
@@ -213,9 +224,10 @@ def index_story_project_batch(
     maximum_documents: int = 100,
     reset: bool = False,
 ) -> dict[str, Any]:
-    if not StoryProject.is_initialized(root):
-        raise PermissionError("Story Project has not been initialized by ThothPad")
-    return run_index_batch(root, maximum_documents=maximum_documents, reset=reset)
+    with story_project_lock(root):
+        if not StoryProject.is_initialized(root):
+            raise PermissionError("Story Project has not been initialized by ThothPad")
+        return run_index_batch(root, maximum_documents=maximum_documents, reset=reset)
 
 
 def submit_story_project_proposal(
@@ -229,24 +241,29 @@ def submit_story_project_proposal(
     evidence: list[dict[str, Any]] | None = None,
     created_by: str = "model",
 ) -> dict[str, Any]:
-    if not StoryProject.is_initialized(root):
-        raise PermissionError("Story Project has not been initialized by ThothPad")
-    mutation = target_mutation.strip().casefold()
-    if mutation not in WRITER_MUTATION_KINDS:
-        raise ValueError("proposal target mutation is not writer-reviewable")
-    safe_payload = _bounded_writer_value(payload)
-    assert isinstance(safe_payload, dict)
-    project = StoryProject.open(root)
-    return submit_story_proposal(
-        project,
-        proposal_kind=proposal_kind,
-        target_mutation=mutation,
-        payload=safe_payload,
-        branch_id=branch_id,
-        story_unit_id=story_unit_id,
-        evidence=[dict(item) for item in (evidence or [])[:100] if isinstance(item, dict)],
-        created_by=created_by,
-    )
+    with story_project_lock(root):
+        if not StoryProject.is_initialized(root):
+            raise PermissionError("Story Project has not been initialized by ThothPad")
+        mutation = target_mutation.strip().casefold()
+        if mutation not in WRITER_MUTATION_KINDS:
+            raise ValueError("proposal target mutation is not writer-reviewable")
+        safe_payload = _bounded_writer_value(payload)
+        assert isinstance(safe_payload, dict)
+        project = StoryProject.open(root)
+        safe_evidence = _bounded_writer_value(
+            [dict(item) for item in (evidence or [])[:100] if isinstance(item, dict)]
+        )
+        assert isinstance(safe_evidence, list)
+        return submit_story_proposal(
+            project,
+            proposal_kind=proposal_kind,
+            target_mutation=mutation,
+            payload=safe_payload,
+            branch_id=branch_id,
+            story_unit_id=story_unit_id,
+            evidence=[dict(item) for item in safe_evidence if isinstance(item, dict)],
+            created_by=created_by,
+        )
 
 
 def review_story_project_proposal(
@@ -258,46 +275,71 @@ def review_story_project_proposal(
     note: str = "",
     writer_confirmed: bool = False,
 ) -> dict[str, Any]:
-    if not writer_confirmed:
-        raise PermissionError("reviewing a Story Engine proposal requires explicit writer confirmation")
-    if not StoryProject.is_initialized(root):
-        raise PermissionError("Story Project has not been initialized by ThothPad")
-    normalized = decision.strip().upper()
-    project = StoryProject.open(root)
-    existing = proposal(project, proposal_id)
-    if existing is None:
-        raise KeyError("proposal not found")
-    if existing.get("status") != "PROPOSED":
-        raise ValueError("proposal has already been reviewed")
+    with story_project_lock(root):
+        if not writer_confirmed:
+            raise PermissionError("reviewing a Story Engine proposal requires explicit writer confirmation")
+        if not StoryProject.is_initialized(root):
+            raise PermissionError("Story Project has not been initialized by ThothPad")
+        normalized = decision.strip().upper()
+        project = StoryProject.open(root)
+        existing = proposal(project, proposal_id)
+        if existing is None:
+            raise KeyError("proposal not found")
+        if existing.get("status") != "PROPOSED":
+            raise ValueError("proposal has already been reviewed")
 
-    applied_record_id = ""
-    applied: dict[str, Any] | None = None
-    if normalized == "ACCEPTED":
-        if str(existing.get("branch_id") or "mainline") != "mainline":
-            raise ValueError("alternate-branch proposals must be applied through the branch workflow")
-        mutation = str(existing.get("target_mutation") or "").casefold()
-        payload = payload_override if payload_override is not None else existing.get("payload", {})
-        if not isinstance(payload, dict):
-            raise ValueError("proposal payload must be an object")
-        applied = apply_story_writer_mutation(
-            root,
-            mutation,
-            payload,
-            writer_confirmed=True,
+        applied_record_id = ""
+        applied: dict[str, Any] | None = None
+        if normalized == "ACCEPTED":
+            if str(existing.get("branch_id") or "mainline") != "mainline":
+                raise ValueError("alternate-branch proposals must be applied through the branch workflow")
+            mutation = str(existing.get("target_mutation") or "").casefold()
+            payload = payload_override if payload_override is not None else existing.get("payload", {})
+            if not isinstance(payload, dict):
+                raise ValueError("proposal payload must be an object")
+            recovery_token = begin_recovery_operation(project, "proposal_review", snapshot_durable=True)
+            try:
+                applied = apply_story_writer_mutation(
+                    root,
+                    mutation,
+                    payload,
+                    writer_confirmed=True,
+                )
+                applied_record_id = str(applied.get("record_id") or "")
+                reviewed_project = StoryProject.open(root)
+                reviewed = mark_proposal_reviewed(
+                    reviewed_project,
+                    proposal_id=proposal_id,
+                    decision=normalized,
+                    applied_record_id=applied_record_id,
+                    note=note,
+                )
+                complete_recovery_operation(reviewed_project, recovery_token)
+            except BaseException:
+                # A normal exception can be rolled back immediately. If the
+                # process itself dies between the two durable writes, the same
+                # snapshot remains pending for writer-confirmed recovery on the
+                # next launch.
+                try:
+                    recover_story_project(root, writer_confirmed=True)
+                except BaseException:
+                    # Preserve the original failure; the pending journal and
+                    # checksummed snapshot remain available for later recovery.
+                    pass
+                raise
+            return {"reviewed": reviewed, "applied": applied}
+        elif normalized != "REJECTED":
+            raise ValueError("proposal decision must be ACCEPTED or REJECTED")
+
+        reviewed_project = StoryProject.open(root)
+        reviewed = mark_proposal_reviewed(
+            reviewed_project,
+            proposal_id=proposal_id,
+            decision=normalized,
+            applied_record_id=applied_record_id,
+            note=note,
         )
-        applied_record_id = str(applied.get("record_id") or "")
-    elif normalized != "REJECTED":
-        raise ValueError("proposal decision must be ACCEPTED or REJECTED")
-
-    reviewed_project = StoryProject.open(root)
-    reviewed = mark_proposal_reviewed(
-        reviewed_project,
-        proposal_id=proposal_id,
-        decision=normalized,
-        applied_record_id=applied_record_id,
-        note=note,
-    )
-    return {"reviewed": reviewed, "applied": applied}
+        return {"reviewed": reviewed, "applied": applied}
 
 
 def project_understanding(root: str | Path, *, initialize: bool = True) -> dict[str, Any]:
@@ -349,6 +391,8 @@ def project_sources(
 
 
 def set_manuscript_order(root: str | Path, paths: list[str]) -> dict[str, Any]:
+    if len(paths) > 20_000:
+        raise ValueError("manuscript order is limited to 20,000 paths")
     normalized = [_relative_source_path(path) for path in paths]
     if len({path.casefold() for path in normalized}) != len(normalized):
         raise ValueError("manuscript order must not contain duplicate paths")
@@ -377,6 +421,8 @@ def set_source_override(
     pattern: str | None = None,
 ) -> dict[str, Any]:
     path = _relative_source_path(relative_path)
+    if roles is not None and len(roles) > 20:
+        raise ValueError("source override is limited to 20 roles")
     normalized_roles = [SourceRole(role).value for role in (roles or [])]
     normalized_authority = AuthorityStatus(authority).value if authority else None
 
@@ -701,7 +747,9 @@ def observe_story_writer_model(
 
     from backend.story.writer_model import observe_writer_activity
 
-    bounded_events = [dict(item) for item in events[:100] if isinstance(item, dict)]
+    safe_events = _bounded_writer_value([dict(item) for item in events[:100] if isinstance(item, dict)])
+    assert isinstance(safe_events, list)
+    bounded_events = [dict(item) for item in safe_events if isinstance(item, dict)]
     with story_runtime(root, initialize=True) as (project, store):
         return observe_writer_activity(
             project,
@@ -723,6 +771,15 @@ def create_story_branch(
 ) -> dict[str, Any]:
     if not writer_confirmed:
         raise PermissionError("creating an alternate branch requires explicit writer confirmation")
+    parent_branch = parent_branch.strip()
+    if not parent_branch or len(parent_branch) > 240:
+        raise ValueError("parent branch ID must be 1-240 characters")
+    if branch_id is not None:
+        branch_id = branch_id.strip()
+        if not branch_id or len(branch_id) > 240:
+            raise ValueError("branch ID must be 1-240 characters")
+    if fork_story_unit is not None and len(fork_story_unit) > 240:
+        raise ValueError("fork story unit ID exceeds 240 characters")
     clean_assumptions = [str(item).strip()[:2_000] for item in (assumptions or []) if str(item).strip()][:100]
     with story_runtime(root, initialize=True) as (project, store):
         created = create_writer_branch(
@@ -748,11 +805,15 @@ def add_story_branch_overlay(
 ) -> dict[str, Any]:
     if not writer_confirmed:
         raise PermissionError("adding a branch change requires explicit writer confirmation")
+    branch_id = branch_id.strip()
+    if not branch_id or len(branch_id) > 240:
+        raise ValueError("branch ID must be 1-240 characters")
     kind = record_kind.strip()[:120]
     identifier = record_id.strip()[:240]
     if not kind or not identifier:
         raise ValueError("record_kind and record_id are required")
-    clean_payload = dict(payload or {})
+    clean_payload = _bounded_writer_value(dict(payload or {}))
+    assert isinstance(clean_payload, dict)
     with story_runtime(root, initialize=True) as (project, store):
         overlay_id = add_writer_branch_overlay(
             project,
@@ -776,6 +837,9 @@ def rebase_story_branch(
 ) -> dict[str, Any]:
     if not writer_confirmed:
         raise PermissionError("rebasing an alternate branch requires explicit writer confirmation")
+    branch_id = branch_id.strip()
+    if not branch_id or len(branch_id) > 240:
+        raise ValueError("branch ID must be 1-240 characters")
     with story_runtime(root, initialize=True) as (project, store):
         return rebase_writer_branch(project, store, branch_id)
 
@@ -785,8 +849,16 @@ def prepare_story_branch_merge(
     branch_id: str,
     overlay_ids: list[str],
 ) -> dict[str, Any]:
+    branch_id = branch_id.strip()
+    if not branch_id or len(branch_id) > 240:
+        raise ValueError("branch ID must be 1-240 characters")
+    if not 1 <= len(overlay_ids) <= 500:
+        raise ValueError("branch merge supports 1-500 overlay IDs")
+    normalized_overlay_ids = [str(item).strip() for item in overlay_ids]
+    if any(not item or len(item) > 240 for item in normalized_overlay_ids):
+        raise ValueError("overlay IDs must be 1-240 characters")
     with story_runtime(root, initialize=True) as (_project, store):
-        prepared = prepare_writer_branch_merge(store, branch_id, [str(item) for item in overlay_ids])
+        prepared = prepare_writer_branch_merge(store, branch_id, normalized_overlay_ids)
         for operation in prepared.get("operations", []):
             if not isinstance(operation, dict) or operation.get("operation") == "ADD":
                 continue
@@ -1137,12 +1209,24 @@ def apply_story_branch_merge(
         raise PermissionError("applying a branch merge requires explicit writer confirmation")
     if not expected_parent_revision:
         raise ValueError("branch merge requires expected_parent_revision from the reviewed preparation")
+    if len(expected_parent_revision) != 64 or any(
+        ch not in "0123456789abcdef" for ch in expected_parent_revision.casefold()
+    ):
+        raise ValueError("expected_parent_revision must be a SHA-256 revision")
+    if not 1 <= len(overlay_ids) <= 500:
+        raise ValueError("branch merge supports 1-500 overlay IDs")
+    branch_id = branch_id.strip()
+    if not branch_id or len(branch_id) > 240:
+        raise ValueError("branch ID must be 1-240 characters")
+    normalized_overlay_ids = [str(item).strip() for item in overlay_ids]
+    if any(not item or len(item) > 240 for item in normalized_overlay_ids):
+        raise ValueError("overlay IDs must be 1-240 characters")
     with story_runtime(root, initialize=True) as (project, store):
-        prepared = prepare_writer_branch_merge(store, branch_id, [str(item) for item in overlay_ids])
+        prepared = prepare_writer_branch_merge(store, branch_id, normalized_overlay_ids)
         if prepared["expected_parent_revision"] != expected_parent_revision:
             raise ValueError("mainline changed after branch merge review; prepare the merge again")
         applied: list[dict[str, str]] = []
-        with store.connection:
+        try:
             for operation in prepared["operations"]:
                 applied.append(_apply_branch_overlay(project, store, branch_id, operation))
             result = record_completed_branch_merge(
@@ -1152,9 +1236,14 @@ def apply_story_branch_merge(
                 writer_confirmed=True,
                 expected_parent_revision=expected_parent_revision,
             )
-            # Persist while the SQLite transaction is still open. If the atomic
-            # state-file write fails, the DB transaction rolls back too.
-            persist_writer_state(project, store)
+            # Keep every overlay uncommitted until the durable Story State file
+            # is written. The shared helper also restores durable state if the
+            # final SQLite commit itself fails.
+            commit_writer_state(project, store)
+        except BaseException:
+            if store.connection.in_transaction:
+                store.connection.rollback()
+            raise
         result["applied"] = applied
         result["writer_owned"] = True
         result["persisted"] = True

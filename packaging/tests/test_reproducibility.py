@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import importlib.util
 import argparse
 import copy
+import importlib.util
 import json
 import os
 import tempfile
 import unittest
 import unittest.mock
 from pathlib import Path
-
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -74,7 +74,7 @@ class ReproducibilityTest(unittest.TestCase):
             lock = root / "toolchain-lock.json"
             lock.write_text('{"schema_version":1}', encoding="utf-8")
             toolchain_hash = REPRO.file_sha256(lock)
-            left_snapshot = copy.deepcopy(snapshot)
+            left_snapshot: dict[str, Any] = copy.deepcopy(snapshot)
             left_snapshot["provenance"] = {
                 "candidate": "a",
                 "builder_id": "runner-a",
@@ -82,7 +82,7 @@ class ReproducibilityTest(unittest.TestCase):
                 "source_commit": "1" * 40,
                 "toolchain_lock_sha256": toolchain_hash,
             }
-            right_snapshot = copy.deepcopy(snapshot)
+            right_snapshot: dict[str, Any] = copy.deepcopy(snapshot)
             right_snapshot["provenance"] = {
                 "candidate": "b",
                 "builder_id": "runner-b",
@@ -256,9 +256,8 @@ class ReproducibilityTest(unittest.TestCase):
             args.toolchain_lock.write_text('{"schema_version":1}', encoding="utf-8")
             with unittest.mock.patch.dict(
                 os.environ, {"RUNNER_NAME": "runner-a"}
-            ):
-                with self.assertRaises(SystemExit):
-                    REPRO.command_snapshot(args)
+            ), self.assertRaises(SystemExit):
+                REPRO.command_snapshot(args)
 
     def test_snapshot_embeds_runner_pool_and_runner_identity(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

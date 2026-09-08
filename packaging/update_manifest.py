@@ -10,6 +10,22 @@ _VERSION = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:[-+][0-9A-Za
 CHANNELS = frozenset({"stable", "beta", "development"})
 
 
+def _valid_commit(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 40
+        and all(character in "0123456789abcdef" for character in value.casefold())
+    )
+
+
+def _valid_sha256(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value.casefold())
+    )
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -33,7 +49,7 @@ def build_update_manifest(
     parsed = urlparse(artifact_url)
     if parsed.scheme != "https" or not parsed.netloc:
         raise ValueError("update artifacts must use an HTTPS URL")
-    if len(source_commit) != 40 or any(ch not in "0123456789abcdef" for ch in source_commit.casefold()):
+    if not _valid_commit(source_commit):
         raise ValueError("source commit must be a full hexadecimal Git hash")
     if not artifact.is_file():
         raise ValueError("update artifact does not exist")
@@ -56,12 +72,24 @@ def verify_update_artifact(manifest: dict[str, Any], artifact: Path) -> dict[str
         raise ValueError("invalid update manifest")
     expected_size = manifest.get("artifact_size")
     expected_hash = manifest.get("artifact_sha256")
-    if not isinstance(expected_size, int) or not isinstance(expected_hash, str):
+    if (
+        not isinstance(expected_size, int)
+        or isinstance(expected_size, bool)
+        or expected_size < 0
+        or not _valid_sha256(expected_hash)
+    ):
         raise TypeError("update manifest is missing artifact integrity fields")
+    parsed = urlparse(str(manifest.get("artifact_url", "")))
     gates = {
+        "schema": manifest.get("schema_version") == 1,
+        "version_valid": isinstance(manifest.get("version"), str) and bool(_VERSION.fullmatch(manifest["version"])),
+        "channel_valid": manifest.get("channel") in CHANNELS,
+        "https_artifact_url": parsed.scheme == "https" and bool(parsed.netloc),
+        "source_commit_valid": _valid_commit(manifest.get("source_commit")),
         "size_matches": artifact.is_file() and artifact.stat().st_size == expected_size,
         "sha256_matches": artifact.is_file() and sha256_file(artifact) == expected_hash,
         "manual_install_policy": manifest.get("automatic_install") is False,
         "checksum_policy": manifest.get("checksum_required_before_install") is True,
+        "downgrade_policy": manifest.get("downgrade_requires_explicit_override") is True,
     }
     return {"gates": gates, "all_green": all(gates.values())}

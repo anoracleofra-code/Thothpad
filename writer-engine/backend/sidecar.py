@@ -402,7 +402,7 @@ def _analyze_live_cancellable(
     exclusion_ranges: Any,
     confirm_adverbs: bool,
     document_revision: int | None,
-    grammar: dict[str, Any],
+    grammar: dict[str, Any] | None,
     language: str | None,
     analyzers: Any,
 ) -> dict[str, Any]:
@@ -444,6 +444,7 @@ def _analyze_live_cancellable(
 
         grammar_allowed = bool(grammar and (grammar.get("provider") != "harper" or lexical_rules_enabled))
         if grammar_allowed:
+            assert grammar is not None
             cancellation_checkpoint()
             from backend.grammar import analyze_grammar
 
@@ -957,7 +958,7 @@ def dispatch(
                 exclusion_ranges=resolved_exclusions,
                 confirm_adverbs=confirm_adverbs,
                 document_revision=document_revision,
-                grammar=grammar,  # type: ignore[arg-type]
+                grammar=grammar,
                 language=language,
                 analyzers=params.get("analyzers"),
             )

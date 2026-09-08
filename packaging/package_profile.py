@@ -14,7 +14,6 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-
 WEBENGINE_MARKERS = (
     "qt6webengine", "qtwebengineprocess", "webenginecore.framework",
     "qtwebengine_resources", "qtwebengine_dictionaries",

@@ -68,7 +68,7 @@ class ReleasePhases4655Test(unittest.TestCase):
                 json.dumps(
                     {
                         "schema_version": 1,
-                        "provenance": {"source_commit": commit},
+                        "provenance": {"source_commit": commit, "toolchain_lock_sha256": "d" * 64},
                         "files": {"writer-engine.exe": {"sha256": "b" * 64, "size": 10}},
                     }
                 ),
@@ -80,7 +80,14 @@ class ReleasePhases4655Test(unittest.TestCase):
                         "bomFormat": "CycloneDX",
                         "specVersion": "1.5",
                         "metadata": {"component": {"name": "ThothPad"}},
-                        "components": [{"name": f"c{i}"} for i in range(8)],
+                        "components": [
+                            {
+                                "type": "file",
+                                "name": "writer-engine.exe",
+                                "hashes": [{"alg": "SHA-256", "content": "b" * 64}],
+                            },
+                            *[{"type": "library", "name": f"c{i}"} for i in range(7)],
+                        ],
                     }
                 ),
                 encoding="utf-8",
@@ -91,6 +98,12 @@ class ReleasePhases4655Test(unittest.TestCase):
                 expected_commit=commit,
             )
             self.assertTrue(report["all_green"])
+            with self.assertRaisesRegex(ValueError, "hexadecimal"):
+                PACKAGE.validate_candidate_contract(
+                    candidate_manifest=candidate,
+                    sbom=sbom,
+                    expected_commit="z" * 40,
+                )
 
     def test_phase54_update_manifest_is_https_checksum_bound_and_tamper_detecting(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -104,6 +117,9 @@ class ReleasePhases4655Test(unittest.TestCase):
                 source_commit="c" * 40,
             )
             self.assertTrue(UPDATE.verify_update_artifact(manifest, artifact)["all_green"])
+            manually_broken = dict(manifest)
+            manually_broken["artifact_url"] = "http://updates.example.invalid/ThothPad-0.1.2.zip"
+            self.assertFalse(UPDATE.verify_update_artifact(manually_broken, artifact)["all_green"])
             artifact.write_bytes(b"tampered")
             self.assertFalse(UPDATE.verify_update_artifact(manifest, artifact)["all_green"])
 

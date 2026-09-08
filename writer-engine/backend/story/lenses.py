@@ -5,7 +5,7 @@ import re
 import uuid
 from typing import Any
 
-from backend.story.persistence import persist_writer_state
+from backend.story.persistence import commit_writer_state
 from backend.story.project import StoryProject
 from backend.story.store import StoryStore
 
@@ -74,8 +74,7 @@ def put_story_lens(
         """,
         (identifier, name, definition, normalized_status),
     )
-    store.commit()
-    persist_writer_state(project, store)
+    commit_writer_state(project, store)
     return {
         "lens_id": identifier,
         "name": name,

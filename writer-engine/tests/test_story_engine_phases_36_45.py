@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from backend.story.authority import AuthorityStatus
 from backend.story.claims import create_claim
 from backend.story.compatibility import create_story_state_backup, restore_story_state_backup
 from backend.story.context import ContextCompiler
@@ -68,7 +69,7 @@ def test_phase37_recovery_discards_partial_cache_and_rehydrates_durable_writer_s
         subject_entity_id=None,
         predicate="partial_cache_only",
         literal_value=True,
-        status="CONFIRMED_CANON",
+        status=AuthorityStatus.CONFIRMED_CANON,
         branch_id="mainline",
         created_by="writer",
         stable_key="phase37-rogue",

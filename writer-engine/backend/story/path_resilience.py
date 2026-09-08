@@ -4,6 +4,7 @@ import re
 import unicodedata
 from collections import defaultdict
 from collections.abc import Iterable
+from typing import TypedDict
 
 from backend.story.project import StoryProject
 from backend.story.store import StoryStore
@@ -19,9 +20,23 @@ _WINDOWS_RESERVED = {
 _CONTROL = re.compile(r"[\x00-\x1f]")
 
 
-def analyze_relative_paths(paths: Iterable[str]) -> dict[str, object]:
+class PathProblem(TypedDict):
+    path: str
+    kind: str
+
+
+class PathResilienceReport(TypedDict):
+    path_count: int
+    problems: list[PathProblem]
+    problem_count: int
+    portable: bool
+    normalization: str
+    source_files_mutated: bool
+
+
+def analyze_relative_paths(paths: Iterable[str]) -> PathResilienceReport:
     normalized_groups: dict[str, list[str]] = defaultdict(list)
-    problems: list[dict[str, str]] = []
+    problems: list[PathProblem] = []
     count = 0
     for raw in paths:
         count += 1
@@ -55,6 +70,6 @@ def analyze_relative_paths(paths: Iterable[str]) -> dict[str, object]:
 
 def path_resilience_report(project: StoryProject, store: StoryStore) -> dict[str, object]:
     paths = [str(row["relative_path"]) for row in store.rows("SELECT relative_path FROM sources WHERE tombstoned=0")]
-    report = analyze_relative_paths(paths)
+    report: dict[str, object] = dict(analyze_relative_paths(paths))
     report["project_id"] = project.project_id
     return report

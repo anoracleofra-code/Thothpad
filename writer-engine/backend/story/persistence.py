@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import copy
 from typing import Any
 
+from backend.atomic_io import atomic_write_text
 from backend.story.project import StoryProject
 from backend.story.store import StoryStore
 
@@ -350,6 +352,49 @@ def persist_writer_state(project: StoryProject, store: StoryStore) -> dict[str, 
     }
 
 
+def commit_writer_state(project: StoryProject, store: StoryStore) -> dict[str, int]:
+    """Atomically couple a normal writer-owned cache mutation to durable state.
+
+    The SQLite cache is disposable; ``story-state.json`` is authoritative.  A
+    failed atomic durable write therefore must roll back the still-uncommitted
+    SQLite mutation and restore the in-memory project state rather than leave a
+    cache-only writer change behind.
+
+    Multi-record workflows that already own an outer SQLite transaction (for
+    example branch merge application) should call :func:`persist_writer_state`
+    directly and let their outer transaction decide when to commit.
+    """
+
+    previous_state = copy.deepcopy(project.state)
+    previous_existing = project.state_was_existing
+    previous_state_text = project.state_path.read_text(encoding="utf-8") if project.state_path.is_file() else None
+    try:
+        result = persist_writer_state(project, store)
+    except Exception:
+        store.connection.rollback()
+        project.state = previous_state
+        project.state_was_existing = previous_existing
+        raise
+    try:
+        store.commit()
+    except Exception:
+        store.connection.rollback()
+        project.state = previous_state
+        try:
+            if previous_state_text is None:
+                project.state_path.unlink(missing_ok=True)
+            else:
+                atomic_write_text(project.state_path, previous_state_text)
+        except Exception as rollback_error:
+            raise RuntimeError(
+                "Story State became durable but the disposable cache commit and durable rollback both failed"
+            ) from rollback_error
+        finally:
+            project.state_was_existing = previous_existing
+        raise
+    return result
+
+
 def _state_list(project: StoryProject, key: str) -> list[dict[str, Any]]:
     value = project.state.get(key, [])
     if not isinstance(value, list):
@@ -500,6 +545,21 @@ def _cache_has_writer_state(store: StoryStore) -> bool:
     return any(next(iter(store.rows(sql)), None) is not None for sql in checks)
 
 
+def persist_legacy_cache_writer_state_if_needed(project: StoryProject, store: StoryStore) -> bool:
+    """One-time bridge for projects created before durable Story State existed.
+
+    Once ``story-state.json`` existed when the project was opened, it is the
+    authority and callers must never promote arbitrary cache contents back into
+    it.  This helper exists solely so an old cache-only project can be migrated
+    without losing explicit writer state on its first upgraded open.
+    """
+
+    if project.state_was_existing or not _cache_has_writer_state(store):
+        return False
+    persist_writer_state(project, store)
+    return True
+
+
 def hydrate_writer_state(project: StoryProject, store: StoryStore) -> dict[str, Any]:
     """Rebuild writer-owned cache tables from durable project state.
 
@@ -507,10 +567,10 @@ def hydrate_writer_state(project: StoryProject, store: StoryStore) -> dict[str, 
     durable JSON and are reported as orphans rather than being rewritten or lost.
     """
 
-    if not project.state_was_existing and _cache_has_writer_state(store):
-        # First upgraded run: preserve any pre-durable writer state before the
-        # compiled projection is replaced.
-        persist_writer_state(project, store)
+    # First upgraded run only: preserve any pre-durable writer state before the
+    # compiled projection is replaced. Existing durable state always outranks
+    # cache contents.
+    persist_legacy_cache_writer_state_if_needed(project, store)
 
     store.connection.execute("DELETE FROM branch_merge_history")
     store.connection.execute("DELETE FROM branch_overlays")

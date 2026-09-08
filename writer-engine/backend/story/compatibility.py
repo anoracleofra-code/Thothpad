@@ -8,7 +8,7 @@ from typing import Any
 
 from backend.atomic_io import atomic_write_text
 from backend.story.ingest import ProjectIngestor
-from backend.story.persistence import hydrate_writer_state, persist_writer_state
+from backend.story.persistence import hydrate_writer_state, persist_legacy_cache_writer_state_if_needed
 from backend.story.project import PROJECT_SCHEMA_VERSION, STORY_STATE_SCHEMA_VERSION, StoryProject
 from backend.story.store import StoryStore
 
@@ -27,7 +27,7 @@ def create_story_state_backup(root: str | Path) -> dict[str, Any]:
     project = StoryProject.open(root)
     store = StoryStore(project.cache_path)
     try:
-        persist_writer_state(project, store)
+        persist_legacy_cache_writer_state_if_needed(project, store)
     finally:
         store.close()
     payload = {
@@ -58,17 +58,29 @@ def restore_story_state_backup(
         raise ValueError("invalid Story State backup name")
     project = StoryProject.open(root)
     path = _backups_dir(project) / backup_name
-    value = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError("Story State backup is unreadable or corrupt") from exc
     if not isinstance(value, dict) or value.get("format") != BACKUP_FORMAT or value.get("version") != BACKUP_VERSION:
         raise ValueError("invalid Story State backup")
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    digest = hashlib.sha256(encoded).hexdigest()
+    expected_name = f"story-state-{digest[:16]}.json"
+    if backup_name != expected_name:
+        raise ValueError("Story State backup content does not match its content-addressed name")
     if value.get("project_id") != project.project_id:
         raise ValueError("Story State backup belongs to a different project")
+    if value.get("story_state_schema") != STORY_STATE_SCHEMA_VERSION:
+        raise ValueError("Story State backup schema metadata does not match this engine")
     state = value.get("state")
     if not isinstance(state, dict):
         raise ValueError("Story State backup has no state object")
     version = state.get("version", STORY_STATE_SCHEMA_VERSION)
-    if not isinstance(version, int) or version > STORY_STATE_SCHEMA_VERSION:
+    if isinstance(version, bool) or not isinstance(version, int) or not 1 <= version <= STORY_STATE_SCHEMA_VERSION:
         raise ValueError("Story State backup uses an unsupported schema version")
+    if state.get("project_id") != project.project_id:
+        raise ValueError("Story State backup state belongs to a different project")
     create_story_state_backup(root)
     project.state = dict(state)
     project.state["version"] = STORY_STATE_SCHEMA_VERSION

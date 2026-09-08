@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import importlib.util
 import hashlib
+import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location(

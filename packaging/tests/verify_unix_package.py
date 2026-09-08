@@ -14,10 +14,10 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterator
-
+from typing import Any
 
 APP_ID = "org.thothpad.ThothPad"
 WEBENGINE_MARKERS = (
@@ -47,7 +47,7 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def run_checked(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+def run_checked(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
     result = subprocess.run(command, capture_output=True, check=False, **kwargs)
     if result.returncode != 0:
         stderr = result.stderr.decode("utf-8", errors="replace")
@@ -205,16 +205,16 @@ def tcp_sockets(pids: set[int], platform_name: str) -> list[str]:
 def terminate_tree(process: subprocess.Popen[bytes], platform_name: str) -> None:
     del platform_name
     with contextlib.suppress(ProcessLookupError, PermissionError):
-        os.killpg(process.pid, signal.SIGTERM)
+        os.killpg(process.pid, signal.SIGTERM)  # type: ignore[attr-defined]
     if process.poll() is None:
         try:
             process.wait(timeout=2.0)
         except subprocess.TimeoutExpired:
             with contextlib.suppress(ProcessLookupError, PermissionError):
-                os.killpg(process.pid, signal.SIGKILL)
+                os.killpg(process.pid, signal.SIGKILL)  # type: ignore[attr-defined]
             process.wait(timeout=2.0)
     with contextlib.suppress(ProcessLookupError, PermissionError):
-        os.killpg(process.pid, signal.SIGKILL)
+        os.killpg(process.pid, signal.SIGKILL)  # type: ignore[attr-defined]
 
 
 @contextlib.contextmanager
@@ -419,6 +419,14 @@ def main(argv: list[str] | None = None) -> int:
         temporary_owner = tempfile.TemporaryDirectory(prefix="thothpad-package-acceptance-")
         temporary = Path(temporary_owner.name)
 
+    checks: dict[str, bool] = {
+        "variant": False,
+        "bundled_engine": False,
+        "no_startup_tcp": False,
+        "unicode_byte_identical": False,
+        "stable_main_process": False,
+    }
+    trials: list[dict[str, object]] = []
     evidence: dict[str, object] = {
         "schema_version": 1,
         "created_utc": datetime.now(timezone.utc).isoformat(),
@@ -430,14 +438,8 @@ def main(argv: list[str] | None = None) -> int:
         "artifact_sha256": sha256(artifact),
         "launch_trials_requested": args.launch_trials,
         "launch_trials_completed": 0,
-        "checks": {
-            "variant": False,
-            "bundled_engine": False,
-            "no_startup_tcp": False,
-            "unicode_byte_identical": False,
-            "stable_main_process": False,
-        },
-        "trials": [],
+        "checks": checks,
+        "trials": trials,
     }
     try:
         sample = temporary / "Unicode \u03a9 \U0001f4dd.md"
@@ -450,7 +452,7 @@ def main(argv: list[str] | None = None) -> int:
                 platform_name,
                 composed_runtime=args.format == "flatpak",
             )
-            evidence["checks"]["variant"] = True  # type: ignore[index]
+            checks["variant"] = True
             for index in range(1, args.launch_trials + 1):
                 trial = run_trial(
                     command, environment, temporary / "trials" / f"trial-{index:03d}",
@@ -458,16 +460,15 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 if sha256(sample) != original_hash:
                     raise AcceptanceError(f"Unicode sample changed during launch trial {index}")
-                evidence["trials"].append(trial)  # type: ignore[union-attr]
+                trials.append(trial)
                 evidence["launch_trials_completed"] = index
-        checks = evidence["checks"]
-        checks["bundled_engine"] = True  # type: ignore[index]
-        checks["no_startup_tcp"] = True  # type: ignore[index]
-        checks["unicode_byte_identical"] = True  # type: ignore[index]
-        checks["stable_main_process"] = True  # type: ignore[index]
+        checks["bundled_engine"] = True
+        checks["no_startup_tcp"] = True
+        checks["unicode_byte_identical"] = True
+        checks["stable_main_process"] = True
         evidence["status"] = "passed"
         return_code = 0
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001 - persist evidence for every packaged-runtime failure mode
         evidence["error"] = str(error)
         return_code = 1
     finally:

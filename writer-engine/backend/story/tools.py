@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from backend.story.acceptance_metrics import AcceptanceMetrics
@@ -41,8 +42,46 @@ def _bounded_limit(value: Any, default: int = 100, maximum: int = 200) -> int:
     return max(1, min(parsed, maximum))
 
 
+def _bounded_tool_arguments(value: Any, *, depth: int = 0) -> Any:
+    if depth > 5:
+        raise ValueError("Story Tool arguments are nested too deeply")
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        if len(value) > 20_000:
+            raise ValueError("Story Tool string argument exceeds 20,000 characters")
+        return value
+    if isinstance(value, int):
+        if value.bit_length() > 4096:
+            raise ValueError("Story Tool integer argument is too large")
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value) or abs(value) > 1e12:
+            raise ValueError("Story Tool numeric argument is outside the safe range")
+        return value
+    if isinstance(value, list):
+        if len(value) > 1_000:
+            raise ValueError("Story Tool array argument exceeds 1,000 items")
+        return [_bounded_tool_arguments(item, depth=depth + 1) for item in value]
+    if isinstance(value, dict):
+        if len(value) > 100:
+            raise ValueError("Story Tool argument object has too many fields")
+        result: dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str) or not key or len(key) > 120:
+                raise ValueError("Story Tool argument keys must be bounded strings")
+            result[key] = _bounded_tool_arguments(item, depth=depth + 1)
+        return result
+    raise ValueError("Story Tool arguments must contain JSON-compatible values")
+
+
 def story_tool_manifest() -> list[dict[str, Any]]:
-    """Read-only Story Engine capabilities safe to expose as R0 tools."""
+    """Story Engine R0 capabilities safe for model-facing read access.
+
+    R0 means no manuscript/source-byte or durable writer-state mutation. A tool
+    may reconcile the disposable derived SQLite cache before answering so that
+    reads reflect the current project bytes and durable Story State.
+    """
 
     return [
         {"id": "get_project_understanding", "risk": "R0", "description": "Read normalized project/source counts."},
@@ -398,6 +437,10 @@ def invoke_story_tool(
     query: StoryQueryEngine,
     context: ContextCompiler,
 ) -> dict[str, Any]:
+    bounded = _bounded_tool_arguments(arguments)
+    if not isinstance(bounded, dict):
+        raise ValueError("Story Tool arguments must be an object")
+    arguments = bounded
     if tool_id == "get_project_understanding":
         return query.get_project_understanding()
     if tool_id == "resolve_entity":

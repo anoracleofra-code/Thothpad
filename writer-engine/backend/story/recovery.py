@@ -15,10 +15,15 @@ from backend.story.store import StoryStore
 
 RECOVERY_JOURNAL_VERSION = 1
 _OPERATION = re.compile(r"^[a-z][a-z0-9_.:-]{0,79}$")
+_SNAPSHOT_NAME = re.compile(r"^[0-9a-f-]{36}\.json$")
 
 
 def _journal_path(project: StoryProject) -> Path:
     return project.metadata_dir / "recovery-journal.json"
+
+
+def _snapshot_path(project: StoryProject, token: str) -> Path:
+    return project.metadata_dir / "recovery-snapshots" / f"{token}.json"
 
 
 def _sha256(path: Path) -> str:
@@ -48,7 +53,7 @@ def _save(project: StoryProject, document: dict[str, Any]) -> None:
     atomic_write_text(_journal_path(project), json.dumps(document, indent=2, ensure_ascii=False))
 
 
-def begin_recovery_operation(project: StoryProject, operation: str) -> str:
+def begin_recovery_operation(project: StoryProject, operation: str, *, snapshot_durable: bool = False) -> str:
     normalized = operation.strip().casefold()
     if not _OPERATION.fullmatch(normalized):
         raise ValueError("recovery operation name is invalid")
@@ -56,6 +61,21 @@ def begin_recovery_operation(project: StoryProject, operation: str) -> str:
     if isinstance(document.get("pending"), dict):
         raise RuntimeError("another Story Engine recovery-sensitive operation is already pending")
     token = str(uuid.uuid4())
+    snapshot_name = ""
+    snapshot_sha256 = ""
+    if snapshot_durable:
+        snapshot = {
+            "format": "thothpad-recovery-snapshot",
+            "version": RECOVERY_JOURNAL_VERSION,
+            "project_id": project.project_id,
+            "manifest": project.manifest,
+            "state": project.state,
+        }
+        encoded = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        snapshot_file = _snapshot_path(project, token)
+        atomic_write_text(snapshot_file, json.dumps(snapshot, indent=2, ensure_ascii=False))
+        snapshot_name = snapshot_file.name
+        snapshot_sha256 = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
     document["version"] = RECOVERY_JOURNAL_VERSION
     document["pending"] = {
         "token": token,
@@ -63,6 +83,8 @@ def begin_recovery_operation(project: StoryProject, operation: str) -> str:
         "started_unix": int(time.time()),
         "manifest_sha256_before": _sha256(project.manifest_path),
         "state_sha256_before": _sha256(project.state_path),
+        "rollback_snapshot": snapshot_name,
+        "rollback_snapshot_sha256": snapshot_sha256,
     }
     _save(project, document)
     return token
@@ -88,6 +110,47 @@ def complete_recovery_operation(project: StoryProject, token: str, *, outcome: s
     document["history"] = [*history[-49:], record]
     document["pending"] = None
     _save(project, document)
+    snapshot_name = str(record.get("rollback_snapshot", ""))
+    if _SNAPSHOT_NAME.fullmatch(snapshot_name):
+        try:
+            (project.metadata_dir / "recovery-snapshots" / snapshot_name).unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _restore_pending_snapshot(project: StoryProject, pending: dict[str, Any]) -> bool:
+    snapshot_name = str(pending.get("rollback_snapshot", ""))
+    expected_hash = str(pending.get("rollback_snapshot_sha256", ""))
+    if not snapshot_name:
+        return False
+    if not _SNAPSHOT_NAME.fullmatch(snapshot_name) or len(expected_hash) != 64:
+        raise ValueError("recovery rollback snapshot metadata is invalid")
+    path = project.metadata_dir / "recovery-snapshots" / snapshot_name
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError("recovery rollback snapshot is unreadable or corrupt") from exc
+    if not isinstance(value, dict):
+        raise ValueError("recovery rollback snapshot must be an object")
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    if digest != expected_hash:
+        raise ValueError("recovery rollback snapshot integrity check failed")
+    if (
+        value.get("format") != "thothpad-recovery-snapshot"
+        or value.get("version") != RECOVERY_JOURNAL_VERSION
+        or value.get("project_id") != project.project_id
+    ):
+        raise ValueError("recovery rollback snapshot belongs to a different project or format")
+    manifest = value.get("manifest")
+    state = value.get("state")
+    if not isinstance(manifest, dict) or not isinstance(state, dict):
+        raise ValueError("recovery rollback snapshot is missing durable metadata")
+    project.manifest = dict(manifest)
+    project.state = dict(state)
+    project.save_manifest()
+    project.save_state()
+    return True
 
 
 def recovery_status(project: StoryProject) -> dict[str, Any]:
@@ -111,6 +174,12 @@ def recover_story_project(root: str | Path, *, writer_confirmed: bool = False) -
     status = recovery_status(project)
     if not status["recovery_required"]:
         return {"recovered": False, "project_id": project.project_id, "reason": "no_pending_operation"}
+    pending = _load(project).get("pending")
+    if not isinstance(pending, dict):
+        raise RuntimeError("Story Engine recovery journal lost its pending operation")
+    restored_snapshot = _restore_pending_snapshot(project, pending)
+    if restored_snapshot:
+        project = StoryProject.open(root)
     cache = project.cache_path.resolve()
     metadata = project.metadata_dir.resolve()
     try:
@@ -125,7 +194,6 @@ def recover_story_project(root: str | Path, *, writer_confirmed: bool = False) -
         store.commit()
     finally:
         store.close()
-    pending = _load(project).get("pending")
     token = str(pending.get("token", "")) if isinstance(pending, dict) else ""
     if token:
         complete_recovery_operation(project, token, outcome="RECOVERED")
@@ -134,4 +202,5 @@ def recover_story_project(root: str | Path, *, writer_confirmed: bool = False) -
         "project_id": project.project_id,
         "understanding": understanding,
         "durable_state_authoritative": True,
+        "durable_metadata_rolled_back": restored_snapshot,
     }

@@ -7,7 +7,6 @@ import re
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 LINUX = ROOT / "packaging" / "linux"
 
@@ -53,9 +52,9 @@ class VariantWiringTest(unittest.TestCase):
         arbiter = workflow.split("  reproducibility-arbiter:", 1)[1].split(
             "  attest-release:", 1
         )[0]
-        self.assertEqual(6, len(re.findall(r"^          - platform:", arbiter, re.M)))
-        self.assertEqual(3, len(re.findall(r"^            variant: Core$", arbiter, re.M)))
-        self.assertEqual(3, len(re.findall(r"^            variant: Full$", arbiter, re.M)))
+        self.assertEqual(6, len(re.findall(r"^          - platform:", arbiter, re.MULTILINE)))
+        self.assertEqual(3, len(re.findall(r"^            variant: Core$", arbiter, re.MULTILINE)))
+        self.assertEqual(3, len(re.findall(r"^            variant: Full$", arbiter, re.MULTILINE)))
         self.assertEqual(3, workflow.count("variant: [Core, Full]"))
         self.assertEqual(3, workflow.count("candidate: [a, b]"))
         self.assertEqual(
@@ -64,7 +63,7 @@ class VariantWiringTest(unittest.TestCase):
                 re.findall(
                     r"^\s*runs-on:.*\"repro-\$\{\{ matrix.candidate \}\}\"",
                     workflow,
-                    re.M,
+                    re.MULTILINE,
                 )
             ),
         )

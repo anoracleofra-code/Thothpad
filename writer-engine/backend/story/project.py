@@ -65,9 +65,14 @@ class StoryProject:
                 manifest_path = metadata_dir / "project.json"
                 external = True
 
+        manifest_was_existing = manifest_path.exists()
         manifest = cls._load_manifest(manifest_path)
+        if manifest_was_existing and not manifest:
+            raise ValueError("Story Project manifest is empty or incomplete")
         manifest_version = manifest.get("version", PROJECT_SCHEMA_VERSION) if manifest else PROJECT_SCHEMA_VERSION
-        if isinstance(manifest_version, int) and manifest_version > PROJECT_SCHEMA_VERSION:
+        if isinstance(manifest_version, bool) or not isinstance(manifest_version, int) or manifest_version < 1:
+            raise ValueError("Story Project manifest has an invalid schema version")
+        if manifest_version > PROJECT_SCHEMA_VERSION:
             raise ValueError("Story Project manifest uses a newer unsupported schema version")
         if not manifest:
             manifest = {
@@ -82,6 +87,8 @@ class StoryProject:
             atomic_write_text(manifest_path, json.dumps(manifest, indent=2, ensure_ascii=False))
 
         project_id = manifest.get("project_id")
+        if manifest_was_existing and (not isinstance(project_id, str) or not project_id.strip()):
+            raise ValueError("Story Project manifest is missing a valid project_id")
         if not isinstance(project_id, str) or not project_id.strip():
             project_id = str(uuid.uuid4())
             manifest["project_id"] = project_id
@@ -90,9 +97,23 @@ class StoryProject:
         state_path = metadata_dir / "story-state.json"
         state_was_existing = state_path.exists()
         state = cls._load_manifest(state_path)
+        if state_was_existing and not state:
+            raise ValueError("Story State is empty or incomplete")
         state_version = state.get("version", STORY_STATE_SCHEMA_VERSION) if state else STORY_STATE_SCHEMA_VERSION
-        if isinstance(state_version, int) and state_version > STORY_STATE_SCHEMA_VERSION:
+        if isinstance(state_version, bool) or not isinstance(state_version, int) or state_version < 1:
+            raise ValueError("Story State has an invalid schema version")
+        if state_version > STORY_STATE_SCHEMA_VERSION:
             raise ValueError("Story State uses a newer unsupported schema version")
+        if state:
+            state_project_id = state.get("project_id")
+            if state_version >= 2 and (not isinstance(state_project_id, str) or not state_project_id.strip()):
+                raise ValueError("Story State is missing a valid project_id")
+            if (
+                isinstance(state_project_id, str)
+                and state_project_id.strip()
+                and state_project_id != project_id
+            ):
+                raise ValueError("Story State project_id does not match the Story Project manifest")
         if not state:
             state = {
                 "version": STORY_STATE_SCHEMA_VERSION,
@@ -186,9 +207,13 @@ class StoryProject:
             return {}
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
-        return value if isinstance(value, dict) else {}
+        except OSError as error:
+            raise OSError(f"unable to read Story Engine metadata: {path.name}") from error
+        except ValueError as error:
+            raise ValueError(f"Story Engine metadata is corrupt JSON: {path.name}") from error
+        if not isinstance(value, dict):
+            raise ValueError(f"Story Engine metadata must be a JSON object: {path.name}")
+        return value
 
     def save_manifest(self) -> None:
         self.manifest["version"] = PROJECT_SCHEMA_VERSION

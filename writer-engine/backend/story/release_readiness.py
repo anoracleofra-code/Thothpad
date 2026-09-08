@@ -42,11 +42,11 @@ class ReleaseReadiness:
         )
         external = external_evidence or {}
         expected_external = {
-            "network_capture": bool(external.get("network_capture")),
-            "quality_gate_reviews": bool(external.get("quality_gate_reviews")),
-            "clean_install_contract": bool(external.get("clean_install_contract")),
-            "update_manifest": bool(external.get("update_manifest")),
-            "platform_release_actions": bool(external.get("platform_release_actions")),
+            "network_capture": external.get("network_capture") is True,
+            "quality_gate_reviews": external.get("quality_gate_reviews") is True,
+            "clean_install_contract": external.get("clean_install_contract") is True,
+            "update_manifest": external.get("update_manifest") is True,
+            "platform_release_actions": external.get("platform_release_actions") is True,
         }
         pending = [name for name, passed in expected_external.items() if not passed]
         return {

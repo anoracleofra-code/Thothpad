@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.story.ingest import ProjectIngestor
-from backend.story.persistence import persist_writer_state
+from backend.story.persistence import persist_legacy_cache_writer_state_if_needed
 from backend.story.project import StoryProject
 from backend.story.store import StoryStore
 
@@ -50,7 +50,7 @@ def rebuild_story_index(root: str | Path, *, writer_confirmed: bool = False) -> 
     if cache_path.exists():
         store = StoryStore(cache_path)
         try:
-            persist_writer_state(project, store)
+            persist_legacy_cache_writer_state_if_needed(project, store)
         finally:
             store.close()
         cache_path.unlink()

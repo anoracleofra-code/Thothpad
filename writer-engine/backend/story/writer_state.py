@@ -15,7 +15,7 @@ from backend.story.branches import (
 from backend.story.causality import add_causal_edge, add_decision, add_opposition
 from backend.story.claims import ClaimEvidenceInput, create_claim
 from backend.story.knowledge import set_character_knowledge
-from backend.story.persistence import persist_writer_state
+from backend.story.persistence import commit_writer_state
 from backend.story.project import StoryProject
 from backend.story.promises import upsert_promise_item
 from backend.story.reader import set_reader_state
@@ -44,8 +44,7 @@ def _require_story_unit(store: StoryStore, story_unit_id: str) -> None:
 
 
 def _persist(project: StoryProject, store: StoryStore) -> None:
-    store.commit()
-    persist_writer_state(project, store)
+    commit_writer_state(project, store)
 
 
 def _require_branch(store: StoryStore, branch_id: str) -> None:

@@ -77,4 +77,6 @@ def run_soak_replay(root: str | Path, *, cycles: int = 3) -> dict[str, Any]:
             for item in cycle_reports
         ),
         "source_files_rewritten": False,
+        "derived_cache_reconciliation_allowed": True,
+        "authoritative_state_mutation_allowed": False,
     }

@@ -6,7 +6,8 @@ param(
     [ValidateSet("Core", "Full")]
     [string]$PackageVariant = "Full",
     [ValidateRange(1, 1000)]
-    [int]$LaunchTrials = 1
+    [int]$LaunchTrials = 1,
+    [switch]$CleanMachineEvidence
 )
 
 $ErrorActionPreference = "Stop"
@@ -174,7 +175,11 @@ Start-Sleep -Milliseconds 500
 if (Test-Path -LiteralPath $app) { throw "Uninstaller left the application executable behind." }
 
 $evidence = [pscustomobject]@{
+    schema_version = 1
+    package_variant = $PackageVariant
+    clean_machine = [bool]$CleanMachineEvidence
     installer = $installer.FullName
+    installer_sha256 = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     launch_trials = $LaunchTrials
     installed_and_launched = $true
     main_window_responding = $true

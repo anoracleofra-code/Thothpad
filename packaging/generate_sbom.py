@@ -10,11 +10,13 @@ import os
 import platform
 import re
 import uuid
-import tomllib
 from datetime import datetime, timezone
 from email.parser import BytesParser
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
+
+import tomllib
 
 
 def digest(path: Path) -> str:
@@ -89,7 +91,7 @@ def locked_python_components(lock_path: Path) -> list[dict]:
         for wheel in package.get("wheels", []):
             if isinstance(wheel, dict) and str(wheel.get("hash", "")).startswith("sha256:"):
                 hashes.add(str(wheel["hash"]).split(":", 1)[1])
-        component = {
+        component: dict[str, Any] = {
             "type": "library",
             "bom-ref": purl,
             "name": name,
@@ -116,21 +118,22 @@ def locked_cargo_components(lock_path: Path) -> list[dict]:
         if not name or not version:
             continue
         purl = f"pkg:cargo/{quote(name)}@{quote(version)}"
-        component = {
+        properties: list[dict[str, str]] = [{"name": "thothpad:source", "value": "cargo-lock"}]
+        component: dict[str, Any] = {
             "type": "library",
             "bom-ref": purl,
             "name": name,
             "version": version,
             "purl": purl,
             "licenses": [license_entry("NOASSERTION")],
-            "properties": [{"name": "thothpad:source", "value": "cargo-lock"}],
+            "properties": properties,
         }
         checksum = str(package.get("checksum", "")).strip().lower()
         if re.fullmatch(r"[0-9a-f]{64}", checksum):
             component["hashes"] = [{"alg": "SHA-256", "content": checksum}]
         source = str(package.get("source", "")).strip()
         if source:
-            component["properties"].append(
+            properties.append(
                 {"name": "thothpad:cargo-source", "value": source}
             )
         components[purl] = component
