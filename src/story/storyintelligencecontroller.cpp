@@ -1836,7 +1836,11 @@ QJsonObject StoryIntelligenceController::boundedStoryEngineArguments(const QStri
                || toolId == QStringLiteral("get_migration_status") || toolId == QStringLiteral("get_indexing_status")
                || toolId == QStringLiteral("get_performance_report") || toolId == QStringLiteral("get_security_audit")
                || toolId == QStringLiteral("get_model_fingerprint") || toolId == QStringLiteral("get_acceptance_metrics")
-               || toolId == QStringLiteral("get_retrieval_capabilities")) {
+               || toolId == QStringLiteral("get_retrieval_capabilities") || toolId == QStringLiteral("get_release_validation")
+               || toolId == QStringLiteral("get_recovery_status") || toolId == QStringLiteral("get_observability_report")
+               || toolId == QStringLiteral("get_resource_policy") || toolId == QStringLiteral("get_path_resilience")
+               || toolId == QStringLiteral("get_offline_readiness") || toolId == QStringLiteral("get_compatibility_status")
+               || toolId == QStringLiteral("run_release_candidate_acceptance")) {
         // These diagnostics take no model-controlled arguments beyond the
         // branch inserted below.
     }

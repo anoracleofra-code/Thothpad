@@ -6,6 +6,7 @@
 #include "story/agentedittransactionmanager.h"
 #include "story/storyintelligencecontroller.h"
 #include "story/storyintelligencewidget.h"
+#include "story/storylabdialog.h"
 #include "story/storytoolharness.h"
 #include <QApplication>
 #include <QComboBox>
@@ -17,6 +18,7 @@
 #include <QFontDatabase>
 #include <QInputDialog>
 #include <QJsonDocument>
+#include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListView>
@@ -28,6 +30,8 @@
 #include <QSettings>
 #include <QSignalSpy>
 #include <QStandardPaths>
+#include <QTabWidget>
+#include <QTableWidget>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
@@ -163,6 +167,35 @@ private slots:
         const QJsonObject stale = controller.m_pendingChat.toolResults.last().toObject();
         QVERIFY(!stale.value(QStringLiteral("ok")).toBool());
         QVERIFY(stale.value(QStringLiteral("stale")).toBool());
+    }
+
+    void storyLabReleaseControlsRemainKeyboardAccessible()
+    {
+        WriterEngineClient engine;
+        StoryLabDialog dialog(&engine);
+
+        auto *tabs = dialog.findChild<QTabWidget *>(QStringLiteral("storyLabTabs"));
+        auto *readerRun = dialog.findChild<QPushButton *>(QStringLiteral("storyLabReaderRun"));
+        auto *advancedRun = dialog.findChild<QPushButton *>(QStringLiteral("storyLabAdvancedRun"));
+        auto *advancedOutput = dialog.findChild<QPlainTextEdit *>(QStringLiteral("storyLabAdvancedOutput"));
+        auto *proposalTable = dialog.findChild<QTableWidget *>(QStringLiteral("storyLabProposalTable"));
+        auto *backup = dialog.findChild<QPushButton *>(QStringLiteral("storyLabStateBackup"));
+        auto *recover = dialog.findChild<QPushButton *>(QStringLiteral("storyLabStateRecover"));
+        auto *restore = dialog.findChild<QPushButton *>(QStringLiteral("storyLabStateRestore"));
+
+        QVERIFY(tabs && readerRun && advancedRun && advancedOutput && proposalTable && backup && recover && restore);
+        QVERIFY(!tabs->accessibleName().isEmpty());
+        QVERIFY(!readerRun->accessibleName().isEmpty());
+        QVERIFY(!advancedRun->accessibleName().isEmpty());
+        QVERIFY(!advancedOutput->accessibleName().isEmpty());
+        QVERIFY(!proposalTable->accessibleName().isEmpty());
+        QVERIFY(!backup->accessibleName().isEmpty());
+        QVERIFY(!recover->accessibleName().isEmpty());
+        QVERIFY(!restore->accessibleName().isEmpty());
+        QCOMPARE(readerRun->shortcut(), QKeySequence(QStringLiteral("Alt+R")));
+        QCOMPARE(advancedRun->shortcut(), QKeySequence(QStringLiteral("Alt+A")));
+        QVERIFY(readerRun->focusPolicy() != Qt::NoFocus);
+        QVERIFY(advancedRun->focusPolicy() != Qt::NoFocus);
     }
 
     void windowDestructionWithoutCloseDoesNotReloadOutline()

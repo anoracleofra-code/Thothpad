@@ -389,6 +389,51 @@ def test_story_branch_desktop_boolean_confirmation_is_strict(tmp_path):
         )
 
 
+def test_story_recovery_and_restore_require_writer_confirmation_and_stay_out_of_mcp(tmp_path):
+    from backend.mcp_server import TOOLS
+
+    root = tmp_path / "story-recovery"
+    root.mkdir()
+    (root / "chapter.md").write_text("# Chapter One\nAlice waits.\n", encoding="utf-8")
+    dispatch(request("story_project_understanding", project_root=str(root)))
+    backup = dispatch(request("story_state_backup", project_root=str(root)))
+    assert backup["backup_name"].startswith("story-state-")
+
+    with pytest.raises(PermissionError, match="writer confirmation"):
+        dispatch(request("story_recover", project_root=str(root)))
+    with pytest.raises(PermissionError, match="writer confirmation"):
+        dispatch(
+            request(
+                "story_state_restore",
+                project_root=str(root),
+                backup_name=backup["backup_name"],
+            )
+        )
+    with pytest.raises(ValueError, match="JSON boolean"):
+        dispatch(
+            request(
+                "story_state_restore",
+                project_root=str(root),
+                backup_name=backup["backup_name"],
+                writer_confirmed="true",
+            )
+        )
+    with pytest.raises(ValueError, match="invalid Story State backup name"):
+        dispatch(
+            request(
+                "story_state_restore",
+                project_root=str(root),
+                backup_name="../story-state-deadbeefdeadbeef.json",
+                writer_confirmed=True,
+            )
+        )
+
+    names = {tool["name"] for tool in TOOLS}
+    assert "story_recover" not in names
+    assert "story_state_backup" not in names
+    assert "story_state_restore" not in names
+
+
 def test_story_branch_apply_merge_is_atomic_durable_and_writer_confirmed(tmp_path):
     from backend.story.project import StoryProject
 

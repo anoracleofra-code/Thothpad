@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from pathlib import Path
 from typing import Any
 
 from backend.atomic_io import atomic_write_text
 from backend.story.ingest import ProjectIngestor
+from backend.story.observability import record_story_event
 from backend.story.project import StoryProject
 from backend.story.store import StoryStore
 
@@ -86,6 +88,7 @@ def run_index_batch(
     if isinstance(maximum_documents, bool):
         raise ValueError("maximum_documents must be an integer")
     maximum_documents = max(1, min(int(maximum_documents), 1_000))
+    started = time.monotonic()
     project = StoryProject.open(root)
     store = StoryStore(project.cache_path)
     try:
@@ -128,7 +131,7 @@ def run_index_batch(
                 _checkpoint_path(project),
                 json.dumps(checkpoint, indent=2, ensure_ascii=False),
             )
-        return {
+        result = {
             "project_id": project.project_id,
             "complete": complete,
             "processed_this_batch": len(batch),
@@ -139,5 +142,13 @@ def run_index_batch(
             "understanding": summary.to_dict(),
             "resumable": True,
         }
+        record_story_event(
+            project,
+            "index_batch",
+            outcome="COMPLETED",
+            duration_ms=(time.monotonic() - started) * 1000.0,
+            counts={"processed": len(batch), "remaining": max(0, len(pending_paths) - cursor)},
+        )
+        return result
     finally:
         store.close()

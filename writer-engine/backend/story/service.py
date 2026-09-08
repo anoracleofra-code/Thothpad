@@ -8,6 +8,7 @@ from typing import Any
 from backend.story.authority import AuthorityStatus, SourceRole
 from backend.story.branches import record_completed_branch_merge
 from backend.story.claims import create_claim
+from backend.story.compatibility import create_story_state_backup, restore_story_state_backup
 from backend.story.context import ContextCompiler
 from backend.story.exchange import export_story_bundle, import_story_bundle
 from backend.story.indexing import run_index_batch
@@ -20,6 +21,7 @@ from backend.story.project import StoryProject
 from backend.story.promises import upsert_promise_item
 from backend.story.proposals import mark_proposal_reviewed, proposal, submit_story_proposal
 from backend.story.query import StoryQueryEngine
+from backend.story.recovery import recover_story_project
 from backend.story.store import StoryStore
 from backend.story.threads import upsert_thread
 from backend.story.timeline import set_world_state
@@ -146,6 +148,23 @@ def story_runtime(
 def export_story_project(root: str | Path) -> dict[str, Any]:
     with story_runtime(root, initialize=False) as (project, store):
         return export_story_bundle(project, store)
+
+
+def backup_story_project_state(root: str | Path) -> dict[str, Any]:
+    return create_story_state_backup(root)
+
+
+def restore_story_project_state(
+    root: str | Path,
+    backup_name: str,
+    *,
+    writer_confirmed: bool = False,
+) -> dict[str, Any]:
+    return restore_story_state_backup(root, backup_name, writer_confirmed=writer_confirmed)
+
+
+def recover_story_project_state(root: str | Path, *, writer_confirmed: bool = False) -> dict[str, Any]:
+    return recover_story_project(root, writer_confirmed=writer_confirmed)
 
 
 def import_story_project(

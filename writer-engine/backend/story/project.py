@@ -66,6 +66,9 @@ class StoryProject:
                 external = True
 
         manifest = cls._load_manifest(manifest_path)
+        manifest_version = manifest.get("version", PROJECT_SCHEMA_VERSION) if manifest else PROJECT_SCHEMA_VERSION
+        if isinstance(manifest_version, int) and manifest_version > PROJECT_SCHEMA_VERSION:
+            raise ValueError("Story Project manifest uses a newer unsupported schema version")
         if not manifest:
             manifest = {
                 "version": PROJECT_SCHEMA_VERSION,
@@ -87,6 +90,9 @@ class StoryProject:
         state_path = metadata_dir / "story-state.json"
         state_was_existing = state_path.exists()
         state = cls._load_manifest(state_path)
+        state_version = state.get("version", STORY_STATE_SCHEMA_VERSION) if state else STORY_STATE_SCHEMA_VERSION
+        if isinstance(state_version, int) and state_version > STORY_STATE_SCHEMA_VERSION:
+            raise ValueError("Story State uses a newer unsupported schema version")
         if not state:
             state = {
                 "version": STORY_STATE_SCHEMA_VERSION,

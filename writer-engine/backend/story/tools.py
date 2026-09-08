@@ -3,15 +3,23 @@ from __future__ import annotations
 from typing import Any
 
 from backend.story.acceptance_metrics import AcceptanceMetrics
+from backend.story.compatibility import compatibility_status
 from backend.story.context import ContextCompiler, EpistemicMode
 from backend.story.explain import StoryExplainer
 from backend.story.indexing import indexing_status
 from backend.story.migrations import migration_status
+from backend.story.observability import observability_report
+from backend.story.offline import offline_readiness
 from backend.story.operational_acceptance import OperationalAcceptance
+from backend.story.path_resilience import path_resilience_report
 from backend.story.performance import StoryPerformanceProbe
 from backend.story.privacy import EgressInspector
 from backend.story.proposals import list_story_proposals
 from backend.story.query import StoryQueryEngine
+from backend.story.recovery import recovery_status
+from backend.story.release_candidate import ReleaseCandidateAcceptance
+from backend.story.release_validation import ReleaseProjectValidator
+from backend.story.resource_budget import story_resource_policy
 from backend.story.retrieval import retrieval_capabilities
 from backend.story.security import ProjectSecurityAudit
 from backend.story.validation_matrix import project_model_fingerprint
@@ -292,6 +300,46 @@ def story_tool_manifest() -> list[dict[str, Any]]:
             "id": "run_operational_acceptance",
             "risk": "R0",
             "description": "Run the read-only ten-step acceptance harness for Universal Story Engine phases 26-35.",
+        },
+        {
+            "id": "get_release_validation",
+            "risk": "R0",
+            "description": "Validate the active normalized project against release-grade Story Engine hard gates.",
+        },
+        {
+            "id": "get_recovery_status",
+            "risk": "R0",
+            "description": "Inspect crash-recovery journal state without modifying Story State or source files.",
+        },
+        {
+            "id": "get_observability_report",
+            "risk": "R0",
+            "description": "Inspect local content-free Story Engine operational counters and timings.",
+        },
+        {
+            "id": "get_resource_policy",
+            "risk": "R0",
+            "description": "Inspect bounded Story Engine record/character/time/cancellation resource policy.",
+        },
+        {
+            "id": "get_path_resilience",
+            "risk": "R0",
+            "description": "Inspect Unicode and cross-platform project-relative path portability hazards.",
+        },
+        {
+            "id": "get_offline_readiness",
+            "risk": "R0",
+            "description": "Inspect deterministic local/offline guarantees and fail-closed model privacy policy.",
+        },
+        {
+            "id": "get_compatibility_status",
+            "risk": "R0",
+            "description": "Inspect Story Project/State schema compatibility and local rollback-backup availability.",
+        },
+        {
+            "id": "run_release_candidate_acceptance",
+            "risk": "R0",
+            "description": "Run the engine-level ten-step release-candidate acceptance harness for phases 36-45.",
         },
         {
             "id": "get_story_context",
@@ -690,6 +738,22 @@ def invoke_story_tool(
                 prompt=str(arguments.get("prompt", "current story continuity"))[:4_000]
             )
         }
+    if tool_id == "get_release_validation":
+        return {"release_validation": ReleaseProjectValidator(query.project, query.store).report()}
+    if tool_id == "get_recovery_status":
+        return {"recovery": recovery_status(query.project)}
+    if tool_id == "get_observability_report":
+        return {"observability": observability_report(query.project)}
+    if tool_id == "get_resource_policy":
+        return {"resource_policy": story_resource_policy()}
+    if tool_id == "get_path_resilience":
+        return {"path_resilience": path_resilience_report(query.project, query.store)}
+    if tool_id == "get_offline_readiness":
+        return {"offline": offline_readiness(query.project)}
+    if tool_id == "get_compatibility_status":
+        return {"compatibility": compatibility_status(query.project)}
+    if tool_id == "run_release_candidate_acceptance":
+        return {"release_candidate": ReleaseCandidateAcceptance(query.project, query.store).run()}
     if tool_id == "get_story_context":
         compiled = context.compile(
             prompt=str(arguments.get("prompt", "")),

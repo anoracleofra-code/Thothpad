@@ -1077,6 +1077,27 @@ QJsonArray StoryIntelligenceController::storyEngineReadManifest() const
                               {"risk", "R0"},
                               {"description", "Run the read-only ten-step operational acceptance harness for Story Engine phases 26–35."},
                               {"arguments", "prompt?: string"}});
+    result.append(QJsonObject{{"id", "get_release_validation"},
+                              {"risk", "R0"},
+                              {"description", "Read release-grade hard-gate validation for the normalized Story Project."}});
+    result.append(
+        QJsonObject{{"id", "get_recovery_status"}, {"risk", "R0"}, {"description", "Inspect crash-recovery journal state without modifying Story State."}});
+    result.append(QJsonObject{{"id", "get_observability_report"},
+                              {"risk", "R0"},
+                              {"description", "Inspect local content-free Story Engine operational counters and timings."}});
+    result.append(
+        QJsonObject{{"id", "get_resource_policy"}, {"risk", "R0"}, {"description", "Inspect bounded record/character/time/cancellation resource policy."}});
+    result.append(
+        QJsonObject{{"id", "get_path_resilience"}, {"risk", "R0"}, {"description", "Inspect Unicode and cross-platform project-relative path portability."}});
+    result.append(QJsonObject{{"id", "get_offline_readiness"},
+                              {"risk", "R0"},
+                              {"description", "Inspect deterministic offline guarantees and fail-closed privacy readiness."}});
+    result.append(QJsonObject{{"id", "get_compatibility_status"},
+                              {"risk", "R0"},
+                              {"description", "Inspect schema compatibility and local Story State rollback availability."}});
+    result.append(QJsonObject{{"id", "run_release_candidate_acceptance"},
+                              {"risk", "R0"},
+                              {"description", "Run the read-only engine release-candidate harness for Story Engine phases 36–45."}});
     return result;
 }
 

@@ -816,6 +816,46 @@ TOOLS = [
             "required": ["project_root"],
         },
     },
+    {
+        "name": "story_get_release_validation",
+        "description": "Read release-grade Story Engine hard-gate validation for the active project.",
+        "inputSchema": {"type": "object", "properties": {"project_root": {"type": "string"}}, "required": ["project_root"]},
+    },
+    {
+        "name": "story_get_recovery_status",
+        "description": "Read crash-recovery journal status without changing Story State.",
+        "inputSchema": {"type": "object", "properties": {"project_root": {"type": "string"}}, "required": ["project_root"]},
+    },
+    {
+        "name": "story_get_observability_report",
+        "description": "Read local content-free Story Engine operational counters and timings.",
+        "inputSchema": {"type": "object", "properties": {"project_root": {"type": "string"}}, "required": ["project_root"]},
+    },
+    {
+        "name": "story_get_resource_policy",
+        "description": "Read bounded Story Engine record/character/time/cancellation policy.",
+        "inputSchema": {"type": "object", "properties": {"project_root": {"type": "string"}}, "required": ["project_root"]},
+    },
+    {
+        "name": "story_get_path_resilience",
+        "description": "Read Unicode/cross-platform project-relative path portability diagnostics.",
+        "inputSchema": {"type": "object", "properties": {"project_root": {"type": "string"}}, "required": ["project_root"]},
+    },
+    {
+        "name": "story_get_offline_readiness",
+        "description": "Read deterministic local/offline guarantees and model privacy readiness.",
+        "inputSchema": {"type": "object", "properties": {"project_root": {"type": "string"}}, "required": ["project_root"]},
+    },
+    {
+        "name": "story_get_compatibility_status",
+        "description": "Read Story Project/State schema compatibility and rollback-backup availability.",
+        "inputSchema": {"type": "object", "properties": {"project_root": {"type": "string"}}, "required": ["project_root"]},
+    },
+    {
+        "name": "story_run_release_candidate_acceptance",
+        "description": "Run the read-only engine release-candidate harness for phases 36-45.",
+        "inputSchema": {"type": "object", "properties": {"project_root": {"type": "string"}}, "required": ["project_root"]},
+    },
 ]
 
 
@@ -879,6 +919,14 @@ def tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
             "story_get_retrieval_capabilities": "get_retrieval_capabilities",
             "story_explain_record": "explain_story_record",
             "story_run_operational_acceptance": "run_operational_acceptance",
+            "story_get_release_validation": "get_release_validation",
+            "story_get_recovery_status": "get_recovery_status",
+            "story_get_observability_report": "get_observability_report",
+            "story_get_resource_policy": "get_resource_policy",
+            "story_get_path_resilience": "get_path_resilience",
+            "story_get_offline_readiness": "get_offline_readiness",
+            "story_get_compatibility_status": "get_compatibility_status",
+            "story_run_release_candidate_acceptance": "run_release_candidate_acceptance",
         }
         tool_id = mapping.get(name)
         if tool_id is None:

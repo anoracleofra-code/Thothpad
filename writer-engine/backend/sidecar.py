@@ -54,6 +54,7 @@ from backend.story.service import (
     add_story_branch_overlay,
     apply_story_branch_merge,
     apply_story_writer_mutation,
+    backup_story_project_state,
     bind_legacy_story_workspace,
     call_story_tool,
     create_story_branch,
@@ -64,6 +65,8 @@ from backend.story.service import (
     prepare_story_branch_merge,
     rebase_story_branch,
     rebuild_story_project_index,
+    recover_story_project_state,
+    restore_story_project_state,
     review_story_project_proposal,
     submit_story_project_proposal,
 )
@@ -819,6 +822,31 @@ def dispatch(
             decision=decision,
             payload_override=payload_override,
             note=str(params.get("note", "")),
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
+    if operation == "story_recover":
+        root = params.get("project_root")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        return recover_story_project_state(
+            root,
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
+    if operation == "story_state_backup":
+        root = params.get("project_root")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        return backup_story_project_state(root)
+    if operation == "story_state_restore":
+        root = params.get("project_root")
+        backup_name = params.get("backup_name")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(backup_name, str) or not backup_name.strip():
+            raise ValueError("backup_name must be a non-empty string")
+        return restore_story_project_state(
+            root,
+            backup_name,
             writer_confirmed=_bool(params, "writer_confirmed", False),
         )
     if operation == "story_tool":

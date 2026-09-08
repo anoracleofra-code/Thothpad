@@ -4,9 +4,11 @@ import copy
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from backend.story.compatibility import create_story_state_backup
 from backend.story.ingest import ProjectIngestor
 from backend.story.persistence import hydrate_writer_state, persist_writer_state
 from backend.story.project import STORY_STATE_SCHEMA_VERSION, StoryProject
+from backend.story.recovery import begin_recovery_operation, complete_recovery_operation
 from backend.story.store import StoryStore
 
 BUNDLE_VERSION = 1
@@ -96,31 +98,41 @@ def import_story_bundle(
         raise ValueError("Story Project bundle must contain manifest and state objects")
     safe_manifest = _sanitize_manifest(manifest)
     project = StoryProject.open(root)
-    for key in _MANIFEST_KEYS:
-        project.manifest[key] = copy.deepcopy(safe_manifest.get(key, project.manifest.get(key)))
-    project.save_manifest()
-    project.state["version"] = STORY_STATE_SCHEMA_VERSION
-    project.state["project_id"] = project.project_id
-    for key in _STATE_KEYS:
-        value = state.get(key, [])
-        if not isinstance(value, list):
-            raise ValueError(f"Story Project state field {key} must be an array")
-        project.state[key] = copy.deepcopy(value[:20_000])
-    for claim in project.state.get("writer_claims", []):
-        if isinstance(claim, dict):
-            claim["project_id"] = project.project_id
-    project.save_state()
-    store = StoryStore(project.cache_path)
+    backup = create_story_state_backup(root)
+    recovery_token = begin_recovery_operation(project, "portable_import")
     try:
-        ProjectIngestor(project, store).ingest()
-        hydration = hydrate_writer_state(project, store)
-        store.commit()
-        persist_writer_state(project, store)
-    finally:
-        store.close()
+        for key in _MANIFEST_KEYS:
+            project.manifest[key] = copy.deepcopy(safe_manifest.get(key, project.manifest.get(key)))
+        project.save_manifest()
+        project.state["version"] = STORY_STATE_SCHEMA_VERSION
+        project.state["project_id"] = project.project_id
+        for key in _STATE_KEYS:
+            value = state.get(key, [])
+            if not isinstance(value, list):
+                raise ValueError(f"Story Project state field {key} must be an array")
+            project.state[key] = copy.deepcopy(value[:20_000])
+        for claim in project.state.get("writer_claims", []):
+            if isinstance(claim, dict):
+                claim["project_id"] = project.project_id
+        project.save_state()
+        store = StoryStore(project.cache_path)
+        try:
+            ProjectIngestor(project, store).ingest()
+            hydration = hydrate_writer_state(project, store)
+            store.commit()
+            persist_writer_state(project, store)
+        finally:
+            store.close()
+    except BaseException:
+        # Leave the journal pending. The next writer-confirmed recovery discards
+        # compiled cache state and rebuilds from durable files instead of guessing
+        # which half of an interrupted import should win.
+        raise
+    complete_recovery_operation(project, recovery_token)
     return {
         "imported": True,
         "project_id": project.project_id,
         "source_project_id": str(bundle.get("source_project_id", "")),
         "hydration": hydration,
+        "pre_import_backup": backup,
     }

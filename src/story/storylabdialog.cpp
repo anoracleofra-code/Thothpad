@@ -17,6 +17,7 @@
 #include <QInputDialog>
 #include <QJsonDocument>
 #include <QJsonValue>
+#include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -102,6 +103,9 @@ StoryLabDialog::StoryLabDialog(WriterEngineClient *engine, QWidget *parent)
     , m_indexRebuild(new QPushButton(tr("Rebuild index…"), this))
     , m_indexContinue(new QPushButton(tr("Continue indexing"), this))
     , m_legacyBind(new QPushButton(tr("Bind legacy workspace…"), this))
+    , m_stateBackup(new QPushButton(tr("Backup Story State"), this))
+    , m_stateRecover(new QPushButton(tr("Recover pending operation…"), this))
+    , m_stateRestore(new QPushButton(tr("Restore Story State…"), this))
     , m_projectExport(new QPushButton(tr("Export Story metadata…"), this))
     , m_projectImport(new QPushButton(tr("Import Story metadata…"), this))
     , m_advancedOutput(resultBox(this))
@@ -135,6 +139,8 @@ StoryLabDialog::StoryLabDialog(WriterEngineClient *engine, QWidget *parent)
     root->addWidget(m_statusLabel);
 
     auto *tabs = new QTabWidget(this);
+    tabs->setObjectName(QStringLiteral("storyLabTabs"));
+    tabs->setAccessibleName(tr("Story Lab workspaces"));
     root->addWidget(tabs, 1);
 
     auto *readerPage = new QWidget(tabs);
@@ -262,6 +268,15 @@ StoryLabDialog::StoryLabDialog(WriterEngineClient *engine, QWidget *parent)
     m_advancedAction->addItem(tr("Retrieval capabilities"), QStringLiteral("get_retrieval_capabilities"));
     m_advancedAction->addItem(tr("Ask ThothPad Why"), QStringLiteral("explain_story_record"));
     m_advancedAction->addItem(tr("Phases 26–35 operational acceptance"), QStringLiteral("run_operational_acceptance"));
+    m_advancedAction->insertSeparator(m_advancedAction->count());
+    m_advancedAction->addItem(tr("Release-project validation"), QStringLiteral("get_release_validation"));
+    m_advancedAction->addItem(tr("Crash / recovery status"), QStringLiteral("get_recovery_status"));
+    m_advancedAction->addItem(tr("Privacy-safe local observability"), QStringLiteral("get_observability_report"));
+    m_advancedAction->addItem(tr("Cancellation / resource policy"), QStringLiteral("get_resource_policy"));
+    m_advancedAction->addItem(tr("Unicode / path resilience"), QStringLiteral("get_path_resilience"));
+    m_advancedAction->addItem(tr("Offline / egress readiness"), QStringLiteral("get_offline_readiness"));
+    m_advancedAction->addItem(tr("Upgrade / rollback compatibility"), QStringLiteral("get_compatibility_status"));
+    m_advancedAction->addItem(tr("Phases 36–45 release-candidate acceptance"), QStringLiteral("run_release_candidate_acceptance"));
     m_advancedQuery->setPlaceholderText(tr("Explorer/egress prompt, or record kind for Why"));
     m_advancedCharacter->setPlaceholderText(tr("Character/entity A, or record ID for Why"));
     m_advancedOtherEntity->setPlaceholderText(tr("Entity B for relationship arc"));
@@ -275,6 +290,9 @@ StoryLabDialog::StoryLabDialog(WriterEngineClient *engine, QWidget *parent)
     maintenanceRow->addWidget(m_indexContinue);
     maintenanceRow->addWidget(m_indexRebuild);
     maintenanceRow->addWidget(m_legacyBind);
+    maintenanceRow->addWidget(m_stateBackup);
+    maintenanceRow->addWidget(m_stateRecover);
+    maintenanceRow->addWidget(m_stateRestore);
     maintenanceRow->addWidget(m_projectExport);
     maintenanceRow->addWidget(m_projectImport);
     maintenanceRow->addStretch(1);
@@ -387,6 +405,15 @@ StoryLabDialog::StoryLabDialog(WriterEngineClient *engine, QWidget *parent)
     connect(m_legacyBind, &QPushButton::clicked, this, [this]() {
         bindLegacyWorkspace();
     });
+    connect(m_stateBackup, &QPushButton::clicked, this, [this]() {
+        backupStoryState();
+    });
+    connect(m_stateRecover, &QPushButton::clicked, this, [this]() {
+        recoverStoryState();
+    });
+    connect(m_stateRestore, &QPushButton::clicked, this, [this]() {
+        restoreStoryState();
+    });
     connect(m_projectExport, &QPushButton::clicked, this, [this]() {
         exportProjectMetadata();
     });
@@ -435,6 +462,43 @@ StoryLabDialog::StoryLabDialog(WriterEngineClient *engine, QWidget *parent)
     connect(m_entityTable, &QTableWidget::itemSelectionChanged, this, [this]() {
         m_entityAlias->setEnabled(m_entityTable->currentRow() >= 0);
     });
+
+    m_readerAction->setObjectName(QStringLiteral("storyLabReaderAction"));
+    m_readerAction->setAccessibleName(tr("Reader analysis"));
+    m_readerRun->setObjectName(QStringLiteral("storyLabReaderRun"));
+    m_readerRun->setAccessibleName(tr("Run reader analysis"));
+    m_readerRun->setShortcut(QKeySequence(QStringLiteral("Alt+R")));
+    m_entityTable->setObjectName(QStringLiteral("storyLabEntityTable"));
+    m_entityTable->setAccessibleName(tr("Story entities"));
+    m_advancedAction->setObjectName(QStringLiteral("storyLabAdvancedAction"));
+    m_advancedAction->setAccessibleName(tr("Advanced Story Engine analysis"));
+    m_advancedRun->setObjectName(QStringLiteral("storyLabAdvancedRun"));
+    m_advancedRun->setAccessibleName(tr("Run advanced Story Engine analysis"));
+    m_advancedRun->setShortcut(QKeySequence(QStringLiteral("Alt+A")));
+    m_advancedOutput->setObjectName(QStringLiteral("storyLabAdvancedOutput"));
+    m_advancedOutput->setAccessibleName(tr("Advanced Story Engine results"));
+    m_proposalTable->setObjectName(QStringLiteral("storyLabProposalTable"));
+    m_proposalTable->setAccessibleName(tr("Story proposal review queue"));
+    m_proposalAccept->setObjectName(QStringLiteral("storyLabProposalAccept"));
+    m_proposalAccept->setAccessibleName(tr("Accept selected Story proposal"));
+    m_proposalReject->setObjectName(QStringLiteral("storyLabProposalReject"));
+    m_proposalReject->setAccessibleName(tr("Reject selected Story proposal"));
+    m_writerTable->setObjectName(QStringLiteral("storyLabWriterModelTable"));
+    m_writerTable->setAccessibleName(tr("Writer Model preferences"));
+    m_stateBackup->setObjectName(QStringLiteral("storyLabStateBackup"));
+    m_stateBackup->setAccessibleName(tr("Create Story State backup"));
+    m_stateRecover->setObjectName(QStringLiteral("storyLabStateRecover"));
+    m_stateRecover->setAccessibleName(tr("Recover interrupted Story Engine operation"));
+    m_stateRestore->setObjectName(QStringLiteral("storyLabStateRestore"));
+    m_stateRestore->setAccessibleName(tr("Restore a previous Story State backup"));
+    m_statusLabel->setAccessibleName(tr("Story Lab status"));
+    m_positionLabel->setAccessibleName(tr("Current Story position"));
+    QWidget::setTabOrder(m_readerAction, m_readerCharacter);
+    QWidget::setTabOrder(m_readerCharacter, m_readerRun);
+    QWidget::setTabOrder(m_advancedAction, m_advancedQuery);
+    QWidget::setTabOrder(m_advancedQuery, m_advancedCharacter);
+    QWidget::setTabOrder(m_advancedCharacter, m_advancedOtherEntity);
+    QWidget::setTabOrder(m_advancedOtherEntity, m_advancedRun);
     setPositionSensitiveEnabled(false);
     setReady();
 }
@@ -623,6 +687,64 @@ void StoryLabDialog::handleResponse(const QString &requestId, const QJsonObject 
         setReady(tr("Legacy Story Workspace bound without rewriting it."));
         return;
     }
+    if (kind == QStringLiteral("__state_backup")) {
+        m_advancedOutput->setPlainText(formatJson(result));
+        setReady(tr("Durable Story State backup created."));
+        return;
+    }
+    if (kind == QStringLiteral("__state_recover")) {
+        m_advancedOutput->setPlainText(formatJson(result));
+        setReady(result.value(QStringLiteral("recovered")).toBool() ? tr("Story Engine recovery completed.")
+                                                                    : tr("No interrupted Story Engine operation required recovery."));
+        return;
+    }
+    if (kind == QStringLiteral("__compatibility_for_restore")) {
+        const QJsonObject compatibility = result.value(QStringLiteral("compatibility")).toObject();
+        QStringList backups;
+        for (const QJsonValue &value : compatibility.value(QStringLiteral("backups")).toArray()) {
+            if (value.isString() && !value.toString().isEmpty()) {
+                backups.append(value.toString());
+            }
+        }
+        if (backups.isEmpty()) {
+            setReady(tr("No Story State backups are available to restore."));
+            return;
+        }
+        bool accepted = false;
+        const QString selected = QInputDialog::getItem(this, tr("Restore Story State"), tr("Backup"), backups, backups.size() - 1, false, &accepted);
+        if (!accepted || selected.isEmpty()) {
+            setReady();
+            return;
+        }
+        if (QMessageBox::warning(
+                this,
+                tr("Restore writer-owned Story State?"),
+                tr("ThothPad will create a backup of the current durable Story State, restore %1, discard the disposable cache, and rebuild it. "
+                   "Manuscript files are not changed.")
+                    .arg(selected),
+                QMessageBox::Yes | QMessageBox::Cancel,
+                QMessageBox::Cancel)
+            != QMessageBox::Yes) {
+            setReady();
+            return;
+        }
+        QJsonObject payload{{QStringLiteral("project_root"), m_projectRoot},
+                            {QStringLiteral("backup_name"), selected},
+                            {QStringLiteral("writer_confirmed"), true}};
+        m_requestKind = QStringLiteral("__state_restore");
+        m_requestId = m_engine->send(QStringLiteral("story_state_restore"), payload);
+        if (m_requestId.isEmpty()) {
+            setReady(tr("Could not start Story State restore."));
+        } else {
+            setBusy(tr("Restoring durable Story State and rebuilding the cache…"));
+        }
+        return;
+    }
+    if (kind == QStringLiteral("__state_restore")) {
+        m_advancedOutput->setPlainText(formatJson(result));
+        setReady(tr("Story State restored from backup."));
+        return;
+    }
     if (kind == QStringLiteral("__proposal_review")) {
         m_proposalOutput->setPlainText(formatJson(result));
         setReady(tr("Proposal review saved."));
@@ -687,7 +809,11 @@ void StoryLabDialog::handleResponse(const QString &requestId, const QJsonObject 
                || kind == QStringLiteral("get_security_audit") || kind == QStringLiteral("get_egress_preview")
                || kind == QStringLiteral("get_model_fingerprint") || kind == QStringLiteral("get_acceptance_metrics")
                || kind == QStringLiteral("get_retrieval_capabilities") || kind == QStringLiteral("explain_story_record")
-               || kind == QStringLiteral("run_operational_acceptance")) {
+               || kind == QStringLiteral("run_operational_acceptance") || kind == QStringLiteral("get_release_validation")
+               || kind == QStringLiteral("get_recovery_status") || kind == QStringLiteral("get_observability_report")
+               || kind == QStringLiteral("get_resource_policy") || kind == QStringLiteral("get_path_resilience")
+               || kind == QStringLiteral("get_offline_readiness") || kind == QStringLiteral("get_compatibility_status")
+               || kind == QStringLiteral("run_release_candidate_acceptance")) {
         m_advancedOutput->setPlainText(formatJson(result));
     }
     setReady();
@@ -946,6 +1072,64 @@ void StoryLabDialog::bindLegacyWorkspace()
         setReady(tr("Could not start legacy Story Workspace binding."));
     } else {
         setBusy(tr("Binding legacy Story Workspace without rewriting it…"));
+    }
+}
+
+void StoryLabDialog::backupStoryState()
+{
+    if (m_projectRoot.isEmpty() || !m_engine->isReady() || !m_engine->supportsOperation(QStringLiteral("story_state_backup"))) {
+        setReady(tr("Story State backup is not available in this engine build."));
+        return;
+    }
+    m_requestKind = QStringLiteral("__state_backup");
+    m_requestId = m_engine->send(QStringLiteral("story_state_backup"), QJsonObject{{QStringLiteral("project_root"), m_projectRoot}});
+    if (m_requestId.isEmpty()) {
+        setReady(tr("Could not create Story State backup."));
+    } else {
+        setBusy(tr("Creating durable Story State backup…"));
+    }
+}
+
+void StoryLabDialog::recoverStoryState()
+{
+    if (m_projectRoot.isEmpty() || !m_engine->isReady() || !m_engine->supportsOperation(QStringLiteral("story_recover"))) {
+        setReady(tr("Story Engine recovery is not available in this engine build."));
+        return;
+    }
+    if (QMessageBox::warning(this,
+                             tr("Recover interrupted Story Engine operation?"),
+                             tr("If a recovery journal is pending, ThothPad will discard only the compiled Story Engine cache and rebuild from project sources "
+                                "plus durable writer-owned state. Manuscript files are not changed."),
+                             QMessageBox::Yes | QMessageBox::Cancel,
+                             QMessageBox::Cancel)
+        != QMessageBox::Yes) {
+        return;
+    }
+    m_requestKind = QStringLiteral("__state_recover");
+    m_requestId = m_engine->send(QStringLiteral("story_recover"),
+                                 QJsonObject{{QStringLiteral("project_root"), m_projectRoot}, {QStringLiteral("writer_confirmed"), true}});
+    if (m_requestId.isEmpty()) {
+        setReady(tr("Could not start Story Engine recovery."));
+    } else {
+        setBusy(tr("Checking and recovering durable Story State…"));
+    }
+}
+
+void StoryLabDialog::restoreStoryState()
+{
+    if (m_projectRoot.isEmpty() || !m_engine->isReady() || !m_engine->supportsOperation(QStringLiteral("story_state_restore"))) {
+        setReady(tr("Story State restore is not available in this engine build."));
+        return;
+    }
+    QJsonObject payload{{QStringLiteral("project_root"), m_projectRoot},
+                        {QStringLiteral("tool_id"), QStringLiteral("get_compatibility_status")},
+                        {QStringLiteral("arguments"), QJsonObject{}}};
+    m_requestKind = QStringLiteral("__compatibility_for_restore");
+    m_requestId = m_engine->send(QStringLiteral("story_tool"), payload);
+    if (m_requestId.isEmpty()) {
+        setReady(tr("Could not load Story State backups."));
+    } else {
+        setBusy(tr("Loading Story State backup list…"));
     }
 }
 

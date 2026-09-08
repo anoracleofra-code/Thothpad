@@ -61,6 +61,9 @@ private:
     void rebuildIndex();
     void continueIndexing();
     void bindLegacyWorkspace();
+    void backupStoryState();
+    void recoverStoryState();
+    void restoreStoryState();
     void exportProjectMetadata();
     void importProjectMetadata();
     void refreshProposals();
@@ -119,6 +122,9 @@ private:
     QPushButton *m_indexRebuild;
     QPushButton *m_indexContinue;
     QPushButton *m_legacyBind;
+    QPushButton *m_stateBackup;
+    QPushButton *m_stateRecover;
+    QPushButton *m_stateRestore;
     QPushButton *m_projectExport;
     QPushButton *m_projectImport;
     QPlainTextEdit *m_advancedOutput;
