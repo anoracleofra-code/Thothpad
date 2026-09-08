@@ -141,6 +141,15 @@ Tools:
 - `story_run_lens`
 - `story_get_reader_experience`
 - `story_get_reader_experience_timeline`
+- `story_explore`
+- `story_get_scene_semantics`
+- `story_audit_continuity`
+- `story_get_character_arc`
+- `story_get_relationship_arc`
+- `story_audit_ending_integrity`
+- `story_get_project_health`
+- `story_get_index_status`
+- `story_run_wow_acceptance`
 
 Story MCP tools are read-only and operate only on project roots the writer has already initialized in ThothPad. Naming an arbitrary machine directory over MCP does not create or authorize a Story Project.
 

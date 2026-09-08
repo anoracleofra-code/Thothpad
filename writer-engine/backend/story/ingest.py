@@ -9,7 +9,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from backend.story.adapters import DocxAdapter, GenericFolderAdapter, MarkdownAdapter, PlainTextAdapter, SourceAdapter
+from backend.story.adapters import (
+    DocxAdapter,
+    FountainAdapter,
+    GenericFolderAdapter,
+    HtmlAdapter,
+    MarkdownAdapter,
+    PlainTextAdapter,
+    RtfAdapter,
+    SourceAdapter,
+)
 from backend.story.adapters.base import SourceCandidate
 from backend.story.authority import SourceRole
 from backend.story.claims import detect_claim_conflicts, extract_profile_claims
@@ -75,9 +84,7 @@ def _chunks(source_id: str, text: str, structures: list[Any], *, maximum_chars: 
             piece = text[cursor:end]
             if piece.strip():
                 piece_hash = _hash_bytes(piece.encode("utf-8"))
-                chunk_id = str(
-                    uuid.uuid5(uuid.NAMESPACE_URL, f"thothpad-chunk:{source_id}:{ordinal}:{piece_hash}")
-                )
+                chunk_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"thothpad-chunk:{source_id}:{ordinal}:{piece_hash}"))
                 result.append(
                     SourceChunk(
                         chunk_id=chunk_id,
@@ -139,7 +146,14 @@ class ProjectIngestor:
         self.project = project
         self.store = store
         self.generic = generic or GenericFolderAdapter()
-        self.adapters = adapters or [MarkdownAdapter(), PlainTextAdapter(), DocxAdapter()]
+        self.adapters = adapters or [
+            MarkdownAdapter(),
+            PlainTextAdapter(),
+            DocxAdapter(),
+            FountainAdapter(),
+            HtmlAdapter(),
+            RtfAdapter(),
+        ]
 
     def _adapter(self, candidate: SourceCandidate) -> SourceAdapter | None:
         return next((adapter for adapter in self.adapters if adapter.supports(candidate.path)), None)
@@ -176,9 +190,7 @@ class ProjectIngestor:
             explicit_override = self.project.source_override(candidate.relative_path)
             override = {**rule_override, **explicit_override}
             override_hash = _override_hash(override)
-            existing_metadata = (
-                StoryStore.decode_json(existing["metadata_json"], {}) if existing is not None else {}
-            )
+            existing_metadata = StoryStore.decode_json(existing["metadata_json"], {}) if existing is not None else {}
             unchanged = (
                 existing is not None
                 and existing["size"] == candidate.size
@@ -188,9 +200,10 @@ class ProjectIngestor:
             if unchanged:
                 summary.unchanged_documents += 1
                 summary.readable_documents += 1
-                for role in self.store.source_roles(existing["source_id"]):
-                    if role["confidence"] >= 0.5:
-                        role_counter[role["role"]] += 1
+                assert existing is not None
+                for stored_role in self.store.source_roles(existing["source_id"]):
+                    if stored_role["confidence"] >= 0.5:
+                        role_counter[stored_role["role"]] += 1
                 continue
 
             raw_hash = _hash_bytes(candidate.path.read_bytes())
@@ -300,9 +313,9 @@ class ProjectIngestor:
                 summary.new_documents += 1
             else:
                 summary.changed_documents += 1
-            for role in roles:
-                if role.confidence >= 0.5:
-                    role_counter[role.role.value] += 1
+            for role_hint in roles:
+                if role_hint.confidence >= 0.5:
+                    role_counter[role_hint.role.value] += 1
 
         missing = self.store.mark_missing_sources(self.project.project_id, present_paths)
         summary.removed_documents = len(missing)

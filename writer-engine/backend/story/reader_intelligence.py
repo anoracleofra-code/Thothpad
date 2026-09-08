@@ -44,9 +44,7 @@ class ReaderIntelligence:
         self.project = project
         self.store = store
         self.context = ContextCompiler(project, store)
-        self._manuscript_order = {
-            path.casefold(): index for index, path in enumerate(project.active_manuscripts())
-        }
+        self._manuscript_order = {path.casefold(): index for index, path in enumerate(project.active_manuscripts())}
 
     def _resolve_entity(self, name: str) -> dict[str, Any] | None:
         matches = self.store.resolve_entities(name.strip())
@@ -133,11 +131,7 @@ class ReaderIntelligence:
         source = self.store.source(source_id)
         if source is None:
             return "unresolved"
-        roles = {
-            str(role["role"])
-            for role in self.store.source_roles(source_id)
-            if float(role["confidence"]) >= 0.5
-        }
+        roles = {str(role["role"]) for role in self.store.source_roles(source_id) if float(role["confidence"]) >= 0.5}
         if "manuscript" not in roles:
             return "reference"
         path = str(source["relative_path"] or "")

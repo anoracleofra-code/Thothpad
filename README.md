@@ -290,6 +290,8 @@ The engine is covered by `ruff`, `mypy`, and pytest gates, while the desktop app
 - [BRAND.md](BRAND.md) — product identity and visual language
 - [CONTRIBUTING.md](CONTRIBUTING.md) — contribution guidance
 - [writer-engine/README.md](writer-engine/README.md) — engine CLI, MCP, sidecar, grammar, and provider details
+- [docs/story-engine/ARCHITECTURE.md](docs/story-engine/ARCHITECTURE.md) — Universal Story Engine authority, provenance, epistemic, branch, and lifecycle invariants
+- [docs/story-engine/PHASES_16_25.md](docs/story-engine/PHASES_16_25.md) — Story Explorer through executable Phase-25 acceptance certification
 
 ---
 

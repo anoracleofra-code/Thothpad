@@ -588,9 +588,10 @@ def put_author_decision(
         AuthorityStatus.AUTHOR_INTENT,
     }:
         raise ValueError("author decisions must remain writer-owned intent/canon")
-    if branch_id != "mainline" and next(
-        iter(store.rows("SELECT 1 FROM branches WHERE branch_id=?", (branch_id,))), None
-    ) is None:
+    if (
+        branch_id != "mainline"
+        and next(iter(store.rows("SELECT 1 FROM branches WHERE branch_id=?", (branch_id,))), None) is None
+    ):
         raise KeyError("branch not found")
     identifier = author_decision_id or str(uuid.uuid4())
     store.connection.execute(

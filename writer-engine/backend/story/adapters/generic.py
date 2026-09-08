@@ -6,7 +6,7 @@ from pathlib import Path
 from backend.story.adapters.base import SourceCandidate
 
 DEFAULT_MAX_SOURCE_BYTES = 8 * 1024 * 1024
-DEFAULT_EXTENSIONS = frozenset({".md", ".markdown", ".txt", ".rst", ".docx"})
+DEFAULT_EXTENSIONS = frozenset({".md", ".markdown", ".txt", ".rst", ".docx", ".fountain", ".html", ".htm", ".rtf"})
 SKIPPED_DIRECTORIES = frozenset(
     {
         ".git",
@@ -43,8 +43,7 @@ class GenericFolderAdapter:
             names[:] = sorted(
                 name
                 for name in names
-                if name.casefold() not in SKIPPED_DIRECTORIES
-                and not (directory_path / name).is_symlink()
+                if name.casefold() not in SKIPPED_DIRECTORIES and not (directory_path / name).is_symlink()
             )
             for filename in sorted(filenames):
                 path = directory_path / filename

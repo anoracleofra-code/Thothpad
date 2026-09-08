@@ -56,14 +56,28 @@ explicit conflict records; resolution is an author action or remains open.
 ## Project ingestion
 
 The Generic Folder adapter is the baseline product, not a fallback. Specialized
-adapters may add structure hints for Markdown, Obsidian, DOCX, Scrivener exports,
-Novel Architect vaults, or future formats. Adapters return observations/hints;
-they cannot redefine authority or tool permissions.
+adapters may add structure hints for Markdown, plain text, DOCX, Fountain,
+HTML/HTM, RTF, Obsidian, Scrivener exports, Novel Architect vaults, or future
+formats. Adapters return observations/hints; they cannot redefine authority or
+tool permissions.
 
 Original project files are read-only to the Story Engine by default. Persistent
 engine metadata lives under `.thothpad/` when the project is writable, otherwise
 under ThothPad application data. The compiled SQLite cache is disposable and can
 always be rebuilt from sources plus writer-approved metadata.
+
+## Lifecycle and portability
+
+Cache inspection is read-only. Destroying/rebuilding the compiled Story Engine
+cache is an explicit writer-confirmed desktop operation: durable writer-owned
+state is persisted first, only the cache is removed, and the cache is rebuilt
+from project sources plus durable state. Model/MCP callers cannot trigger cache
+rebuilds.
+
+Portable Story Project exchange contains project rules and writer-owned state,
+not manuscript/source bytes, credentials, or absolute machine paths. Import is
+also an explicit writer-confirmed desktop operation and rebinds imported state
+to the destination Story Project without overwriting source files.
 
 ## Story-unit identity
 
@@ -112,4 +126,3 @@ memories, sessions, markers, annotations, or accepted edit history.
 5. Branch contamination is zero.
 6. Project text cannot grant model/tool authority.
 7. Deleting the cache loses no author-approved source metadata.
-

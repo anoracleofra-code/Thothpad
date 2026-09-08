@@ -134,10 +134,9 @@ def _record_label(store: StoryStore, kind: str, identifier: str) -> str:
             None,
         )
         if row is not None:
-            return (
-                f"{row['cause_kind']}:{row['cause_id']} {row['relation']} "
-                f"{row['effect_kind']}:{row['effect_id']}"
-            )[:500]
+            return (f"{row['cause_kind']}:{row['cause_id']} {row['relation']} {row['effect_kind']}:{row['effect_id']}")[
+                :500
+            ]
     elif kind == "scene_contract":
         row = next(
             iter(

@@ -82,18 +82,8 @@ def agent_setup() -> dict[str, Any]:
         "mcp_command": mcp_cmd,
         "cli_command": cli_cmd,
         "cwd": cwd,
-        "codex_mcp": {
-            "mcpServers": {
-                "thothpad": {
-                    "command": mcp_cmd
-                }
-            }
-        },
-        "claude_code_mcp": {
-            "thothpad": {
-                "command": mcp_cmd
-            }
-        },
+        "codex_mcp": {"mcpServers": {"thothpad": {"command": mcp_cmd}}},
+        "claude_code_mcp": {"thothpad": {"command": mcp_cmd}},
         "zed_cli_examples": [
             f'"{cli_cmd}" diagnose ".\\chapter.md" --profile fiction-gritty',
             f'"{cli_cmd}" rewrite ".\\chapter.md" --profile fiction-gritty --passes 2',
@@ -149,5 +139,14 @@ def agent_setup() -> dict[str, Any]:
             "story_run_lens",
             "story_get_reader_experience",
             "story_get_reader_experience_timeline",
+            "story_explore",
+            "story_get_scene_semantics",
+            "story_audit_continuity",
+            "story_get_character_arc",
+            "story_get_relationship_arc",
+            "story_audit_ending_integrity",
+            "story_get_project_health",
+            "story_get_index_status",
+            "story_run_wow_acceptance",
         ],
     }

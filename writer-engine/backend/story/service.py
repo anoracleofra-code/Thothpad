@@ -9,8 +9,10 @@ from backend.story.authority import AuthorityStatus, SourceRole
 from backend.story.branches import record_completed_branch_merge
 from backend.story.claims import create_claim
 from backend.story.context import ContextCompiler
+from backend.story.exchange import export_story_bundle, import_story_bundle
 from backend.story.ingest import ProjectIngestor
 from backend.story.lenses import put_story_lens
+from backend.story.maintenance import rebuild_story_index
 from backend.story.persistence import persist_writer_state
 from backend.story.project import StoryProject
 from backend.story.promises import upsert_promise_item
@@ -138,6 +140,32 @@ def story_runtime(
         store.close()
 
 
+def export_story_project(root: str | Path) -> dict[str, Any]:
+    with story_runtime(root, initialize=False) as (project, store):
+        return export_story_bundle(project, store)
+
+
+def import_story_project(
+    root: str | Path,
+    bundle: dict[str, Any],
+    *,
+    writer_confirmed: bool = False,
+) -> dict[str, Any]:
+    if not StoryProject.is_initialized(root):
+        raise PermissionError("Story Project has not been initialized by ThothPad")
+    return import_story_bundle(root, bundle, writer_confirmed=writer_confirmed)
+
+
+def rebuild_story_project_index(
+    root: str | Path,
+    *,
+    writer_confirmed: bool = False,
+) -> dict[str, Any]:
+    if not StoryProject.is_initialized(root):
+        raise PermissionError("Story Project has not been initialized by ThothPad")
+    return rebuild_story_index(root, writer_confirmed=writer_confirmed)
+
+
 def project_understanding(root: str | Path, *, initialize: bool = True) -> dict[str, Any]:
     with story_runtime(root, initialize=initialize) as (project, store):
         result = StoryQueryEngine(project, store).get_project_understanding()
@@ -195,11 +223,7 @@ def set_manuscript_order(root: str | Path, paths: list[str]) -> dict[str, Any]:
             source = store.source_by_path(path)
             if source is None:
                 raise KeyError(f"project source not found: {path}")
-            roles = {
-                row["role"]
-                for row in store.source_roles(source["source_id"])
-                if float(row["confidence"]) >= 0.5
-            }
+            roles = {row["role"] for row in store.source_roles(source["source_id"]) if float(row["confidence"]) >= 0.5}
             if SourceRole.MANUSCRIPT.value not in roles:
                 raise ValueError(f"source is not classified as manuscript: {path}")
         project.set_active_manuscripts(normalized)
@@ -281,9 +305,7 @@ def apply_story_writer_mutation(
                 entity_type=str(safe.get("entity_type", "")),
                 description=str(safe.get("description", "")),
                 aliases=(
-                    [str(item) for item in safe.get("aliases", [])]
-                    if isinstance(safe.get("aliases"), list)
-                    else []
+                    [str(item) for item in safe.get("aliases", [])] if isinstance(safe.get("aliases"), list) else []
                 ),
                 status=str(safe.get("status", AuthorityStatus.CONFIRMED_CANON.value)),
                 entity_id=str(safe.get("entity_id")) if safe.get("entity_id") else None,
@@ -347,9 +369,7 @@ def apply_story_writer_mutation(
                 valid_until=str(safe.get("valid_until")) if safe.get("valid_until") is not None else None,
                 branch_id=str(safe.get("branch_id", "mainline")),
                 status=str(safe.get("status", AuthorityStatus.CONFIRMED_CANON.value)),
-                evidence_claim_id=(
-                    str(safe.get("evidence_claim_id")) if safe.get("evidence_claim_id") else None
-                ),
+                evidence_claim_id=(str(safe.get("evidence_claim_id")) if safe.get("evidence_claim_id") else None),
                 state_id=str(safe.get("state_id")) if safe.get("state_id") else None,
             )
             return _writer_mutation_result(kind, record_id)
@@ -376,9 +396,7 @@ def apply_story_writer_mutation(
                 story_unit_id=str(safe.get("story_unit_id")) if safe.get("story_unit_id") else None,
                 branch_id=str(safe.get("branch_id", "mainline")),
                 confidence=float(safe.get("confidence", 1.0)),
-                reader_state_id=(
-                    str(safe.get("reader_state_id")) if safe.get("reader_state_id") else None
-                ),
+                reader_state_id=(str(safe.get("reader_state_id")) if safe.get("reader_state_id") else None),
             )
             return _writer_mutation_result(kind, record_id)
         if kind == "relationship":
@@ -392,12 +410,8 @@ def apply_story_writer_mutation(
                 valid_from=str(safe.get("valid_from")) if safe.get("valid_from") is not None else None,
                 valid_until=str(safe.get("valid_until")) if safe.get("valid_until") is not None else None,
                 branch_id=str(safe.get("branch_id", "mainline")),
-                evidence_claim_id=(
-                    str(safe.get("evidence_claim_id")) if safe.get("evidence_claim_id") else None
-                ),
-                relationship_id=(
-                    str(safe.get("relationship_id")) if safe.get("relationship_id") else None
-                ),
+                evidence_claim_id=(str(safe.get("evidence_claim_id")) if safe.get("evidence_claim_id") else None),
+                relationship_id=(str(safe.get("relationship_id")) if safe.get("relationship_id") else None),
             )
             return _writer_mutation_result(kind, record_id)
         if kind == "thread":
@@ -407,9 +421,7 @@ def apply_story_writer_mutation(
                 title=str(safe.get("title", "")),
                 state=str(safe.get("state", "OPEN")),
                 opened_at=str(safe.get("opened_at")) if safe.get("opened_at") else None,
-                last_advanced_at=(
-                    str(safe.get("last_advanced_at")) if safe.get("last_advanced_at") else None
-                ),
+                last_advanced_at=(str(safe.get("last_advanced_at")) if safe.get("last_advanced_at") else None),
                 resolved_at=str(safe.get("resolved_at")) if safe.get("resolved_at") else None,
                 branch_id=str(safe.get("branch_id", "mainline")),
                 metadata=safe.get("metadata") if isinstance(safe.get("metadata"), dict) else None,
@@ -426,9 +438,7 @@ def apply_story_writer_mutation(
                 opened_at=str(safe.get("opened_at")) if safe.get("opened_at") else None,
                 resolved_at=str(safe.get("resolved_at")) if safe.get("resolved_at") else None,
                 branch_id=str(safe.get("branch_id", "mainline")),
-                evidence_claim_id=(
-                    str(safe.get("evidence_claim_id")) if safe.get("evidence_claim_id") else None
-                ),
+                evidence_claim_id=(str(safe.get("evidence_claim_id")) if safe.get("evidence_claim_id") else None),
                 metadata=safe.get("metadata") if isinstance(safe.get("metadata"), dict) else None,
                 item_id=str(safe.get("item_id")) if safe.get("item_id") else None,
             )
@@ -438,9 +448,7 @@ def apply_story_writer_mutation(
                 project,
                 store,
                 description=str(safe.get("description", "")),
-                agent_entity_id=(
-                    str(safe.get("agent_entity_id")) if safe.get("agent_entity_id") else None
-                ),
+                agent_entity_id=(str(safe.get("agent_entity_id")) if safe.get("agent_entity_id") else None),
                 story_unit_id=str(safe.get("story_unit_id")) if safe.get("story_unit_id") else None,
                 branch_id=str(safe.get("branch_id", "mainline")),
                 status=str(safe.get("status", AuthorityStatus.CONFIRMED_CANON.value)),
@@ -459,9 +467,7 @@ def apply_story_writer_mutation(
                 relation=str(safe.get("relation", "causes")),
                 branch_id=str(safe.get("branch_id", "mainline")),
                 confidence=float(safe.get("confidence", 1.0)),
-                evidence_claim_id=(
-                    str(safe.get("evidence_claim_id")) if safe.get("evidence_claim_id") else None
-                ),
+                evidence_claim_id=(str(safe.get("evidence_claim_id")) if safe.get("evidence_claim_id") else None),
                 edge_id=str(safe.get("edge_id")) if safe.get("edge_id") else None,
             )
             return _writer_mutation_result(kind, record_id)
@@ -471,9 +477,7 @@ def apply_story_writer_mutation(
                 store,
                 objective_id=str(safe.get("objective_id", "")),
                 description=str(safe.get("description", "")),
-                source_entity_id=(
-                    str(safe.get("source_entity_id")) if safe.get("source_entity_id") else None
-                ),
+                source_entity_id=(str(safe.get("source_entity_id")) if safe.get("source_entity_id") else None),
                 story_unit_id=str(safe.get("story_unit_id")) if safe.get("story_unit_id") else None,
                 branch_id=str(safe.get("branch_id", "mainline")),
                 metadata=safe.get("metadata") if isinstance(safe.get("metadata"), dict) else None,
@@ -481,11 +485,13 @@ def apply_story_writer_mutation(
             )
             return _writer_mutation_result(kind, record_id)
         if kind == "scene_contract":
+            contract_value = safe.get("contract")
+            contract: dict[str, Any] = contract_value if isinstance(contract_value, dict) else {}
             result = put_scene_contract(
                 project,
                 store,
                 story_unit_id=str(safe.get("story_unit_id", "")),
-                contract=safe.get("contract") if isinstance(safe.get("contract"), dict) else {},
+                contract=contract,
                 status=str(safe.get("status", AuthorityStatus.AUTHOR_LOCKED.value)),
             )
             return _writer_mutation_result(kind, str(result["story_unit_id"]), result)
@@ -500,9 +506,7 @@ def apply_story_writer_mutation(
                 story_unit_id=str(safe.get("story_unit_id")) if safe.get("story_unit_id") else None,
                 branch_id=str(safe.get("branch_id", "mainline")),
                 status=str(safe.get("status", AuthorityStatus.AUTHOR_LOCKED.value)),
-                author_decision_id=(
-                    str(safe.get("author_decision_id")) if safe.get("author_decision_id") else None
-                ),
+                author_decision_id=(str(safe.get("author_decision_id")) if safe.get("author_decision_id") else None),
             )
             return _writer_mutation_result(kind, str(result["author_decision_id"]), result)
         if kind == "story_lens":
@@ -683,15 +687,18 @@ def _mainline_record_exists(store: StoryStore, table: str, key: str, identifier:
     }
     if (table, key) not in allowed:
         raise ValueError("unsupported branch merge record table")
-    return next(
-        iter(
-            store.rows(
-                f"SELECT 1 FROM {table} WHERE {key}=? AND branch_id='mainline'",  # noqa: S608
-                (identifier,),
-            )
-        ),
-        None,
-    ) is not None
+    return (
+        next(
+            iter(
+                store.rows(
+                    f"SELECT 1 FROM {table} WHERE {key}=? AND branch_id='mainline'",  # noqa: S608
+                    (identifier,),
+                )
+            ),
+            None,
+        )
+        is not None
+    )
 
 
 def _branch_status(value: Any, default: AuthorityStatus) -> AuthorityStatus:
@@ -817,9 +824,10 @@ def _apply_world_state_overlay(
     if not state_type:
         raise ValueError("world-state overlay requires state_type")
     evidence_claim = str(payload.get("evidence_claim_id")) if payload.get("evidence_claim_id") else None
-    if evidence_claim and next(
-        iter(store.rows("SELECT 1 FROM claims WHERE claim_id=?", (evidence_claim,))), None
-    ) is None:
+    if (
+        evidence_claim
+        and next(iter(store.rows("SELECT 1 FROM claims WHERE claim_id=?", (evidence_claim,))), None) is None
+    ):
         raise KeyError("world-state evidence claim not found")
     set_world_state(
         store,
@@ -885,9 +893,10 @@ def _apply_promise_overlay(store: StoryStore, operation: str, record_id: str, pa
     if not title:
         raise ValueError("promise overlay requires title")
     evidence_claim = str(payload.get("evidence_claim_id")) if payload.get("evidence_claim_id") else None
-    if evidence_claim and next(
-        iter(store.rows("SELECT 1 FROM claims WHERE claim_id=?", (evidence_claim,))), None
-    ) is None:
+    if (
+        evidence_claim
+        and next(iter(store.rows("SELECT 1 FROM claims WHERE claim_id=?", (evidence_claim,))), None) is None
+    ):
         raise KeyError("promise evidence claim not found")
     upsert_promise_item(
         store,
@@ -928,9 +937,10 @@ def _apply_scene_contract_overlay(
         AuthorityStatus.PROVISIONAL,
     }:
         raise ValueError("unsupported scene-contract authority status")
-    exists = next(
-        iter(store.rows("SELECT 1 FROM scene_contracts WHERE story_unit_id=?", (story_unit_id,))), None
-    ) is not None
+    exists = (
+        next(iter(store.rows("SELECT 1 FROM scene_contracts WHERE story_unit_id=?", (story_unit_id,))), None)
+        is not None
+    )
     if operation == "ADD" and exists:
         raise ValueError("ADD scene-contract overlay collides with an existing contract")
     if operation == "REPLACE" and not exists:

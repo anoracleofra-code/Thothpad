@@ -57,6 +57,10 @@ private:
     void createLens();
     void runLens();
     void runExperience(bool timeline);
+    void runAdvancedTool();
+    void rebuildIndex();
+    void exportProjectMetadata();
+    void importProjectMetadata();
     void refreshWriterModel();
     void reviewSelectedPreference(const QString &status);
     void populateLenses(const QJsonArray &lenses);
@@ -77,6 +81,7 @@ private:
     QString m_requestId;
     QString m_requestKind;
     QString m_pendingMutation;
+    QString m_pendingExportPath;
 
     QLabel *m_positionLabel;
     QLabel *m_statusLabel;
@@ -101,6 +106,15 @@ private:
     QPushButton *m_experienceCurrent;
     QPushButton *m_experienceTimeline;
     QPlainTextEdit *m_experienceOutput;
+    QComboBox *m_advancedAction;
+    QLineEdit *m_advancedQuery;
+    QLineEdit *m_advancedCharacter;
+    QLineEdit *m_advancedOtherEntity;
+    QPushButton *m_advancedRun;
+    QPushButton *m_indexRebuild;
+    QPushButton *m_projectExport;
+    QPushButton *m_projectImport;
+    QPlainTextEdit *m_advancedOutput;
     QTableWidget *m_writerTable;
     QPushButton *m_writerRefresh;
     QPushButton *m_writerConfirm;

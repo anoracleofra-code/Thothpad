@@ -511,15 +511,15 @@ class ContextCompiler:
 
         if normalized_mode in {EpistemicMode.READER, EpistemicMode.COLD_READER}:
             query = StoryQueryEngine(self.project, self.store)
-            for row in query.reader_state(through_story_unit=active_story_unit):
-                claim_id = str(row.get("claim_id") or "")
+            for reader_row in query.reader_state(through_story_unit=active_story_unit):
+                claim_id = str(reader_row.get("claim_id") or "")
                 claim = self._claim_record(claim_id) if claim_id else None
                 result.reader_state.append(
                     {
-                        "reader_state_id": row["reader_state_id"],
-                        "state": row["state"],
-                        "story_unit_id": row.get("story_unit_id"),
-                        "confidence": row["confidence"],
+                        "reader_state_id": reader_row["reader_state_id"],
+                        "state": reader_row["state"],
+                        "story_unit_id": reader_row.get("story_unit_id"),
+                        "confidence": reader_row["confidence"],
                         "claim": claim,
                     }
                 )

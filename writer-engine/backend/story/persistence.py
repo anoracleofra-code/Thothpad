@@ -239,8 +239,7 @@ def persist_writer_state(project: StoryProject, store: StoryStore) -> dict[str, 
         for row in store.rows("SELECT DISTINCT entity_id FROM entity_aliases WHERE user_confirmed=1")
     )
     referenced_entity_ids.update(
-        str(row["entity_id"])
-        for row in store.rows("SELECT entity_id FROM entities WHERE status<>'PROVISIONAL'")
+        str(row["entity_id"]) for row in store.rows("SELECT entity_id FROM entities WHERE status<>'PROVISIONAL'")
     )
 
     writer_entities: list[dict[str, Any]] = []
@@ -361,10 +360,13 @@ def _state_list(project: StoryProject, key: str) -> list[dict[str, Any]]:
 def _story_unit_exists(store: StoryStore, story_unit_id: str | None) -> bool:
     if not story_unit_id:
         return False
-    return next(
-        iter(store.rows("SELECT 1 FROM story_units WHERE story_unit_id=?", (story_unit_id,))),
-        None,
-    ) is not None
+    return (
+        next(
+            iter(store.rows("SELECT 1 FROM story_units WHERE story_unit_id=?", (story_unit_id,))),
+            None,
+        )
+        is not None
+    )
 
 
 def _resolve_story_unit(
@@ -621,9 +623,7 @@ def hydrate_writer_state(project: StoryProject, store: StoryStore) -> dict[str, 
                 durable_source_id,
             )
             if not source_id:
-                orphans.append(
-                    {"kind": "claim_evidence_source", "record_id": claim_id, "source_id": durable_source_id}
-                )
+                orphans.append({"kind": "claim_evidence_source", "record_id": claim_id, "source_id": durable_source_id})
                 continue
             original_story_unit = str(evidence.get("story_unit_id") or "") or None
             story_unit_id = _resolve_story_unit(
@@ -810,9 +810,7 @@ def hydrate_writer_state(project: StoryProject, store: StoryStore) -> dict[str, 
         original_story_unit = str(item.get("story_unit_id") or "") or None
         story_unit_id = _resolve_story_unit(store, original_story_unit, item.get("story_unit_id_locator"))
         if original_story_unit and not story_unit_id:
-            orphans.append(
-                {"kind": "timeline_story_unit", "record_id": event_id, "story_unit_id": original_story_unit}
-            )
+            orphans.append({"kind": "timeline_story_unit", "record_id": event_id, "story_unit_id": original_story_unit})
         store.connection.execute(
             """
             INSERT INTO timeline_events(
@@ -839,14 +837,14 @@ def hydrate_writer_state(project: StoryProject, store: StoryStore) -> dict[str, 
     for item in _state_list(project, "world_state"):
         state_id = str(item.get("state_id", "")).strip()
         branch_id = str(item.get("branch_id", "mainline"))
-        entity_id = str(item.get("entity_id") or "") or None
+        world_entity_id: str | None = str(item.get("entity_id") or "") or None
         evidence_claim = str(item.get("evidence_claim_id") or "") or None
         if not state_id or not _branch_exists(store, branch_id):
             orphans.append({"kind": "world_state", "record_id": state_id, "branch_id": branch_id})
             continue
-        if entity_id and not _entity_exists(store, entity_id):
-            orphans.append({"kind": "world_state_entity", "record_id": state_id, "entity_id": entity_id})
-            entity_id = None
+        if world_entity_id and not _entity_exists(store, world_entity_id):
+            orphans.append({"kind": "world_state_entity", "record_id": state_id, "entity_id": world_entity_id})
+            world_entity_id = None
         if evidence_claim and not _claim_exists(store, evidence_claim):
             orphans.append({"kind": "world_state_evidence", "record_id": state_id, "claim_id": evidence_claim})
             evidence_claim = None
@@ -862,7 +860,7 @@ def hydrate_writer_state(project: StoryProject, store: StoryStore) -> dict[str, 
             """,
             (
                 state_id,
-                entity_id,
+                world_entity_id,
                 str(item.get("state_type", "")),
                 StoryStore.encode_json(item.get("value")),
                 item.get("valid_from"),
@@ -921,19 +919,17 @@ def hydrate_writer_state(project: StoryProject, store: StoryStore) -> dict[str, 
     for item in _state_list(project, "reader_state"):
         record_id = str(item.get("reader_state_id", "")).strip()
         branch_id = str(item.get("branch_id", "mainline"))
-        claim_id = str(item.get("claim_id") or "") or None
+        reader_claim_id: str | None = str(item.get("claim_id") or "") or None
         if not record_id or not _branch_exists(store, branch_id):
             orphans.append({"kind": "reader_state", "record_id": record_id})
             continue
-        if claim_id and not _claim_exists(store, claim_id):
-            orphans.append({"kind": "reader_state_claim", "record_id": record_id, "claim_id": claim_id})
-            claim_id = None
+        if reader_claim_id and not _claim_exists(store, reader_claim_id):
+            orphans.append({"kind": "reader_state_claim", "record_id": record_id, "claim_id": reader_claim_id})
+            reader_claim_id = None
         original_story_unit = str(item.get("story_unit_id") or "") or None
         story_unit_id = _resolve_story_unit(store, original_story_unit, item.get("story_unit_id_locator"))
         if original_story_unit and story_unit_id is None:
-            orphans.append(
-                {"kind": "reader_story_unit", "record_id": record_id, "story_unit_id": original_story_unit}
-            )
+            orphans.append({"kind": "reader_story_unit", "record_id": record_id, "story_unit_id": original_story_unit})
         store.connection.execute(
             """
             INSERT INTO reader_state(reader_state_id,claim_id,state,story_unit_id,branch_id,confidence)
@@ -944,7 +940,7 @@ def hydrate_writer_state(project: StoryProject, store: StoryStore) -> dict[str, 
             """,
             (
                 record_id,
-                claim_id,
+                reader_claim_id,
                 str(item.get("state", "KNOWS")),
                 story_unit_id,
                 branch_id,
@@ -1135,9 +1131,7 @@ def hydrate_writer_state(project: StoryProject, store: StoryStore) -> dict[str, 
             orphans.append({"kind": "opposition", "record_id": opposition_id})
             continue
         if source_entity and not _entity_exists(store, source_entity):
-            orphans.append(
-                {"kind": "opposition_entity", "record_id": opposition_id, "entity_id": source_entity}
-            )
+            orphans.append({"kind": "opposition_entity", "record_id": opposition_id, "entity_id": source_entity})
             source_entity = None
         original_story_unit = str(item.get("story_unit_id") or "") or None
         story_unit_id = _resolve_story_unit(store, original_story_unit, item.get("story_unit_id_locator"))
@@ -1186,14 +1180,14 @@ def hydrate_writer_state(project: StoryProject, store: StoryStore) -> dict[str, 
         )
 
     for item in _state_list(project, "author_decisions"):
-        original_story_unit_id = str(item.get("story_unit_id") or "") or None
-        story_unit_id = _resolve_story_unit(store, original_story_unit_id, item.get("story_unit_id_locator"))
-        if original_story_unit_id and story_unit_id is None:
+        author_story_unit_id: str | None = str(item.get("story_unit_id") or "") or None
+        story_unit_id = _resolve_story_unit(store, author_story_unit_id, item.get("story_unit_id_locator"))
+        if author_story_unit_id and story_unit_id is None:
             orphans.append(
                 {
                     "kind": "author_decision_story_unit",
                     "record_id": str(item.get("author_decision_id", "")),
-                    "story_unit_id": original_story_unit_id,
+                    "story_unit_id": author_story_unit_id,
                 }
             )
         store.connection.execute(
@@ -1251,9 +1245,7 @@ def hydrate_writer_state(project: StoryProject, store: StoryStore) -> dict[str, 
     # Dependencies are a compiled graph, not a second authority store. Rebuild
     # semantic edges from the durable writer-owned records after hydration so
     # Retcon Impact remains correct even when story-index.sqlite was deleted.
-    for row in store.rows(
-        "SELECT knowledge_id,claim_id,source_claim_id FROM knowledge_state"
-    ):
+    for row in store.rows("SELECT knowledge_id,claim_id,source_claim_id FROM knowledge_state"):
         store.add_dependency("claim", row["claim_id"], "knowledge_state", row["knowledge_id"], "known_or_believed_as")
         if row["source_claim_id"] and row["source_claim_id"] != row["claim_id"]:
             store.add_dependency("claim", row["source_claim_id"], "knowledge_state", row["knowledge_id"], "supports")
@@ -1290,12 +1282,12 @@ def hydrate_writer_state(project: StoryProject, store: StoryStore) -> dict[str, 
         )
 
     store.commit()
-    writer_entity_count = next(
-        iter(store.rows("SELECT COUNT(*) AS count FROM entities WHERE status<>'PROVISIONAL'"))
-    )["count"]
-    writer_claim_count = next(
-        iter(store.rows("SELECT COUNT(*) AS count FROM claims WHERE created_by='writer'"))
-    )["count"]
+    writer_entity_count = next(iter(store.rows("SELECT COUNT(*) AS count FROM entities WHERE status<>'PROVISIONAL'")))[
+        "count"
+    ]
+    writer_claim_count = next(iter(store.rows("SELECT COUNT(*) AS count FROM claims WHERE created_by='writer'")))[
+        "count"
+    ]
     return {
         "writer_entities": writer_entity_count,
         "writer_claims": writer_claim_count,

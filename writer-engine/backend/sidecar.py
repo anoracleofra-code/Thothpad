@@ -56,9 +56,12 @@ from backend.story.service import (
     apply_story_writer_mutation,
     call_story_tool,
     create_story_branch,
+    export_story_project,
+    import_story_project,
     observe_story_writer_model,
     prepare_story_branch_merge,
     rebase_story_branch,
+    rebuild_story_project_index,
 )
 from backend.story.service import (
     project_sources as story_project_sources,
@@ -172,8 +175,12 @@ def _configure_performance(value: Any) -> dict[str, Any]:
         _PERFORMANCE_POLICY.clear()
         _PERFORMANCE_POLICY.update(policy)
         for name in (
-            "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
-            "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS", "BLIS_NUM_THREADS",
+            "OMP_NUM_THREADS",
+            "OPENBLAS_NUM_THREADS",
+            "MKL_NUM_THREADS",
+            "NUMEXPR_NUM_THREADS",
+            "VECLIB_MAXIMUM_THREADS",
+            "BLIS_NUM_THREADS",
         ):
             os.environ[name] = str(threads)
         os.environ["THOTHPAD_BACKGROUND_THREADS"] = str(threads)
@@ -197,9 +204,7 @@ def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
     if process.poll() is not None:
         return
     if os.name == "nt":
-        taskkill = os.path.join(
-            os.environ.get("SystemRoot", r"C:\Windows"), "System32", "taskkill.exe"
-        )
+        taskkill = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "taskkill.exe")
         try:
             subprocess.run(
                 [taskkill, "/PID", str(process.pid), "/T", "/F"],
@@ -341,22 +346,21 @@ def _resolved_document_text(
         _message_revision(message, params),
     )
     if params.get("exclusion_ranges") is None and document.exclusions_stale:
-        raise ResyncRequired(
-            "document exclusion_ranges are stale; resend them with patch_document"
-        )
+        raise ResyncRequired("document exclusion_ranges are stale; resend them with patch_document")
     exclusions = params.get("exclusion_ranges", list(document.exclusion_ranges))
     if operation != "analyze_region":
         return document.text, document.language, 0, exclusions
     start = params.get("start_utf16")
     end = params.get("end_utf16")
     if (
-        isinstance(start, bool) or isinstance(end, bool)
-        or not isinstance(start, int) or not isinstance(end, int)
-        or start < 0 or end <= start
+        isinstance(start, bool)
+        or isinstance(end, bool)
+        or not isinstance(start, int)
+        or not isinstance(end, int)
+        or start < 0
+        or end <= start
     ):
-        raise ValueError(
-            "document-reference region requires 0 <= start_utf16 < end_utf16"
-        )
+        raise ValueError("document-reference region requires 0 <= start_utf16 < end_utf16")
     try:
         region = document.buffer.slice_utf16(start, end)
     except ValueError as exc:
@@ -431,13 +435,11 @@ def _analyze_live_cancellable(
         validate_analyzer_names(selected)
         results = run_analyzers(text, profile, selected if lexical_rules_enabled else ())
 
-        grammar_allowed = bool(
-            grammar
-            and (grammar.get("provider") != "harper" or lexical_rules_enabled)
-        )
+        grammar_allowed = bool(grammar and (grammar.get("provider") != "harper" or lexical_rules_enabled))
         if grammar_allowed:
             cancellation_checkpoint()
             from backend.grammar import analyze_grammar
+
             results.append(analyze_grammar(text, grammar))
             cancellation_checkpoint()
         analyzer_ms = round((time.perf_counter() - analyzer_started) * 1000, 3)
@@ -452,9 +454,7 @@ def _analyze_live_cancellable(
             features=features,
         )
         cancellation_checkpoint()
-        serialization_ms = round(
-            (time.perf_counter() - serialization_started) * 1000, 3
-        )
+        serialization_ms = round((time.perf_counter() - serialization_started) * 1000, 3)
         # Dialogue balance block, mirroring the desktop envelope so the
         # cancelled and direct live paths stay byte-identical.
         spans_cached = features.cached("dialogue_spans", lambda: _dialogue_spans(text))
@@ -513,6 +513,7 @@ def dispatch(
         return _capabilities()
     if operation == "provider_access":
         from backend.provider_access import provider_access
+
         return provider_access(params)
     if operation == "story_project_understanding":
         root = params.get("project_root")
@@ -540,9 +541,7 @@ def dispatch(
         if not isinstance(path, str) or not path.strip():
             raise ValueError("path must be a non-empty string")
         roles = params.get("roles")
-        if roles is not None and (
-            not isinstance(roles, list) or any(not isinstance(role, str) for role in roles)
-        ):
+        if roles is not None and (not isinstance(roles, list) or any(not isinstance(role, str) for role in roles)):
             raise ValueError("roles must be an array of strings")
         authority = params.get("authority")
         if authority is not None and not isinstance(authority, str):
@@ -718,6 +717,31 @@ def dispatch(
             quality=quality,
             privacy=privacy,
         )
+    if operation == "story_index_rebuild":
+        root = params.get("project_root")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        return rebuild_story_project_index(
+            root,
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
+    if operation == "story_project_export":
+        root = params.get("project_root")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        return export_story_project(root)
+    if operation == "story_project_import":
+        root = params.get("project_root")
+        bundle = params.get("bundle")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(bundle, dict):
+            raise ValueError("bundle must be an object")
+        return import_story_project(
+            root,
+            bundle,
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
     if operation == "story_tool":
         root = params.get("project_root")
         tool_id = params.get("tool_id")
@@ -811,17 +835,9 @@ def dispatch(
             consent=_bool(params, "grammar_consent", False),
         )
         profile_name = str(params.get("profile", config.DEFAULT_PROFILE))
-        confirm_adverbs = _bool(
-            params, "confirm_adverbs", operation == "analyze_document"
-        )
-        document_revision = (
-            int(message["document_revision"])
-            if message.get("document_revision") is not None else None
-        )
-        language = (
-            str(params.get("language"))
-            if params.get("language") is not None else document_language
-        )
+        confirm_adverbs = _bool(params, "confirm_adverbs", operation == "analyze_document")
+        document_revision = int(message["document_revision"]) if message.get("document_revision") is not None else None
+        language = str(params.get("language")) if params.get("language") is not None else document_language
         if operation == "analyze_region" and cancelled is not None:
             if external:
                 raise ValueError("external tools are unavailable in the live preset")
@@ -843,10 +859,7 @@ def dispatch(
                 text,
                 profile_name=profile_name,
                 overrides=params.get("overrides"),
-                preset=(
-                    "live" if operation == "analyze_region"
-                    else str(params.get("preset", "full"))
-                ),
+                preset=("live" if operation == "analyze_region" else str(params.get("preset", "full"))),
                 base_offset_utf16=resolved_base_offset,
                 exclusion_ranges=resolved_exclusions,
                 confirm_adverbs=confirm_adverbs,
@@ -867,14 +880,10 @@ def dispatch(
             diagnostics,
             document_id=str(message.get("document_id", "")),
             document_revision=(
-                int(message["document_revision"])
-                if message.get("document_revision") is not None
-                else None
+                int(message["document_revision"]) if message.get("document_revision") is not None else None
             ),
             text_hash=str(result.get("text_hash", "")),
-            initial_page_size=params.get(
-                "initial_page_size", config.DEFAULT_FINDING_PAGE_SIZE
-            ),
+            initial_page_size=params.get("initial_page_size", config.DEFAULT_FINDING_PAGE_SIZE),
             persist=_bool(params, "persist", False),
         )
         for row in result.get("analysis", []):
@@ -921,26 +930,26 @@ def dispatch(
         mode = str(params.get("mode", "rewrite"))
         if mode not in {"rewrite", "deslop", "line_edit", "write_from_brief"}:
             raise ValueError("unsupported rewrite mode")
-        profile_name = validate_profile_name(
-            str(params.get("profile", config.DEFAULT_PROFILE))
-        )
+        profile_name = validate_profile_name(str(params.get("profile", config.DEFAULT_PROFILE)))
         snapshot = params.get("profile_snapshot")  # type: ignore[assignment]
         if snapshot is not None:
             snapshot = validate_profile(snapshot)
             if snapshot.get("name") != profile_name:
                 raise ValueError("profile_snapshot name must match profile")
-        return run_pipeline(RunRequest(
-            text=params.get("text", ""),
-            profile=profile_name,
-            profile_snapshot=snapshot,
-            mode=mode,
-            passes=passes,
-            provider=_desktop_provider(params),
-            overrides=params.get("overrides"),
-            preserve=params.get("preserve"),
-            aggressiveness=str(params.get("aggressiveness", "medium")),
-            persist=_bool(params, "persist", False),
-        ))
+        return run_pipeline(
+            RunRequest(
+                text=params.get("text", ""),
+                profile=profile_name,
+                profile_snapshot=snapshot,
+                mode=mode,
+                passes=passes,
+                provider=_desktop_provider(params),
+                overrides=params.get("overrides"),
+                preserve=params.get("preserve"),
+                aggressiveness=str(params.get("aggressiveness", "medium")),
+                persist=_bool(params, "persist", False),
+            )
+        )
     if operation == "compare":
         return compare_texts(
             params.get("before", ""),
@@ -980,9 +989,7 @@ class PersistentWorker:
         self._job_handle = None
         creation_flags = 0
         if os.name == "nt":
-            creation_flags = (
-                subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
-            )
+            creation_flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
         if self._cancel_dir is None or not os.path.isdir(self._cancel_dir):
             self._cancel_dir = tempfile.mkdtemp(prefix="thothpad-cancel-")
         env = dict(os.environ)
@@ -1002,9 +1009,7 @@ class PersistentWorker:
         self.starts += 1
         return process
 
-    def execute(
-        self, request: dict[str, Any], cancelled: threading.Event
-    ) -> dict[str, Any]:
+    def execute(self, request: dict[str, Any], cancelled: threading.Event) -> dict[str, Any]:
         request_id = str(request["request_id"])
         with self._operation_lock:
             if cancelled.is_set():
@@ -1135,9 +1140,9 @@ class SidecarServer:
                 trace_path = os.environ["THOTHPAD_SIDECAR_TRACE"]
                 with open(trace_path, "ab") as trace:
                     trace.write(
-                        f"[write] op={payload.get('operation')} "
-                        f"declared={len(frame)} "
-                        f"head={frame[:48]!r}\n".encode("utf-8", errors="replace")
+                        f"[write] op={payload.get('operation')} declared={len(frame)} head={frame[:48]!r}\n".encode(
+                            "utf-8", errors="replace"
+                        )
                     )
             self.writer.write(frame)
             self.writer.flush()
@@ -1162,9 +1167,12 @@ class SidecarServer:
         else:
             payload["error"] = {
                 "code": (
-                    "resync_required" if isinstance(error, ResyncRequired)
-                    else "cancelled" if isinstance(error, AnalysisCancelled)
-                    else "invalid_request" if isinstance(error, ValueError)
+                    "resync_required"
+                    if isinstance(error, ResyncRequired)
+                    else "cancelled"
+                    if isinstance(error, AnalysisCancelled)
+                    else "invalid_request"
+                    if isinstance(error, ValueError)
                     else "internal_error"
                 ),
                 "message": str(error),
@@ -1183,10 +1191,7 @@ class SidecarServer:
         entry = self._inflight[request_id]
         try:
             result = dispatch(entry.request, cancelled=entry.cancelled)
-            if (
-                entry.request.get("operation") == "dispose_document"
-                and not entry.cancelled.is_set()
-            ):
+            if entry.request.get("operation") == "dispose_document" and not entry.cancelled.is_set():
                 if self._report_worker.is_running():
                     cleanup_request: dict[str, Any] = {
                         "protocol_major": PROTOCOL_MAJOR,
@@ -1197,17 +1202,13 @@ class SidecarServer:
                         "operation": "dispose_document_snapshots",
                         "params": {},
                     }
-                    cleanup = self._report_worker.execute(
-                        cleanup_request, entry.cancelled
-                    )
+                    cleanup = self._report_worker.execute(cleanup_request, entry.cancelled)
                     if cleanup.get("ok") is not True:
-                        raise RuntimeError(
-                            f"snapshot disposal failed: {cleanup.get('message', '')}"
-                        )
+                        raise RuntimeError(f"snapshot disposal failed: {cleanup.get('message', '')}")
                     cleanup_result = cleanup.get("result", {})
-                    result["disposed_analyses"] = int(
-                        result.get("disposed_analyses", 0)
-                    ) + int(cleanup_result.get("disposed_analyses", 0))
+                    result["disposed_analyses"] = int(result.get("disposed_analyses", 0)) + int(
+                        cleanup_result.get("disposed_analyses", 0)
+                    )
                 # The report worker and its Harper session deliberately stay
                 # warm across documents: releasing them on last-document dispose
                 # forced a cold process restart (and cold Harper start) on the
@@ -1222,10 +1223,7 @@ class SidecarServer:
         try:
             request = self._prepare_worker_request(entry.request)
             message = self._report_worker.execute(request, entry.cancelled)
-            worker_cancelled = (
-                entry.cancelled.is_set()
-                or str(message.get("error_type", "")) == "AnalysisCancelled"
-            )
+            worker_cancelled = entry.cancelled.is_set() or str(message.get("error_type", "")) == "AnalysisCancelled"
             if worker_cancelled:
                 self._finish(request_id, error=ProtocolError("request cancelled"))
             elif message.get("ok") is True:
@@ -1234,8 +1232,10 @@ class SidecarServer:
                 error_name = str(message.get("error_type", "RuntimeError"))
                 code = str(message.get("code", ""))
                 error_type = (
-                    ResyncRequired if code == "resync_required"
-                    else ValueError if error_name in {"ValueError", "ProtocolError"}
+                    ResyncRequired
+                    if code == "resync_required"
+                    else ValueError
+                    if error_name in {"ValueError", "ProtocolError"}
                     else RuntimeError
                 )
                 self._finish(
@@ -1255,9 +1255,7 @@ class SidecarServer:
                 _message_revision(request, params),
             )
             if document.exclusions_stale:
-                raise ResyncRequired(
-                    "document exclusion_ranges are stale; resend them with patch_document"
-                )
+                raise ResyncRequired("document exclusion_ranges are stale; resend them with patch_document")
             params["text"] = document.text
             params.setdefault("language", document.language)
             params.setdefault("exclusion_ranges", list(document.exclusion_ranges))
@@ -1337,18 +1335,14 @@ class SidecarServer:
                 self._write(self._envelope(request, error=ProtocolError("unsupported protocol_major")))
                 continue
             try:
-                request["request_id"] = _request_id(
-                    request.get("request_id", str(uuid.uuid4()))
-                )
+                request["request_id"] = _request_id(request.get("request_id", str(uuid.uuid4())))
             except Exception as exc:
                 self._write(self._envelope(request, error=exc))
                 continue
             operation = request.get("operation")
             if operation == "cancel":
                 try:
-                    target = _request_id(
-                        _params(request).get("target_request_id"), "target_request_id"
-                    )
+                    target = _request_id(_params(request).get("target_request_id"), "target_request_id")
                 except Exception as exc:
                     self._write(self._envelope(request, error=exc))
                     continue
@@ -1374,11 +1368,7 @@ def _worker_main() -> int:
     def stop_if_supervisor_exits() -> None:
         while True:
             time.sleep(0.25)
-            parent_exited = (
-                not _windows_process_is_alive(parent_pid)
-                if os.name == "nt"
-                else os.getppid() != parent_pid
-            )
+            parent_exited = not _windows_process_is_alive(parent_pid) if os.name == "nt" else os.getppid() != parent_pid
             if parent_exited:
                 if os.name != "nt":
                     try:
@@ -1409,11 +1399,14 @@ def _worker_main() -> int:
         allow_nan=False,
     ).encode("utf-8")
     if len(serialized) > config.MAX_RESPONSE_BYTES:
-        serialized = json.dumps({
-            "ok": False,
-            "error_type": "ProtocolError",
-            "message": f"worker response exceeds the {config.MAX_RESPONSE_BYTES}-byte limit",
-        }, separators=(",", ":")).encode("utf-8")
+        serialized = json.dumps(
+            {
+                "ok": False,
+                "error_type": "ProtocolError",
+                "message": f"worker response exceeds the {config.MAX_RESPONSE_BYTES}-byte limit",
+            },
+            separators=(",", ":"),
+        ).encode("utf-8")
     sys.stdout.buffer.write(serialized)
     sys.stdout.buffer.flush()
     return 0
@@ -1431,10 +1424,7 @@ def _report_worker_main() -> int:
     def stop_if_supervisor_exits() -> None:
         while True:
             time.sleep(0.25)
-            parent_exited = (
-                not _windows_process_is_alive(parent_pid)
-                if os.name == "nt" else os.getppid() != parent_pid
-            )
+            parent_exited = not _windows_process_is_alive(parent_pid) if os.name == "nt" else os.getppid() != parent_pid
             if parent_exited:
                 os._exit(1)
 
@@ -1445,9 +1435,7 @@ def _report_worker_main() -> int:
             if request is None:
                 break
             try:
-                with cancellable_analysis(
-                    _worker_cancelled_check(cancel_dir, str(request.get("request_id", "")))
-                ):
+                with cancellable_analysis(_worker_cancelled_check(cancel_dir, str(request.get("request_id", "")))):
                     # The worker pipe is private to PersistentWorker.execute: it
                     # only carries client PROCESS operations and the server's
                     # own internal cleanup requests, so internal operations are
@@ -1459,8 +1447,10 @@ def _report_worker_main() -> int:
                     "ok": False,
                     "error_type": type(exc).__name__,
                     "code": (
-                        "resync_required" if isinstance(exc, ResyncRequired)
-                        else "cancelled" if isinstance(exc, AnalysisCancelled)
+                        "resync_required"
+                        if isinstance(exc, ResyncRequired)
+                        else "cancelled"
+                        if isinstance(exc, AnalysisCancelled)
                         else ""
                     ),
                     "message": str(exc),

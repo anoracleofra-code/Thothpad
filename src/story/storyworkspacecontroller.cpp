@@ -1018,6 +1018,40 @@ QJsonArray StoryIntelligenceController::storyEngineReadManifest() const
                               {"risk", "R0"},
                               {"description", "Build a qualitative reader-experience timeline in writer-owned manuscript order."},
                               {"arguments", "source_id?: string, maximum_units?: integer"}});
+    result.append(QJsonObject{{"id", "explore_story"},
+                              {"risk", "R0"},
+                              {"description", "Explore bounded cross-state Story Model nodes, evidence, and dependency edges."},
+                              {"arguments", "query: string, limit?: integer"}});
+    result.append(QJsonObject{{"id", "get_scene_semantics"},
+                              {"risk", "R0"},
+                              {"description", "Read exact scene presence plus explicitly tracked scene/world state."},
+                              {"arguments", "story_unit_id: string"}});
+    result.append(QJsonObject{{"id", "audit_continuity"},
+                              {"risk", "R0"},
+                              {"description", "Audit tracked continuity conflicts and knowledge-access review candidates."},
+                              {"arguments", "story_unit_id: string, character?: string"}});
+    result.append(QJsonObject{{"id", "get_character_arc"},
+                              {"risk", "R0"},
+                              {"description", "Read tracked decisions, knowledge changes, and relationship changes for one character."},
+                              {"arguments", "character: string"}});
+    result.append(QJsonObject{{"id", "get_relationship_arc"},
+                              {"risk", "R0"},
+                              {"description", "Read explicit relationship-state transitions between two entities."},
+                              {"arguments", "entity_a: string, entity_b: string"}});
+    result.append(QJsonObject{{"id", "audit_ending_integrity"},
+                              {"risk", "R0"},
+                              {"description", "Audit tracked open obligations and causal prerequisites at a selected ending."},
+                              {"arguments", "story_unit_id: string"}});
+    result.append(QJsonObject{{"id", "get_project_health"},
+                              {"risk", "R0"},
+                              {"description", "Read engineering and coverage metrics without producing a story-quality score."}});
+    result.append(QJsonObject{{"id", "get_index_status"},
+                              {"risk", "R0"},
+                              {"description", "Read Story Engine index integrity, FTS, stale evidence, and foreign-key status."}});
+    result.append(QJsonObject{{"id", "run_wow_acceptance"},
+                              {"risk", "R0"},
+                              {"description", "Run the ten-step Story Engine acceptance harness against the active project."},
+                              {"arguments", "story_unit_id?: string, character?: string"}});
     return result;
 }
 

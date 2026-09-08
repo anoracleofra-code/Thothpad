@@ -321,16 +321,15 @@ def _validate_story_payload(value: dict[str, Any]) -> dict[str, Any]:
     routing_privacy = str(routing_value.get("privacy") or "prefer_local").strip().casefold()
     if routing_privacy not in {"local_only", "prefer_local", "allow_remote"}:
         routing_privacy = "prefer_local"
+    routing_reason_value = routing_value.get("reason")
+    routing_reason: dict[str, Any] = routing_reason_value if isinstance(routing_reason_value, dict) else {}
     model_routing = {
         "task": str(routing_value.get("task") or "chat").strip().casefold()[:80] or "chat",
         "quality": routing_quality,
         "privacy": routing_privacy,
         "selected_is_remote": routing_value.get("selected_is_remote") is True,
         "provider_agnostic": routing_value.get("provider_agnostic") is True,
-        "reason": _bounded_json_object(
-            routing_value.get("reason") if isinstance(routing_value.get("reason"), dict) else {},
-            4_000,
-        ),
+        "reason": _bounded_json_object(routing_reason, 4_000),
     }
     context_pins = [
         item[:1_000]

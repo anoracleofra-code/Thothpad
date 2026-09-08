@@ -9,6 +9,8 @@
 #include <QAbstractItemView>
 #include <QComboBox>
 #include <QDialogButtonBox>
+#include <QFile>
+#include <QFileDialog>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -20,6 +22,7 @@
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QSaveFile>
 #include <QSet>
 #include <QTabWidget>
 #include <QTableWidget>
@@ -91,6 +94,15 @@ StoryLabDialog::StoryLabDialog(WriterEngineClient *engine, QWidget *parent)
     , m_experienceCurrent(new QPushButton(tr("Analyze current story unit"), this))
     , m_experienceTimeline(new QPushButton(tr("Build manuscript timeline"), this))
     , m_experienceOutput(resultBox(this))
+    , m_advancedAction(new QComboBox(this))
+    , m_advancedQuery(new QLineEdit(this))
+    , m_advancedCharacter(new QLineEdit(this))
+    , m_advancedOtherEntity(new QLineEdit(this))
+    , m_advancedRun(new QPushButton(tr("Run analysis"), this))
+    , m_indexRebuild(new QPushButton(tr("Rebuild index…"), this))
+    , m_projectExport(new QPushButton(tr("Export Story metadata…"), this))
+    , m_projectImport(new QPushButton(tr("Import Story metadata…"), this))
+    , m_advancedOutput(resultBox(this))
     , m_writerTable(new QTableWidget(this))
     , m_writerRefresh(new QPushButton(tr("Refresh"), this))
     , m_writerConfirm(new QPushButton(tr("Confirm selected"), this))
@@ -215,6 +227,41 @@ StoryLabDialog::StoryLabDialog(WriterEngineClient *engine, QWidget *parent)
     experienceLayout->addWidget(m_experienceOutput, 1);
     tabs->addTab(experiencePage, tr("Reader Experience"));
 
+    auto *advancedPage = new QWidget(tabs);
+    auto *advancedLayout = new QVBoxLayout(advancedPage);
+    auto *advancedHint = new QLabel(tr("Explore normalized story state, run continuity/arc/ending audits, inspect project health, and manage the "
+                                       "disposable Story Engine index. Audits are evidence-backed diagnostics, not automatic canon."),
+                                    advancedPage);
+    advancedHint->setWordWrap(true);
+    advancedLayout->addWidget(advancedHint);
+    auto *advancedForm = new QFormLayout;
+    m_advancedAction->addItem(tr("Story Explorer"), QStringLiteral("explore_story"));
+    m_advancedAction->addItem(tr("Scene semantics"), QStringLiteral("get_scene_semantics"));
+    m_advancedAction->addItem(tr("Continuity / knowledge-access audit"), QStringLiteral("audit_continuity"));
+    m_advancedAction->addItem(tr("Character arc"), QStringLiteral("get_character_arc"));
+    m_advancedAction->addItem(tr("Relationship arc"), QStringLiteral("get_relationship_arc"));
+    m_advancedAction->addItem(tr("Ending integrity / backpropagation"), QStringLiteral("audit_ending_integrity"));
+    m_advancedAction->addItem(tr("Project health"), QStringLiteral("get_project_health"));
+    m_advancedAction->addItem(tr("Index status"), QStringLiteral("get_index_status"));
+    m_advancedAction->addItem(tr("10-step Wow acceptance"), QStringLiteral("run_wow_acceptance"));
+    m_advancedQuery->setPlaceholderText(tr("Explorer query, e.g. Mara bell tower"));
+    m_advancedCharacter->setPlaceholderText(tr("Character/entity A"));
+    m_advancedOtherEntity->setPlaceholderText(tr("Entity B for relationship arc"));
+    advancedForm->addRow(tr("Analysis"), m_advancedAction);
+    advancedForm->addRow(tr("Query"), m_advancedQuery);
+    advancedForm->addRow(tr("Character / A"), m_advancedCharacter);
+    advancedForm->addRow(tr("Entity B"), m_advancedOtherEntity);
+    advancedLayout->addLayout(advancedForm);
+    advancedLayout->addWidget(m_advancedRun, 0, Qt::AlignLeft);
+    auto *maintenanceRow = new QHBoxLayout;
+    maintenanceRow->addWidget(m_indexRebuild);
+    maintenanceRow->addWidget(m_projectExport);
+    maintenanceRow->addWidget(m_projectImport);
+    maintenanceRow->addStretch(1);
+    advancedLayout->addLayout(maintenanceRow);
+    advancedLayout->addWidget(m_advancedOutput, 1);
+    tabs->addTab(advancedPage, tr("Advanced"));
+
     auto *writerPage = new QWidget(tabs);
     auto *writerLayout = new QVBoxLayout(writerPage);
     auto *writerHint =
@@ -278,6 +325,18 @@ StoryLabDialog::StoryLabDialog(WriterEngineClient *engine, QWidget *parent)
     });
     connect(m_experienceTimeline, &QPushButton::clicked, this, [this]() {
         runExperience(true);
+    });
+    connect(m_advancedRun, &QPushButton::clicked, this, [this]() {
+        runAdvancedTool();
+    });
+    connect(m_indexRebuild, &QPushButton::clicked, this, [this]() {
+        rebuildIndex();
+    });
+    connect(m_projectExport, &QPushButton::clicked, this, [this]() {
+        exportProjectMetadata();
+    });
+    connect(m_projectImport, &QPushButton::clicked, this, [this]() {
+        importProjectMetadata();
     });
     connect(m_writerRefresh, &QPushButton::clicked, this, [this]() {
         refreshWriterModel();
@@ -366,6 +425,7 @@ void StoryLabDialog::setPositionSensitiveEnabled(bool enabled)
     m_readerRun->setEnabled(enabled);
     m_councilRun->setEnabled(enabled);
     m_experienceCurrent->setEnabled(enabled);
+    m_advancedRun->setEnabled(true);
 }
 
 void StoryLabDialog::requestTool(const QString &toolId, QJsonObject arguments)
@@ -385,6 +445,10 @@ void StoryLabDialog::requestTool(const QString &toolId, QJsonObject arguments)
         QStringLiteral("get_dramatic_irony"),
         QStringLiteral("run_editorial_council"),
         QStringLiteral("get_reader_experience"),
+        QStringLiteral("get_scene_semantics"),
+        QStringLiteral("audit_continuity"),
+        QStringLiteral("audit_ending_integrity"),
+        QStringLiteral("run_wow_acceptance"),
     };
     if (positionTools.contains(toolId)) {
         if (m_activeStoryUnit.isEmpty()) {
@@ -470,6 +534,40 @@ void StoryLabDialog::handleResponse(const QString &requestId, const QJsonObject 
         }
         return;
     }
+    if (kind == QStringLiteral("__index_rebuild")) {
+        m_advancedOutput->setPlainText(formatJson(result));
+        setReady(tr("Story Engine index rebuilt from source + durable writer state."));
+        return;
+    }
+    if (kind == QStringLiteral("__project_export")) {
+        if (m_pendingExportPath.isEmpty()) {
+            setReady(tr("Export destination was lost; metadata was not written."));
+            return;
+        }
+        QSaveFile file(m_pendingExportPath);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            m_pendingExportPath.clear();
+            setReady(tr("Could not open the selected export destination."));
+            return;
+        }
+        const QByteArray bytes = QJsonDocument(result).toJson(QJsonDocument::Indented);
+        if (file.write(bytes) != bytes.size() || !file.commit()) {
+            m_pendingExportPath.clear();
+            setReady(tr("Could not atomically save Story Project metadata."));
+            return;
+        }
+        const QString savedPath = m_pendingExportPath;
+        m_pendingExportPath.clear();
+        m_advancedOutput->setPlainText(tr("Portable Story Project metadata saved to:\n%1\n\nNo manuscript text or credentials are included.").arg(savedPath));
+        setReady(tr("Story metadata exported"));
+        return;
+    }
+    if (kind == QStringLiteral("__project_import")) {
+        m_advancedOutput->setPlainText(formatJson(result));
+        setReady(tr("Story metadata imported and rebound to this project."));
+        refreshEntities();
+        return;
+    }
     if (kind == QStringLiteral("list_entities")) {
         populateEntities(result.value(QStringLiteral("entities")).toArray());
     } else if (kind == QStringLiteral("query_claims") || kind == QStringLiteral("list_conflicts")) {
@@ -488,6 +586,11 @@ void StoryLabDialog::handleResponse(const QString &requestId, const QJsonObject 
         m_lensOutput->setPlainText(formatResult(kind, result));
     } else if (kind == QStringLiteral("get_reader_experience") || kind == QStringLiteral("get_reader_experience_timeline")) {
         m_experienceOutput->setPlainText(formatResult(kind, result));
+    } else if (kind == QStringLiteral("explore_story") || kind == QStringLiteral("get_scene_semantics") || kind == QStringLiteral("audit_continuity")
+               || kind == QStringLiteral("get_character_arc") || kind == QStringLiteral("get_relationship_arc")
+               || kind == QStringLiteral("audit_ending_integrity") || kind == QStringLiteral("get_project_health") || kind == QStringLiteral("get_index_status")
+               || kind == QStringLiteral("run_wow_acceptance")) {
+        m_advancedOutput->setPlainText(formatJson(result));
     }
     setReady();
 }
@@ -605,6 +708,131 @@ void StoryLabDialog::runLens()
 void StoryLabDialog::runExperience(bool timeline)
 {
     requestTool(timeline ? QStringLiteral("get_reader_experience_timeline") : QStringLiteral("get_reader_experience"));
+}
+
+void StoryLabDialog::runAdvancedTool()
+{
+    const QString tool = m_advancedAction->currentData().toString();
+    QJsonObject arguments;
+    if (tool == QStringLiteral("explore_story")) {
+        const QString query = m_advancedQuery->text().trimmed();
+        if (query.isEmpty()) {
+            QMessageBox::information(this, tr("Query required"), tr("Enter a Story Explorer query."));
+            return;
+        }
+        arguments.insert(QStringLiteral("query"), query);
+        arguments.insert(QStringLiteral("limit"), 75);
+    } else if (tool == QStringLiteral("audit_continuity") || tool == QStringLiteral("get_character_arc") || tool == QStringLiteral("run_wow_acceptance")) {
+        const QString character = m_advancedCharacter->text().trimmed();
+        if (tool == QStringLiteral("get_character_arc") && character.isEmpty()) {
+            QMessageBox::information(this, tr("Character required"), tr("Choose a character for the arc analysis."));
+            return;
+        }
+        if (!character.isEmpty()) {
+            arguments.insert(QStringLiteral("character"), character);
+        }
+    } else if (tool == QStringLiteral("get_relationship_arc")) {
+        const QString entityA = m_advancedCharacter->text().trimmed();
+        const QString entityB = m_advancedOtherEntity->text().trimmed();
+        if (entityA.isEmpty() || entityB.isEmpty()) {
+            QMessageBox::information(this, tr("Two entities required"), tr("Enter both entities for relationship-arc analysis."));
+            return;
+        }
+        arguments.insert(QStringLiteral("entity_a"), entityA);
+        arguments.insert(QStringLiteral("entity_b"), entityB);
+    }
+    requestTool(tool, arguments);
+}
+
+void StoryLabDialog::rebuildIndex()
+{
+    if (m_projectRoot.isEmpty() || !m_engine->isReady()) {
+        setReady(tr("Story Engine is not ready."));
+        return;
+    }
+    if (QMessageBox::warning(this,
+                             tr("Rebuild Story Engine index?"),
+                             tr("ThothPad will snapshot durable writer-owned Story State, delete only the disposable Story Engine cache, "
+                                "then rebuild it from the project sources. Manuscript files are not changed."),
+                             QMessageBox::Yes | QMessageBox::Cancel,
+                             QMessageBox::Cancel)
+        != QMessageBox::Yes) {
+        return;
+    }
+    QJsonObject payload{{QStringLiteral("project_root"), m_projectRoot}, {QStringLiteral("writer_confirmed"), true}};
+    m_requestKind = QStringLiteral("__index_rebuild");
+    m_requestId = m_engine->send(QStringLiteral("story_index_rebuild"), payload);
+    if (m_requestId.isEmpty()) {
+        setReady(tr("Could not start Story Engine index rebuild."));
+    } else {
+        setBusy(tr("Rebuilding Story Engine index…"));
+    }
+}
+
+void StoryLabDialog::exportProjectMetadata()
+{
+    if (m_projectRoot.isEmpty() || !m_engine->isReady()) {
+        setReady(tr("Story Engine is not ready."));
+        return;
+    }
+    const QString path = QFileDialog::getSaveFileName(this,
+                                                      tr("Export Story Project Metadata"),
+                                                      QStringLiteral("thothpad-story-project.json"),
+                                                      tr("JSON files (*.json);;All files (*)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    m_pendingExportPath = path;
+    m_requestKind = QStringLiteral("__project_export");
+    m_requestId = m_engine->send(QStringLiteral("story_project_export"), QJsonObject{{QStringLiteral("project_root"), m_projectRoot}});
+    if (m_requestId.isEmpty()) {
+        m_pendingExportPath.clear();
+        setReady(tr("Could not export Story Project metadata."));
+    } else {
+        setBusy(tr("Preparing portable Story Project metadata…"));
+    }
+}
+
+void StoryLabDialog::importProjectMetadata()
+{
+    if (m_projectRoot.isEmpty() || !m_engine->isReady()) {
+        setReady(tr("Story Engine is not ready."));
+        return;
+    }
+    const QString path = QFileDialog::getOpenFileName(this, tr("Import Story Project Metadata"), QString(), tr("JSON files (*.json);;All files (*)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        setReady(tr("Could not read the selected Story Project metadata file."));
+        return;
+    }
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        setReady(tr("The selected file is not a valid Story Project metadata bundle."));
+        return;
+    }
+    if (QMessageBox::warning(this,
+                             tr("Import writer-owned Story metadata?"),
+                             tr("This will merge the bundle's writer-owned Story State and project rules into this already-initialized project. "
+                                "Source files are not copied or overwritten."),
+                             QMessageBox::Yes | QMessageBox::Cancel,
+                             QMessageBox::Cancel)
+        != QMessageBox::Yes) {
+        return;
+    }
+    QJsonObject payload{{QStringLiteral("project_root"), m_projectRoot},
+                        {QStringLiteral("bundle"), document.object()},
+                        {QStringLiteral("writer_confirmed"), true}};
+    m_requestKind = QStringLiteral("__project_import");
+    m_requestId = m_engine->send(QStringLiteral("story_project_import"), payload);
+    if (m_requestId.isEmpty()) {
+        setReady(tr("Could not start Story Project metadata import."));
+    } else {
+        setBusy(tr("Importing and rebinding writer-owned Story State…"));
+    }
 }
 
 void StoryLabDialog::refreshWriterModel()

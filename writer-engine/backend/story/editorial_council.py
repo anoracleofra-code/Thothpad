@@ -59,8 +59,7 @@ def _continuity(snapshot: CouncilSnapshot) -> list[dict[str, Any]]:
                 signal="concern",
                 story_unit_id=conflict.get("story_unit_id"),
                 observation=(
-                    f"Tracked {conflict.get('type', 'story')} conflict remains open: "
-                    f"{conflict.get('conflict_id', '')}"
+                    f"Tracked {conflict.get('type', 'story')} conflict remains open: {conflict.get('conflict_id', '')}"
                 ),
                 evidence=conflict.get("claims", []),
                 interpretation_limit="This reports a Story State conflict, not an automatic manuscript error.",
@@ -175,8 +174,7 @@ def _cold_reader(snapshot: CouncilSnapshot) -> list[dict[str, Any]]:
                 signal=signal,
                 story_unit_id=snapshot.root_unit["story_unit_id"],
                 observation=str(reveal.get("observation", "")),
-                evidence=list(reveal.get("prior_setup_evidence", []))
-                + list(reveal.get("reveal_evidence", [])),
+                evidence=list(reveal.get("prior_setup_evidence", [])) + list(reveal.get("reveal_evidence", [])),
                 interpretation_limit=str(reveal.get("interpretation_limit", "")),
             )
         )
@@ -366,9 +364,7 @@ class EditorialCouncil:
         fairness = reader.reveal_fairness(story_unit_id, branch_id=branch_id)
 
         conflicts: list[dict[str, Any]] = []
-        for row in self.store.rows(
-            "SELECT * FROM story_conflicts WHERE status='OPEN' ORDER BY conflict_id LIMIT 100"
-        ):
+        for row in self.store.rows("SELECT * FROM story_conflicts WHERE status='OPEN' ORDER BY conflict_id LIMIT 100"):
             conflict = dict(row)
             related_claims: list[dict[str, Any]] = []
             matched_unit: str | None = None

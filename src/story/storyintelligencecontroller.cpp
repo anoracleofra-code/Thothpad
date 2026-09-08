@@ -1803,8 +1803,34 @@ QJsonObject StoryIntelligenceController::boundedStoryEngineArguments(const QStri
         if (!sourceId.isEmpty())
             safe.insert(QStringLiteral("source_id"), sourceId);
         safe.insert(QStringLiteral("maximum_units"), boundedLimit(arguments.value(QStringLiteral("maximum_units")), 200, 500));
+    } else if (toolId == QStringLiteral("explore_story")) {
+        safe.insert(QStringLiteral("query"), boundedString(arguments.value(QStringLiteral("query")), 1000));
+        safe.insert(QStringLiteral("limit"), boundedLimit(arguments.value(QStringLiteral("limit")), 50, 100));
+    } else if (toolId == QStringLiteral("get_scene_semantics") || toolId == QStringLiteral("audit_ending_integrity")) {
+        safe.insert(QStringLiteral("story_unit_id"), boundedString(arguments.value(QStringLiteral("story_unit_id")), 240));
+    } else if (toolId == QStringLiteral("audit_continuity")) {
+        safe.insert(QStringLiteral("story_unit_id"), boundedString(arguments.value(QStringLiteral("story_unit_id")), 240));
+        const QString character = boundedString(arguments.value(QStringLiteral("character")), 240);
+        if (!character.isEmpty())
+            safe.insert(QStringLiteral("character"), character);
+    } else if (toolId == QStringLiteral("get_character_arc")) {
+        safe.insert(QStringLiteral("character"), boundedString(arguments.value(QStringLiteral("character")), 240));
+    } else if (toolId == QStringLiteral("get_relationship_arc")) {
+        safe.insert(QStringLiteral("entity_a"), boundedString(arguments.value(QStringLiteral("entity_a")), 240));
+        safe.insert(QStringLiteral("entity_b"), boundedString(arguments.value(QStringLiteral("entity_b")), 240));
+    } else if (toolId == QStringLiteral("run_wow_acceptance")) {
+        const QString storyUnit = boundedString(arguments.value(QStringLiteral("story_unit_id")), 240);
+        const QString character = boundedString(arguments.value(QStringLiteral("character")), 240);
+        if (!storyUnit.isEmpty())
+            safe.insert(QStringLiteral("story_unit_id"), storyUnit);
+        if (!character.isEmpty())
+            safe.insert(QStringLiteral("character"), character);
+    } else if (toolId == QStringLiteral("get_project_health") || toolId == QStringLiteral("get_index_status")) {
+        // These diagnostics take no model-controlled arguments beyond the
+        // branch inserted below.
     }
-    if (toolId != QStringLiteral("compare_branch") && toolId != QStringLiteral("list_branches") && toolId != QStringLiteral("query_project_story_context")) {
+    if (m_activeBranch != QStringLiteral("mainline") && toolId != QStringLiteral("compare_branch") && toolId != QStringLiteral("list_branches")
+        && toolId != QStringLiteral("query_project_story_context")) {
         safe.insert(QStringLiteral("branch_id"), m_activeBranch);
     }
     return safe;

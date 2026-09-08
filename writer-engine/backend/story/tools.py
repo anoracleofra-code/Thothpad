@@ -171,7 +171,65 @@ def story_tool_manifest() -> list[dict[str, Any]]:
                 "mystery, wonder, relief, conflict, and narrative distance."
             ),
         },
-        {"id": "get_story_context", "risk": "R0", "description": "Compile inspectable task-specific story context."},
+        {
+            "id": "explore_story",
+            "risk": "R0",
+            "description": "Explore bounded cross-state story nodes, evidence, and dependency edges.",
+        },
+        {
+            "id": "get_scene_semantics",
+            "risk": "R0",
+            "description": (
+                "Read exact scene presence plus explicitly tracked location, contract, decision, opposition, "
+                "and claim state."
+            ),
+        },
+        {
+            "id": "audit_continuity",
+            "risk": "R0",
+            "description": (
+                "Audit tracked conflicts, world-state ambiguity, and character knowledge-access gaps without "
+                "inventing continuity facts."
+            ),
+        },
+        {
+            "id": "get_character_arc",
+            "risk": "R0",
+            "description": "Read the ordered tracked decision/knowledge/relationship changes for one character.",
+        },
+        {
+            "id": "get_relationship_arc",
+            "risk": "R0",
+            "description": "Read explicit relationship-state transitions between two entities.",
+        },
+        {
+            "id": "audit_ending_integrity",
+            "risk": "R0",
+            "description": (
+                "Audit tracked open threads/promises and causal prerequisites at a selected ending without turning "
+                "backpropagation into canon."
+            ),
+        },
+        {
+            "id": "get_project_health",
+            "risk": "R0",
+            "description": "Read engineering and coverage metrics without producing a universal story-quality score.",
+        },
+        {
+            "id": "get_index_status",
+            "risk": "R0",
+            "description": "Read Story Engine cache/index integrity, FTS, stale evidence, and foreign-key status.",
+        },
+        {
+            "id": "run_wow_acceptance",
+            "risk": "R0",
+            "description": "Run the ten-step Story Engine acceptance harness against the active project.",
+        },
+        {
+            "id": "get_story_context",
+            "risk": "R0",
+            "description": "Compile inspectable task-specific story context.",
+        },
     ]
 
 
@@ -340,9 +398,7 @@ def invoke_story_tool(
     if tool_id == "get_author_decisions":
         return {
             "author_decisions": query.author_decisions(
-                story_unit_id=(
-                    str(arguments.get("story_unit_id")) if arguments.get("story_unit_id") else None
-                ),
+                story_unit_id=(str(arguments.get("story_unit_id")) if arguments.get("story_unit_id") else None),
                 branch_id=str(arguments.get("branch_id", "mainline")),
                 limit=_bounded_limit(arguments.get("limit"), 100),
             )
@@ -417,9 +473,7 @@ def invoke_story_tool(
             limit=_bounded_limit(arguments.get("limit"), 100, 500),
         )
     if tool_id == "explain_writer_preference":
-        return {
-            "preference": query.explain_writer_preference(str(arguments.get("preference_id", "")))
-        }
+        return {"preference": query.explain_writer_preference(str(arguments.get("preference_id", "")))}
     if tool_id == "run_editorial_council":
         return {
             "council": query.editorial_council(
@@ -453,15 +507,70 @@ def invoke_story_tool(
                 maximum_units=_bounded_limit(arguments.get("maximum_units"), 200, 500),
             )
         }
+    if tool_id == "explore_story":
+        return {
+            "explorer": query.explore_story(
+                str(arguments.get("query", "")),
+                branch_id=str(arguments.get("branch_id", "mainline")),
+                limit=_bounded_limit(arguments.get("limit"), 50, 100),
+            )
+        }
+    if tool_id == "get_scene_semantics":
+        return {
+            "scene_semantics": query.scene_semantics(
+                str(arguments.get("story_unit_id", "")),
+                branch_id=str(arguments.get("branch_id", "mainline")),
+            )
+        }
+    if tool_id == "audit_continuity":
+        return {
+            "continuity": query.continuity_audit(
+                str(arguments.get("story_unit_id", "")),
+                character=str(arguments.get("character", "")),
+                branch_id=str(arguments.get("branch_id", "mainline")),
+            )
+        }
+    if tool_id == "get_character_arc":
+        return {
+            "character_arc": query.character_arc(
+                str(arguments.get("character", "")),
+                branch_id=str(arguments.get("branch_id", "mainline")),
+            )
+        }
+    if tool_id == "get_relationship_arc":
+        return {
+            "relationship_arc": query.relationship_arc(
+                str(arguments.get("entity_a", "")),
+                str(arguments.get("entity_b", "")),
+                branch_id=str(arguments.get("branch_id", "mainline")),
+            )
+        }
+    if tool_id == "audit_ending_integrity":
+        return {
+            "ending_integrity": query.ending_integrity(
+                str(arguments.get("story_unit_id", "")),
+                branch_id=str(arguments.get("branch_id", "mainline")),
+            )
+        }
+    if tool_id == "get_project_health":
+        return {"project_health": query.project_health()}
+    if tool_id == "get_index_status":
+        return {"index_status": query.index_status()}
+    if tool_id == "run_wow_acceptance":
+        return {
+            "acceptance": query.wow_acceptance(
+                story_unit_id=str(arguments.get("story_unit_id")) if arguments.get("story_unit_id") else None,
+                character=str(arguments.get("character", "")),
+                branch_id=str(arguments.get("branch_id", "mainline")),
+            )
+        }
     if tool_id == "get_story_context":
         compiled = context.compile(
             prompt=str(arguments.get("prompt", "")),
             mode=EpistemicMode(str(arguments.get("mode", EpistemicMode.AUTHOR_OMNISCIENT))),
             maximum_chars=int(arguments.get("maximum_chars", 40_000)),
             active_character=str(arguments.get("active_character", "")),
-            active_story_unit=(
-                str(arguments.get("active_story_unit")) if arguments.get("active_story_unit") else None
-            ),
+            active_story_unit=(str(arguments.get("active_story_unit")) if arguments.get("active_story_unit") else None),
             branch_id=str(arguments.get("branch_id", "mainline")),
             user_pins=[str(item) for item in arguments.get("user_pins", []) if isinstance(item, str)],
         )

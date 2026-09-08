@@ -67,9 +67,7 @@ AUTHORITATIVE_STATUSES = frozenset(
     }
 )
 
-MODEL_WRITABLE_STATUSES = frozenset(
-    {AuthorityStatus.INFERENCE, AuthorityStatus.SUGGESTION}
-)
+MODEL_WRITABLE_STATUSES = frozenset({AuthorityStatus.INFERENCE, AuthorityStatus.SUGGESTION})
 
 
 def model_may_create(status: AuthorityStatus | str) -> bool:

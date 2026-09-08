@@ -1,4 +1,4 @@
-﻿/*
+/*
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -28,7 +28,7 @@ namespace ghostwriter
 namespace
 {
 constexpr int ProtocolMajor = 1;
-constexpr int ProtocolMinor = 6;
+constexpr int ProtocolMinor = 7;
 constexpr qsizetype MaxRequestFrameBytes = 64 * 1024 * 1024;
 constexpr qsizetype MaxResponseFrameBytes = 64 * 1024 * 1024;
 constexpr qsizetype MaxHeaderBytes = 16 * 1024;

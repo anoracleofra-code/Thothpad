@@ -131,9 +131,7 @@ def observe_writer_activity(
             continue
         evidence = StoryStore.decode_json(existing["evidence_json"], []) if existing is not None else []
         signatures = {
-            str(item.get("signature"))
-            for item in evidence
-            if isinstance(item, dict) and item.get("signature")
+            str(item.get("signature")) for item in evidence if isinstance(item, dict) and item.get("signature")
         }
         signature = _event_signature(raw)
         if signature not in signatures:
@@ -146,9 +144,7 @@ def observe_writer_activity(
                     "summary": _clean(raw.get("summary"), 500),
                     "before": _clean(raw.get("before"), 300),
                     "after": _clean(raw.get("after"), 300),
-                    "related_operation_id": _clean(
-                        raw.get("related_operation_id") or raw.get("operation_id"), 160
-                    ),
+                    "related_operation_id": _clean(raw.get("related_operation_id") or raw.get("operation_id"), 160),
                 }
             )
         evidence = evidence[-24:]

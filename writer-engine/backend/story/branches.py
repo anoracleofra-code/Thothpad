@@ -452,9 +452,9 @@ def record_completed_branch_merge(
             """,
             (merge_id, branch_id, overlay_id, target_kind, target_id),
         )
-    total = next(
-        iter(store.rows("SELECT COUNT(*) AS count FROM branch_overlays WHERE branch_id=?", (branch_id,)))
-    )["count"]
+    total = next(iter(store.rows("SELECT COUNT(*) AS count FROM branch_overlays WHERE branch_id=?", (branch_id,))))[
+        "count"
+    ]
     merged = next(
         iter(store.rows("SELECT COUNT(*) AS count FROM branch_merge_history WHERE branch_id=?", (branch_id,)))
     )["count"]
@@ -469,7 +469,7 @@ def record_completed_branch_merge(
         "recorded_overlay_ids": overlay_ids,
         "merged_count": merged,
         "overlay_count": total,
-        "branch_status": next(
-            iter(store.rows("SELECT status FROM branches WHERE branch_id=?", (branch_id,)))
-        )["status"],
+        "branch_status": next(iter(store.rows("SELECT status FROM branches WHERE branch_id=?", (branch_id,))))[
+            "status"
+        ],
     }

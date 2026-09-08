@@ -224,16 +224,10 @@ class StoryQueryEngine:
             return {"match": None, "ambiguous": False, "reason": "source_has_no_story_units"}
         wanted = title.strip().casefold()
         candidates = [
-            item
-            for item in units
-            if wanted and str(item.get("display_title") or "").strip().casefold() == wanted
+            item for item in units if wanted and str(item.get("display_title") or "").strip().casefold() == wanted
         ]
         if not candidates and wanted:
-            candidates = [
-                item
-                for item in units
-                if wanted in str(item.get("display_title") or "").strip().casefold()
-            ]
+            candidates = [item for item in units if wanted in str(item.get("display_title") or "").strip().casefold()]
         if not candidates and wanted:
             return {"match": None, "ambiguous": False, "reason": "scope_title_not_found"}
         if not candidates and len(units) == 1:
@@ -294,9 +288,7 @@ class StoryQueryEngine:
                 )
             ]
             record["claims"] = [
-                grounded
-                for claim_id in claim_ids
-                if (grounded := self._grounded_claim_summary(claim_id)) is not None
+                grounded for claim_id in claim_ids if (grounded := self._grounded_claim_summary(claim_id)) is not None
             ]
             conflicts.append(record)
         return conflicts
@@ -854,6 +846,71 @@ class StoryQueryEngine:
             branch_id=branch_id,
             source_id=source_id,
             maximum_units=maximum_units,
+        )
+
+    def explore_story(self, query: str, *, branch_id: str = "mainline", limit: int = 50) -> dict[str, Any]:
+        from backend.story.story_explorer import StoryExplorer
+
+        return StoryExplorer(self.project, self.store).explore(query, branch_id=branch_id, limit=limit)
+
+    def scene_semantics(self, story_unit_id: str, *, branch_id: str = "mainline") -> dict[str, Any]:
+        from backend.story.scene_semantics import SceneSemantics
+
+        return SceneSemantics(self.project, self.store).inspect(story_unit_id, branch_id=branch_id)
+
+    def continuity_audit(
+        self,
+        story_unit_id: str,
+        *,
+        character: str = "",
+        branch_id: str = "mainline",
+    ) -> dict[str, Any]:
+        from backend.story.continuity import ContinuityAuditor
+
+        return ContinuityAuditor(self.project, self.store).audit(
+            story_unit_id,
+            character=character,
+            branch_id=branch_id,
+        )
+
+    def character_arc(self, character: str, *, branch_id: str = "mainline") -> dict[str, Any]:
+        from backend.story.arcs import ArcIntelligence
+
+        return ArcIntelligence(self.project, self.store).character_arc(character, branch_id=branch_id)
+
+    def relationship_arc(self, entity_a: str, entity_b: str, *, branch_id: str = "mainline") -> dict[str, Any]:
+        from backend.story.arcs import ArcIntelligence
+
+        return ArcIntelligence(self.project, self.store).relationship_arc(entity_a, entity_b, branch_id=branch_id)
+
+    def ending_integrity(self, story_unit_id: str, *, branch_id: str = "mainline") -> dict[str, Any]:
+        from backend.story.ending_integrity import EndingIntegrity
+
+        return EndingIntegrity(self.project, self.store).audit(story_unit_id, branch_id=branch_id)
+
+    def project_health(self) -> dict[str, Any]:
+        from backend.story.health import ProjectHealth
+
+        return ProjectHealth(self.project, self.store).report()
+
+    def index_status(self) -> dict[str, Any]:
+        from backend.story.maintenance import index_status
+
+        return index_status(self.project, self.store)
+
+    def wow_acceptance(
+        self,
+        *,
+        story_unit_id: str | None = None,
+        character: str = "",
+        branch_id: str = "mainline",
+    ) -> dict[str, Any]:
+        from backend.story.acceptance import WowAcceptance
+
+        return WowAcceptance(self.project, self.store).run(
+            story_unit_id=story_unit_id,
+            character=character,
+            branch_id=branch_id,
         )
 
     def project_sources(self, *, role: str | None = None) -> list[dict[str, Any]]:

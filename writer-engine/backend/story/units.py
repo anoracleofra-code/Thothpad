@@ -109,7 +109,7 @@ def sync_story_units(
     parent_by_kind: dict[str, str] = {}
 
     for ordinal, candidate in enumerate(candidates):
-        body = text[candidate.start_offset:candidate.end_offset]
+        body = text[candidate.start_offset : candidate.end_offset]
         anchor = _anchor_signature(candidate.kind, candidate.title, body)
         existing = store.find_unit_by_anchor(anchor)
         source = store.source(source_id)

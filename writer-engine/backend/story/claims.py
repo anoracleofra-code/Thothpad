@@ -72,10 +72,7 @@ def explicit_field_claim_key(
     namespace: str = "profile",
 ) -> str:
     normalized_value = " ".join(value.casefold().split())
-    return (
-        f"thothpad-{namespace}-claim:{source_id}:{subject_entity_id or ''}:"
-        f"{predicate}:{normalized_value}"
-    )
+    return f"thothpad-{namespace}-claim:{source_id}:{subject_entity_id or ''}:{predicate}:{normalized_value}"
 
 
 def create_claim(
@@ -97,8 +94,7 @@ def create_claim(
     claim_id = str(
         uuid.uuid5(
             uuid.NAMESPACE_URL,
-            stable_key
-            or f"thothpad-claim:{project_id}:{subject_entity_id}:{predicate}:{literal_value}:{branch_id}",
+            stable_key or f"thothpad-claim:{project_id}:{subject_entity_id}:{predicate}:{literal_value}:{branch_id}",
         )
     )
     existing = next(
