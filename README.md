@@ -295,6 +295,7 @@ The engine is covered by `ruff`, `mypy`, and pytest gates, while the desktop app
 - [docs/story-engine/PHASES_26_35.md](docs/story-engine/PHASES_26_35.md) - migration, resumable indexing, trust/privacy, proposal review, explainability, and protocol-1.8 certification
 - [docs/story-engine/PHASES_36_45.md](docs/story-engine/PHASES_36_45.md) - recovery, observability, accessibility, offline/path hardening, compatibility, and protocol-1.9 certification
 - [docs/story-engine/PHASES_46_55.md](docs/story-engine/PHASES_46_55.md) - soak/supportability, compatibility fingerprints, network evidence, performance/relocation, package/update contracts, and explicit release readiness
+- [docs/story-engine/PHASES_56_65.md](docs/story-engine/PHASES_56_65.md) - benchmark/install/signing/platform/review/reproducibility/rollback evidence contracts and fail-closed production promotion
 
 ---
 
