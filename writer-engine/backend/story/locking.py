@@ -52,13 +52,16 @@ def _cross_process_lock(path: Path, *, timeout_seconds: float) -> Iterator[None]
 
         deadline = time.monotonic() + max(0.1, timeout_seconds)
         if os.name == "nt":
-            import msvcrt
+            msvcrt = importlib.import_module("msvcrt")
+            locking = msvcrt.locking
+            lock_nonblocking = int(msvcrt.LK_NBLCK)
+            lock_unlock = int(msvcrt.LK_UNLCK)
 
             acquired = False
             while not acquired:
                 handle.seek(0)
                 try:
-                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    locking(handle.fileno(), lock_nonblocking, 1)
                 except OSError:
                     if time.monotonic() >= deadline:
                         raise TimeoutError("timed out waiting for the Story Project operation lock") from None
@@ -69,7 +72,7 @@ def _cross_process_lock(path: Path, *, timeout_seconds: float) -> Iterator[None]
                 yield
             finally:
                 handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                locking(handle.fileno(), lock_unlock, 1)
             return
 
         fcntl = importlib.import_module("fcntl")

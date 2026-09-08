@@ -443,14 +443,17 @@ private slots:
         workbench.refresh();
         QTRY_VERIFY(workbench.current());
         speaker->setCurrentIndex(0);
+        lines->scrollToBottom();
+        // Scrolling and qWait() process the event loop. The dialogue results may
+        // be rebuilt during that interval, so never retain an item-widget
+        // pointer across the wait (macOS exposed this as a qFindChild crash).
+        QTest::qWait(50);
         auto *last = lines->topLevelItem(lines->topLevelItemCount() - 1);
+        QVERIFY(last);
         auto *card = lines->itemWidget(last, 0);
         QVERIFY(card);
-        lines->scrollToItem(last);
-        QTest::qWait(50);
         auto *words = card->findChild<QLabel *>("dialogueWords");
         QVERIFY(words);
-        QVERIFY(window.grab().save("writing-dialogue-wrapped.png"));
         QVERIFY(words->height() >= words->heightForWidth(words->width()));
         QVERIFY(card->rect().contains(words->geometry()));
         QVERIFY(window.grab().save("writing-dialogue-wrapped.png"));
