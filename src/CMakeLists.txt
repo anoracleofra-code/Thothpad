@@ -54,6 +54,7 @@ target_sources(thothpad PRIVATE
     story/documentactivitytracker.cpp
     story/storyintelligencecontroller.cpp
     story/storyintelligencewidget.cpp
+    story/storylabdialog.cpp
     story/storytoolharness.cpp
     story/storyworkspace.cpp
     story/storyworkspacecontroller.cpp

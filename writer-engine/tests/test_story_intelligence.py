@@ -207,6 +207,27 @@ def test_tool_results_are_labeled_as_trusted_execution_facts():
     assert "Do not claim a tool succeeded" in messages[0]["content"]
 
 
+def test_story_state_is_bounded_before_serialization_to_model():
+    payload = _validated()
+    payload["story_state"] = {
+        "objective_claims": [
+            {
+                "claim_id": f"claim-{index}",
+                "predicate": "oversized",
+                "value": "x" * 20_000,
+            }
+            for index in range(100)
+        ],
+        "character_knowledge": [],
+        "reader_state": [],
+    }
+    messages = build_story_messages(payload, [])
+    context_message = messages[1]["content"]
+    assert len(context_message) < 80_000
+    assert "claim-0" in context_message
+    assert "claim-99" not in context_message
+
+
 def test_project_retrieval_stays_in_root_and_skips_private_state(tmp_path: Path):
     root = tmp_path / "novel"
     root.mkdir()

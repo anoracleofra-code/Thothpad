@@ -49,6 +49,39 @@ from backend.profiles import (
     load_profile,
     save_profile,
 )
+from backend.story.model_routing import route_story_model
+from backend.story.service import (
+    add_story_branch_overlay,
+    apply_story_branch_merge,
+    apply_story_writer_mutation,
+    backup_story_project_state,
+    bind_legacy_story_workspace,
+    call_story_tool,
+    create_story_branch,
+    export_story_project,
+    import_story_project,
+    index_story_project_batch,
+    observe_story_writer_model,
+    prepare_story_branch_merge,
+    rebase_story_branch,
+    rebuild_story_project_index,
+    recover_story_project_state,
+    restore_story_project_state,
+    review_story_project_proposal,
+    submit_story_project_proposal,
+)
+from backend.story.service import (
+    project_sources as story_project_sources,
+)
+from backend.story.service import (
+    project_understanding as story_project_understanding,
+)
+from backend.story.service import (
+    set_manuscript_order as story_set_manuscript_order,
+)
+from backend.story.service import (
+    set_source_override as story_set_source_override,
+)
 from backend.text_utils import (
     AnalysisCancelled,
     cancellable_analysis,
@@ -149,8 +182,12 @@ def _configure_performance(value: Any) -> dict[str, Any]:
         _PERFORMANCE_POLICY.clear()
         _PERFORMANCE_POLICY.update(policy)
         for name in (
-            "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
-            "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS", "BLIS_NUM_THREADS",
+            "OMP_NUM_THREADS",
+            "OPENBLAS_NUM_THREADS",
+            "MKL_NUM_THREADS",
+            "NUMEXPR_NUM_THREADS",
+            "VECLIB_MAXIMUM_THREADS",
+            "BLIS_NUM_THREADS",
         ):
             os.environ[name] = str(threads)
         os.environ["THOTHPAD_BACKGROUND_THREADS"] = str(threads)
@@ -174,9 +211,7 @@ def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
     if process.poll() is not None:
         return
     if os.name == "nt":
-        taskkill = os.path.join(
-            os.environ.get("SystemRoot", r"C:\Windows"), "System32", "taskkill.exe"
-        )
+        taskkill = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "taskkill.exe")
         try:
             subprocess.run(
                 [taskkill, "/PID", str(process.pid), "/T", "/F"],
@@ -318,22 +353,21 @@ def _resolved_document_text(
         _message_revision(message, params),
     )
     if params.get("exclusion_ranges") is None and document.exclusions_stale:
-        raise ResyncRequired(
-            "document exclusion_ranges are stale; resend them with patch_document"
-        )
+        raise ResyncRequired("document exclusion_ranges are stale; resend them with patch_document")
     exclusions = params.get("exclusion_ranges", list(document.exclusion_ranges))
     if operation != "analyze_region":
         return document.text, document.language, 0, exclusions
     start = params.get("start_utf16")
     end = params.get("end_utf16")
     if (
-        isinstance(start, bool) or isinstance(end, bool)
-        or not isinstance(start, int) or not isinstance(end, int)
-        or start < 0 or end <= start
+        isinstance(start, bool)
+        or isinstance(end, bool)
+        or not isinstance(start, int)
+        or not isinstance(end, int)
+        or start < 0
+        or end <= start
     ):
-        raise ValueError(
-            "document-reference region requires 0 <= start_utf16 < end_utf16"
-        )
+        raise ValueError("document-reference region requires 0 <= start_utf16 < end_utf16")
     try:
         region = document.buffer.slice_utf16(start, end)
     except ValueError as exc:
@@ -368,7 +402,7 @@ def _analyze_live_cancellable(
     exclusion_ranges: Any,
     confirm_adverbs: bool,
     document_revision: int | None,
-    grammar: dict[str, Any],
+    grammar: dict[str, Any] | None,
     language: str | None,
     analyzers: Any,
 ) -> dict[str, Any]:
@@ -408,13 +442,12 @@ def _analyze_live_cancellable(
         validate_analyzer_names(selected)
         results = run_analyzers(text, profile, selected if lexical_rules_enabled else ())
 
-        grammar_allowed = bool(
-            grammar
-            and (grammar.get("provider") != "harper" or lexical_rules_enabled)
-        )
+        grammar_allowed = bool(grammar and (grammar.get("provider") != "harper" or lexical_rules_enabled))
         if grammar_allowed:
+            assert grammar is not None
             cancellation_checkpoint()
             from backend.grammar import analyze_grammar
+
             results.append(analyze_grammar(text, grammar))
             cancellation_checkpoint()
         analyzer_ms = round((time.perf_counter() - analyzer_started) * 1000, 3)
@@ -429,9 +462,7 @@ def _analyze_live_cancellable(
             features=features,
         )
         cancellation_checkpoint()
-        serialization_ms = round(
-            (time.perf_counter() - serialization_started) * 1000, 3
-        )
+        serialization_ms = round((time.perf_counter() - serialization_started) * 1000, 3)
         # Dialogue balance block, mirroring the desktop envelope so the
         # cancelled and direct live paths stay byte-identical.
         spans_cached = features.cached("dialogue_spans", lambda: _dialogue_spans(text))
@@ -490,7 +521,346 @@ def dispatch(
         return _capabilities()
     if operation == "provider_access":
         from backend.provider_access import provider_access
+
         return provider_access(params)
+    if operation == "story_project_understanding":
+        root = params.get("project_root")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        return story_project_understanding(root)
+    if operation == "story_project_sources":
+        root = params.get("project_root")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        role = params.get("role")
+        if role is not None and not isinstance(role, str):
+            raise ValueError("role must be a string")
+        return story_project_sources(
+            root,
+            offset=params.get("offset", 0),
+            limit=params.get("limit", 100),
+            role=role,
+        )
+    if operation == "story_set_source_override":
+        root = params.get("project_root")
+        path = params.get("path")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(path, str) or not path.strip():
+            raise ValueError("path must be a non-empty string")
+        roles = params.get("roles")
+        if roles is not None and (not isinstance(roles, list) or any(not isinstance(role, str) for role in roles)):
+            raise ValueError("roles must be an array of strings")
+        authority = params.get("authority")
+        if authority is not None and not isinstance(authority, str):
+            raise ValueError("authority must be a string")
+        pattern = params.get("pattern")
+        if pattern is not None and not isinstance(pattern, str):
+            raise ValueError("pattern must be a string")
+        return story_set_source_override(
+            root,
+            path,
+            roles=roles,
+            authority=authority,
+            pattern=pattern if isinstance(pattern, str) and pattern.strip() else None,
+        )
+    if operation == "story_set_manuscript_order":
+        root = params.get("project_root")
+        paths = params.get("paths")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(paths, list) or not all(isinstance(path, str) for path in paths):
+            raise ValueError("paths must be an array of strings")
+        return story_set_manuscript_order(root, paths)
+    if operation == "story_branch_create":
+        root = params.get("project_root")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        parent_branch = params.get("parent_branch", "mainline")
+        fork_story_unit = params.get("fork_story_unit")
+        assumptions = params.get("assumptions", [])
+        branch_id = params.get("branch_id")
+        if not isinstance(parent_branch, str) or not parent_branch.strip():
+            raise ValueError("parent_branch must be a non-empty string")
+        if fork_story_unit is not None and not isinstance(fork_story_unit, str):
+            raise ValueError("fork_story_unit must be a string")
+        if branch_id is not None and not isinstance(branch_id, str):
+            raise ValueError("branch_id must be a string")
+        if not isinstance(assumptions, list) or not all(isinstance(item, str) for item in assumptions):
+            raise ValueError("assumptions must be an array of strings")
+        return create_story_branch(
+            root,
+            parent_branch=parent_branch,
+            fork_story_unit=fork_story_unit,
+            assumptions=assumptions,
+            branch_id=branch_id,
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
+    if operation == "story_branch_add_overlay":
+        root = params.get("project_root")
+        branch_id = params.get("branch_id")
+        record_kind = params.get("record_kind")
+        record_id = params.get("record_id")
+        change = params.get("operation")
+        payload = params.get("payload", {})
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(branch_id, str) or not branch_id.strip():
+            raise ValueError("branch_id must be a non-empty string")
+        if not isinstance(record_kind, str) or not record_kind.strip():
+            raise ValueError("record_kind must be a non-empty string")
+        if not isinstance(record_id, str) or not record_id.strip():
+            raise ValueError("record_id must be a non-empty string")
+        if not isinstance(change, str) or not change.strip():
+            raise ValueError("operation must be a non-empty string")
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+        return add_story_branch_overlay(
+            root,
+            branch_id=branch_id,
+            record_kind=record_kind,
+            record_id=record_id,
+            operation=change,
+            payload=payload,
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
+    if operation == "story_branch_rebase":
+        root = params.get("project_root")
+        branch_id = params.get("branch_id")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(branch_id, str) or not branch_id.strip():
+            raise ValueError("branch_id must be a non-empty string")
+        return rebase_story_branch(
+            root,
+            branch_id,
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
+    if operation == "story_branch_prepare_merge":
+        root = params.get("project_root")
+        branch_id = params.get("branch_id")
+        overlay_ids = params.get("overlay_ids")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(branch_id, str) or not branch_id.strip():
+            raise ValueError("branch_id must be a non-empty string")
+        if not isinstance(overlay_ids, list) or not all(isinstance(item, str) for item in overlay_ids):
+            raise ValueError("overlay_ids must be an array of strings")
+        return prepare_story_branch_merge(root, branch_id, overlay_ids)
+    if operation == "story_branch_apply_merge":
+        root = params.get("project_root")
+        branch_id = params.get("branch_id")
+        overlay_ids = params.get("overlay_ids")
+        expected = params.get("expected_parent_revision")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(branch_id, str) or not branch_id.strip():
+            raise ValueError("branch_id must be a non-empty string")
+        if not isinstance(overlay_ids, list) or not all(isinstance(item, str) for item in overlay_ids):
+            raise ValueError("overlay_ids must be an array of strings")
+        if not isinstance(expected, str) or not expected.strip():
+            raise ValueError("expected_parent_revision must be a non-empty string")
+        return apply_story_branch_merge(
+            root,
+            branch_id,
+            overlay_ids,
+            expected_parent_revision=expected,
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
+    if operation == "story_writer_mutation":
+        root = params.get("project_root")
+        mutation = params.get("mutation")
+        payload = params.get("payload", {})
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(mutation, str) or not mutation.strip():
+            raise ValueError("mutation must be a non-empty string")
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+        return apply_story_writer_mutation(
+            root,
+            mutation,
+            payload,
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
+    if operation == "story_writer_model_observe":
+        root = params.get("project_root")
+        events = params.get("events", [])
+        scope_kind = params.get("scope_kind", "project")
+        scope_id = params.get("scope_id", "")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(events, list) or not all(isinstance(item, dict) for item in events):
+            raise ValueError("events must be an array of objects")
+        if not isinstance(scope_kind, str) or not isinstance(scope_id, str):
+            raise ValueError("writer-model scope must use strings")
+        return observe_story_writer_model(
+            root,
+            events,
+            scope_kind=scope_kind,
+            scope_id=scope_id,
+        )
+    if operation == "story_model_route":
+        prompt = params.get("prompt", "")
+        candidates = params.get("candidates", [])
+        fallback = params.get("fallback")
+        task = params.get("task")
+        quality = params.get("quality", "balanced")
+        privacy = params.get("privacy", "prefer_local")
+        if not isinstance(prompt, str):
+            raise ValueError("prompt must be a string")
+        if not isinstance(candidates, list) or not all(isinstance(item, dict) for item in candidates):
+            raise ValueError("candidates must be an array of objects")
+        if fallback is not None and not isinstance(fallback, dict):
+            raise ValueError("fallback must be an object")
+        if task is not None and not isinstance(task, str):
+            raise ValueError("task must be a string")
+        if not isinstance(quality, str) or not isinstance(privacy, str):
+            raise ValueError("quality and privacy must be strings")
+        return route_story_model(
+            prompt=prompt,
+            candidates=candidates,
+            fallback=fallback,
+            task=task,
+            quality=quality,
+            privacy=privacy,
+        )
+    if operation == "story_index_rebuild":
+        root = params.get("project_root")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        return rebuild_story_project_index(
+            root,
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
+    if operation == "story_index_batch":
+        root = params.get("project_root")
+        maximum_documents = params.get("maximum_documents", 100)
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if isinstance(maximum_documents, bool) or not isinstance(maximum_documents, int):
+            raise ValueError("maximum_documents must be an integer")
+        return index_story_project_batch(
+            root,
+            maximum_documents=maximum_documents,
+            reset=_bool(params, "reset", False),
+        )
+    if operation == "story_legacy_bind":
+        root = params.get("project_root")
+        workspace_path = params.get("workspace_path")
+        manuscript_path = params.get("manuscript_path")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(workspace_path, str) or not workspace_path.strip():
+            raise ValueError("workspace_path must be a non-empty string")
+        if not isinstance(manuscript_path, str) or not manuscript_path.strip():
+            raise ValueError("manuscript_path must be a non-empty string")
+        return bind_legacy_story_workspace(
+            root,
+            workspace_path=workspace_path,
+            manuscript_path=manuscript_path,
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
+    if operation == "story_project_export":
+        root = params.get("project_root")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        return export_story_project(root)
+    if operation == "story_project_import":
+        root = params.get("project_root")
+        bundle = params.get("bundle")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(bundle, dict):
+            raise ValueError("bundle must be an object")
+        return import_story_project(
+            root,
+            bundle,
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
+    if operation == "story_proposal_submit":
+        root = params.get("project_root")
+        proposal_kind = params.get("proposal_kind")
+        target_mutation = params.get("target_mutation")
+        payload = params.get("payload")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(proposal_kind, str) or not proposal_kind.strip():
+            raise ValueError("proposal_kind must be a non-empty string")
+        if not isinstance(target_mutation, str) or not target_mutation.strip():
+            raise ValueError("target_mutation must be a non-empty string")
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+        evidence = params.get("evidence", [])
+        if not isinstance(evidence, list) or not all(isinstance(item, dict) for item in evidence):
+            raise ValueError("evidence must be an array of objects")
+        return submit_story_project_proposal(
+            root,
+            proposal_kind=proposal_kind,
+            target_mutation=target_mutation,
+            payload=payload,
+            branch_id=str(params.get("branch_id", "mainline")),
+            story_unit_id=str(params.get("story_unit_id")) if params.get("story_unit_id") else None,
+            evidence=evidence,
+            created_by=str(params.get("created_by", "model")),
+        )
+    if operation == "story_proposal_review":
+        root = params.get("project_root")
+        proposal_id = params.get("proposal_id")
+        decision = params.get("decision")
+        payload_override = params.get("payload_override")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(proposal_id, str) or not proposal_id.strip():
+            raise ValueError("proposal_id must be a non-empty string")
+        if not isinstance(decision, str) or not decision.strip():
+            raise ValueError("decision must be a non-empty string")
+        if payload_override is not None and not isinstance(payload_override, dict):
+            raise ValueError("payload_override must be an object")
+        return review_story_project_proposal(
+            root,
+            proposal_id=proposal_id,
+            decision=decision,
+            payload_override=payload_override,
+            note=str(params.get("note", "")),
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
+    if operation == "story_recover":
+        root = params.get("project_root")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        return recover_story_project_state(
+            root,
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
+    if operation == "story_state_backup":
+        root = params.get("project_root")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        return backup_story_project_state(root)
+    if operation == "story_state_restore":
+        root = params.get("project_root")
+        backup_name = params.get("backup_name")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(backup_name, str) or not backup_name.strip():
+            raise ValueError("backup_name must be a non-empty string")
+        return restore_story_project_state(
+            root,
+            backup_name,
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
+    if operation == "story_tool":
+        root = params.get("project_root")
+        tool_id = params.get("tool_id")
+        arguments = params.get("arguments", {})
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(tool_id, str) or not tool_id.strip():
+            raise ValueError("tool_id must be a non-empty string")
+        if not isinstance(arguments, dict):
+            raise ValueError("arguments must be an object")
+        return call_story_tool(root, tool_id, arguments)
     if operation == "list_profiles":
         return {"profiles": list_profiles()}
     if operation == "get_profile":
@@ -573,17 +943,9 @@ def dispatch(
             consent=_bool(params, "grammar_consent", False),
         )
         profile_name = str(params.get("profile", config.DEFAULT_PROFILE))
-        confirm_adverbs = _bool(
-            params, "confirm_adverbs", operation == "analyze_document"
-        )
-        document_revision = (
-            int(message["document_revision"])
-            if message.get("document_revision") is not None else None
-        )
-        language = (
-            str(params.get("language"))
-            if params.get("language") is not None else document_language
-        )
+        confirm_adverbs = _bool(params, "confirm_adverbs", operation == "analyze_document")
+        document_revision = int(message["document_revision"]) if message.get("document_revision") is not None else None
+        language = str(params.get("language")) if params.get("language") is not None else document_language
         if operation == "analyze_region" and cancelled is not None:
             if external:
                 raise ValueError("external tools are unavailable in the live preset")
@@ -596,7 +958,7 @@ def dispatch(
                 exclusion_ranges=resolved_exclusions,
                 confirm_adverbs=confirm_adverbs,
                 document_revision=document_revision,
-                grammar=grammar,  # type: ignore[arg-type]
+                grammar=grammar,
                 language=language,
                 analyzers=params.get("analyzers"),
             )
@@ -605,10 +967,7 @@ def dispatch(
                 text,
                 profile_name=profile_name,
                 overrides=params.get("overrides"),
-                preset=(
-                    "live" if operation == "analyze_region"
-                    else str(params.get("preset", "full"))
-                ),
+                preset=("live" if operation == "analyze_region" else str(params.get("preset", "full"))),
                 base_offset_utf16=resolved_base_offset,
                 exclusion_ranges=resolved_exclusions,
                 confirm_adverbs=confirm_adverbs,
@@ -629,14 +988,10 @@ def dispatch(
             diagnostics,
             document_id=str(message.get("document_id", "")),
             document_revision=(
-                int(message["document_revision"])
-                if message.get("document_revision") is not None
-                else None
+                int(message["document_revision"]) if message.get("document_revision") is not None else None
             ),
             text_hash=str(result.get("text_hash", "")),
-            initial_page_size=params.get(
-                "initial_page_size", config.DEFAULT_FINDING_PAGE_SIZE
-            ),
+            initial_page_size=params.get("initial_page_size", config.DEFAULT_FINDING_PAGE_SIZE),
             persist=_bool(params, "persist", False),
         )
         for row in result.get("analysis", []):
@@ -683,26 +1038,26 @@ def dispatch(
         mode = str(params.get("mode", "rewrite"))
         if mode not in {"rewrite", "deslop", "line_edit", "write_from_brief"}:
             raise ValueError("unsupported rewrite mode")
-        profile_name = validate_profile_name(
-            str(params.get("profile", config.DEFAULT_PROFILE))
-        )
+        profile_name = validate_profile_name(str(params.get("profile", config.DEFAULT_PROFILE)))
         snapshot = params.get("profile_snapshot")  # type: ignore[assignment]
         if snapshot is not None:
             snapshot = validate_profile(snapshot)
             if snapshot.get("name") != profile_name:
                 raise ValueError("profile_snapshot name must match profile")
-        return run_pipeline(RunRequest(
-            text=params.get("text", ""),
-            profile=profile_name,
-            profile_snapshot=snapshot,
-            mode=mode,
-            passes=passes,
-            provider=_desktop_provider(params),
-            overrides=params.get("overrides"),
-            preserve=params.get("preserve"),
-            aggressiveness=str(params.get("aggressiveness", "medium")),
-            persist=_bool(params, "persist", False),
-        ))
+        return run_pipeline(
+            RunRequest(
+                text=params.get("text", ""),
+                profile=profile_name,
+                profile_snapshot=snapshot,
+                mode=mode,
+                passes=passes,
+                provider=_desktop_provider(params),
+                overrides=params.get("overrides"),
+                preserve=params.get("preserve"),
+                aggressiveness=str(params.get("aggressiveness", "medium")),
+                persist=_bool(params, "persist", False),
+            )
+        )
     if operation == "compare":
         return compare_texts(
             params.get("before", ""),
@@ -742,9 +1097,7 @@ class PersistentWorker:
         self._job_handle = None
         creation_flags = 0
         if os.name == "nt":
-            creation_flags = (
-                subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
-            )
+            creation_flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
         if self._cancel_dir is None or not os.path.isdir(self._cancel_dir):
             self._cancel_dir = tempfile.mkdtemp(prefix="thothpad-cancel-")
         env = dict(os.environ)
@@ -764,9 +1117,7 @@ class PersistentWorker:
         self.starts += 1
         return process
 
-    def execute(
-        self, request: dict[str, Any], cancelled: threading.Event
-    ) -> dict[str, Any]:
+    def execute(self, request: dict[str, Any], cancelled: threading.Event) -> dict[str, Any]:
         request_id = str(request["request_id"])
         with self._operation_lock:
             if cancelled.is_set():
@@ -897,9 +1248,9 @@ class SidecarServer:
                 trace_path = os.environ["THOTHPAD_SIDECAR_TRACE"]
                 with open(trace_path, "ab") as trace:
                     trace.write(
-                        f"[write] op={payload.get('operation')} "
-                        f"declared={len(frame)} "
-                        f"head={frame[:48]!r}\n".encode("utf-8", errors="replace")
+                        f"[write] op={payload.get('operation')} declared={len(frame)} head={frame[:48]!r}\n".encode(
+                            "utf-8", errors="replace"
+                        )
                     )
             self.writer.write(frame)
             self.writer.flush()
@@ -924,9 +1275,12 @@ class SidecarServer:
         else:
             payload["error"] = {
                 "code": (
-                    "resync_required" if isinstance(error, ResyncRequired)
-                    else "cancelled" if isinstance(error, AnalysisCancelled)
-                    else "invalid_request" if isinstance(error, ValueError)
+                    "resync_required"
+                    if isinstance(error, ResyncRequired)
+                    else "cancelled"
+                    if isinstance(error, AnalysisCancelled)
+                    else "invalid_request"
+                    if isinstance(error, ValueError)
                     else "internal_error"
                 ),
                 "message": str(error),
@@ -945,10 +1299,7 @@ class SidecarServer:
         entry = self._inflight[request_id]
         try:
             result = dispatch(entry.request, cancelled=entry.cancelled)
-            if (
-                entry.request.get("operation") == "dispose_document"
-                and not entry.cancelled.is_set()
-            ):
+            if entry.request.get("operation") == "dispose_document" and not entry.cancelled.is_set():
                 if self._report_worker.is_running():
                     cleanup_request: dict[str, Any] = {
                         "protocol_major": PROTOCOL_MAJOR,
@@ -959,17 +1310,13 @@ class SidecarServer:
                         "operation": "dispose_document_snapshots",
                         "params": {},
                     }
-                    cleanup = self._report_worker.execute(
-                        cleanup_request, entry.cancelled
-                    )
+                    cleanup = self._report_worker.execute(cleanup_request, entry.cancelled)
                     if cleanup.get("ok") is not True:
-                        raise RuntimeError(
-                            f"snapshot disposal failed: {cleanup.get('message', '')}"
-                        )
+                        raise RuntimeError(f"snapshot disposal failed: {cleanup.get('message', '')}")
                     cleanup_result = cleanup.get("result", {})
-                    result["disposed_analyses"] = int(
-                        result.get("disposed_analyses", 0)
-                    ) + int(cleanup_result.get("disposed_analyses", 0))
+                    result["disposed_analyses"] = int(result.get("disposed_analyses", 0)) + int(
+                        cleanup_result.get("disposed_analyses", 0)
+                    )
                 # The report worker and its Harper session deliberately stay
                 # warm across documents: releasing them on last-document dispose
                 # forced a cold process restart (and cold Harper start) on the
@@ -984,10 +1331,7 @@ class SidecarServer:
         try:
             request = self._prepare_worker_request(entry.request)
             message = self._report_worker.execute(request, entry.cancelled)
-            worker_cancelled = (
-                entry.cancelled.is_set()
-                or str(message.get("error_type", "")) == "AnalysisCancelled"
-            )
+            worker_cancelled = entry.cancelled.is_set() or str(message.get("error_type", "")) == "AnalysisCancelled"
             if worker_cancelled:
                 self._finish(request_id, error=ProtocolError("request cancelled"))
             elif message.get("ok") is True:
@@ -996,8 +1340,10 @@ class SidecarServer:
                 error_name = str(message.get("error_type", "RuntimeError"))
                 code = str(message.get("code", ""))
                 error_type = (
-                    ResyncRequired if code == "resync_required"
-                    else ValueError if error_name in {"ValueError", "ProtocolError"}
+                    ResyncRequired
+                    if code == "resync_required"
+                    else ValueError
+                    if error_name in {"ValueError", "ProtocolError"}
                     else RuntimeError
                 )
                 self._finish(
@@ -1017,9 +1363,7 @@ class SidecarServer:
                 _message_revision(request, params),
             )
             if document.exclusions_stale:
-                raise ResyncRequired(
-                    "document exclusion_ranges are stale; resend them with patch_document"
-                )
+                raise ResyncRequired("document exclusion_ranges are stale; resend them with patch_document")
             params["text"] = document.text
             params.setdefault("language", document.language)
             params.setdefault("exclusion_ranges", list(document.exclusion_ranges))
@@ -1099,18 +1443,14 @@ class SidecarServer:
                 self._write(self._envelope(request, error=ProtocolError("unsupported protocol_major")))
                 continue
             try:
-                request["request_id"] = _request_id(
-                    request.get("request_id", str(uuid.uuid4()))
-                )
+                request["request_id"] = _request_id(request.get("request_id", str(uuid.uuid4())))
             except Exception as exc:
                 self._write(self._envelope(request, error=exc))
                 continue
             operation = request.get("operation")
             if operation == "cancel":
                 try:
-                    target = _request_id(
-                        _params(request).get("target_request_id"), "target_request_id"
-                    )
+                    target = _request_id(_params(request).get("target_request_id"), "target_request_id")
                 except Exception as exc:
                     self._write(self._envelope(request, error=exc))
                     continue
@@ -1136,11 +1476,7 @@ def _worker_main() -> int:
     def stop_if_supervisor_exits() -> None:
         while True:
             time.sleep(0.25)
-            parent_exited = (
-                not _windows_process_is_alive(parent_pid)
-                if os.name == "nt"
-                else os.getppid() != parent_pid
-            )
+            parent_exited = not _windows_process_is_alive(parent_pid) if os.name == "nt" else os.getppid() != parent_pid
             if parent_exited:
                 if os.name != "nt":
                     try:
@@ -1171,11 +1507,14 @@ def _worker_main() -> int:
         allow_nan=False,
     ).encode("utf-8")
     if len(serialized) > config.MAX_RESPONSE_BYTES:
-        serialized = json.dumps({
-            "ok": False,
-            "error_type": "ProtocolError",
-            "message": f"worker response exceeds the {config.MAX_RESPONSE_BYTES}-byte limit",
-        }, separators=(",", ":")).encode("utf-8")
+        serialized = json.dumps(
+            {
+                "ok": False,
+                "error_type": "ProtocolError",
+                "message": f"worker response exceeds the {config.MAX_RESPONSE_BYTES}-byte limit",
+            },
+            separators=(",", ":"),
+        ).encode("utf-8")
     sys.stdout.buffer.write(serialized)
     sys.stdout.buffer.flush()
     return 0
@@ -1193,10 +1532,7 @@ def _report_worker_main() -> int:
     def stop_if_supervisor_exits() -> None:
         while True:
             time.sleep(0.25)
-            parent_exited = (
-                not _windows_process_is_alive(parent_pid)
-                if os.name == "nt" else os.getppid() != parent_pid
-            )
+            parent_exited = not _windows_process_is_alive(parent_pid) if os.name == "nt" else os.getppid() != parent_pid
             if parent_exited:
                 os._exit(1)
 
@@ -1207,9 +1543,7 @@ def _report_worker_main() -> int:
             if request is None:
                 break
             try:
-                with cancellable_analysis(
-                    _worker_cancelled_check(cancel_dir, str(request.get("request_id", "")))
-                ):
+                with cancellable_analysis(_worker_cancelled_check(cancel_dir, str(request.get("request_id", "")))):
                     # The worker pipe is private to PersistentWorker.execute: it
                     # only carries client PROCESS operations and the server's
                     # own internal cleanup requests, so internal operations are
@@ -1221,8 +1555,10 @@ def _report_worker_main() -> int:
                     "ok": False,
                     "error_type": type(exc).__name__,
                     "code": (
-                        "resync_required" if isinstance(exc, ResyncRequired)
-                        else "cancelled" if isinstance(exc, AnalysisCancelled)
+                        "resync_required"
+                        if isinstance(exc, ResyncRequired)
+                        else "cancelled"
+                        if isinstance(exc, AnalysisCancelled)
                         else ""
                     ),
                     "message": str(exc),

@@ -290,6 +290,13 @@ The engine is covered by `ruff`, `mypy`, and pytest gates, while the desktop app
 - [BRAND.md](BRAND.md) — product identity and visual language
 - [CONTRIBUTING.md](CONTRIBUTING.md) — contribution guidance
 - [writer-engine/README.md](writer-engine/README.md) — engine CLI, MCP, sidecar, grammar, and provider details
+- [docs/story-engine/ARCHITECTURE.md](docs/story-engine/ARCHITECTURE.md) — Universal Story Engine authority, provenance, epistemic, branch, and lifecycle invariants
+- [docs/story-engine/PHASES_16_25.md](docs/story-engine/PHASES_16_25.md) — Story Explorer through executable Phase-25 acceptance certification
+- [docs/story-engine/PHASES_26_35.md](docs/story-engine/PHASES_26_35.md) - migration, resumable indexing, trust/privacy, proposal review, explainability, and protocol-1.8 certification
+- [docs/story-engine/PHASES_36_45.md](docs/story-engine/PHASES_36_45.md) - recovery, observability, accessibility, offline/path hardening, compatibility, and protocol-1.9 certification
+- [docs/story-engine/PHASES_46_55.md](docs/story-engine/PHASES_46_55.md) - soak/supportability, compatibility fingerprints, network evidence, performance/relocation, package/update contracts, and explicit release readiness
+- [docs/story-engine/PHASES_56_65.md](docs/story-engine/PHASES_56_65.md) - benchmark/install/signing/platform/review/reproducibility/rollback evidence contracts and fail-closed production promotion
+- [docs/story-engine/AUDIT_2026-09-08.md](docs/story-engine/AUDIT_2026-09-08.md) - post-implementation adversarial audit, fault-injection findings, concurrency hardening, and full recertification
 
 ---
 

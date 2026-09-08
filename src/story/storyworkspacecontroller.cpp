@@ -12,9 +12,9 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
+#include <QInputDialog>
 #include <QJsonDocument>
 #include <QMessageBox>
-#include <QInputDialog>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTextBlock>
@@ -27,6 +27,15 @@ namespace
 QString documentDigest(const QString &text)
 {
     return QString::fromLatin1(QCryptographicHash::hash(text.toUtf8(), QCryptographicHash::Sha256).toHex());
+}
+QString sessionBranchId(const QJsonObject &session)
+{
+    const QString branch = session.value(QStringLiteral("branch_id")).toString().trimmed();
+    return branch.isEmpty() ? QStringLiteral("mainline") : branch;
+}
+QString rememberedSessionKey(const QString &branchId, const QString &scopeId)
+{
+    return QStringLiteral("%1::%2").arg(branchId.isEmpty() ? QStringLiteral("mainline") : branchId, scopeId);
 }
 QJsonObject modelAgent(QJsonObject agent)
 {
@@ -91,10 +100,14 @@ bool StoryIntelligenceController::saveDetectedCharacter(const QString &workspace
     auto review = m_workspace.data.value("writing_review").toObject();
     auto assignments = review.value("assignments").toObject();
     for (auto it = assignments.begin(); it != assignments.end(); ++it)
-        if (it.value().toString() == detectedId) it.value() = character.value("id");
+        if (it.value().toString() == detectedId)
+            it.value() = character.value("id");
     review.insert("assignments", assignments);
     m_workspace.data.insert("writing_review", review);
-    if (!saveWorkspace()) { m_workspace.data = before; return false; }
+    if (!saveWorkspace()) {
+        m_workspace.data = before;
+        return false;
+    }
     refreshWorkspace();
     return true;
 }
@@ -134,7 +147,8 @@ void StoryIntelligenceController::openWorkspaceForDocument()
     m_workspaceDocument = document;
     m_documentCleared = false;
     m_scopeMode = m_workspace.data.value("scope_mode").toString("manuscript");
-    if (m_scopeMode != "manuscript") m_scopeMode = "chapter";
+    if (m_scopeMode != "manuscript")
+        m_scopeMode = "chapter";
     m_scopeId = "manuscript";
     m_sessionId = m_workspace.data.value("active_session").toString();
     m_loadingWorkspace = false;
@@ -281,10 +295,13 @@ void StoryIntelligenceController::refreshWorkspace()
         m_widget->setActiveCharacter(QString());
         // Return to the conversation the author chose, not merely the newest one.
         m_sessionId.clear();
-        const auto remembered = m_workspace.data.value("last_sessions").toObject().value(m_scopeId).toString();
+        const auto rememberedSessions = m_workspace.data.value("last_sessions").toObject();
+        QString remembered = rememberedSessions.value(rememberedSessionKey(m_activeBranch, m_scopeId)).toString();
+        if (remembered.isEmpty() && m_activeBranch == QStringLiteral("mainline"))
+            remembered = rememberedSessions.value(m_scopeId).toString();
         for (const auto &v : m_workspace.data.value("sessions").toArray()) {
             const auto s = v.toObject();
-            if (s.value("scope_id").toString() != m_scopeId)
+            if (s.value("scope_id").toString() != m_scopeId || sessionBranchId(s) != m_activeBranch)
                 continue;
             if (s.value("id").toString() == remembered) {
                 m_sessionId = s.value("id").toString();
@@ -301,8 +318,7 @@ void StoryIntelligenceController::refreshWorkspace()
     // A different agent never inherits private conversation history implicitly.
     for (const auto &v : m_workspace.data.value("sessions").toArray()) {
         const auto session = v.toObject();
-        if (session.value("id").toString() == m_sessionId
-            && (!sessionAvailable(session) || session.value("agent_id") != activeAgent().value("id"))) {
+        if (session.value("id").toString() == m_sessionId && (!sessionAvailable(session) || session.value("agent_id") != activeAgent().value("id"))) {
             m_sessionId.clear();
             m_history = {};
             m_widget->clearChat();
@@ -314,18 +330,24 @@ void StoryIntelligenceController::refreshWorkspace()
     for (const auto &v : m_workspace.data.value("sessions").toArray())
         if (v.toObject().value("id").toString() == m_sessionId)
             title = v.toObject().value("title").toString();
-    m_widget->setWorkspaceContext(m_scopeMode, m_workspace.scope(m_scopeId).value("title").toString(), activeAgent().value("name").toString(), title, m_workspace.scopeKind(m_scopeId));
+    m_widget->setWorkspaceContext(m_scopeMode,
+                                  m_workspace.scope(m_scopeId).value("title").toString(),
+                                  activeAgent().value("name").toString(),
+                                  title,
+                                  m_workspace.scopeKind(m_scopeId));
     QJsonArray choices;
     const auto sessions = m_workspace.data.value("sessions").toArray();
     for (int i = sessions.size() - 1; i >= 0; --i) {
         const auto session = sessions[i].toObject();
+        if (!sessionAvailable(session))
+            continue;
         auto scopeTitle = m_workspace.scope(session.value("scope_id").toString()).value("title").toString();
         scopeTitle.remove(QStringLiteral("**"));
         scopeTitle.remove(QStringLiteral("__"));
         const auto agent = m_workspace.agent(session.value("agent_id").toString());
         const auto name = agent.value("name").toString(tr("Co-Writer"));
         choices.append(QJsonObject{{"id", session.value("id")},
-            {"label", tr("%1 · %2 · %3").arg(session.value("title").toString(tr("New conversation")), scopeTitle, name)}});
+                                   {"label", tr("%1 · %2 · %3").arg(session.value("title").toString(tr("New conversation")), scopeTitle, name)}});
     }
     m_widget->setSessions(choices, m_sessionId);
     refreshProviderSummary();
@@ -352,11 +374,13 @@ void StoryIntelligenceController::storeSession()
         session = QJsonObject{{"id", m_sessionId},
                               {"scope_id", m_scopeId},
                               {"scope_mode", m_scopeMode},
+                              {"branch_id", m_activeBranch},
                               {"character_id", m_widget->activeCharacterId()},
                               {"agent_id", activeAgent().value("id")},
                               {"created", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)},
                               {"title", m_history.first().toObject().value("content").toString().simplified().left(80)}};
     }
+    session.insert(QStringLiteral("branch_id"), m_activeBranch);
     if (session.value("messages").toArray().isEmpty() && !m_history.isEmpty() && !session.contains("forked_from"))
         session.insert("title", m_history.first().toObject().value("content").toString().simplified().left(80));
     session.insert("messages", m_history);
@@ -367,7 +391,9 @@ void StoryIntelligenceController::storeSession()
     m_workspace.data.insert("sessions", sessions);
     m_workspace.data.insert("active_session", m_sessionId);
     auto remembered = m_workspace.data.value("last_sessions").toObject();
-    remembered.insert(m_scopeId, m_sessionId);
+    remembered.insert(rememberedSessionKey(m_activeBranch, m_scopeId), m_sessionId);
+    if (m_activeBranch == QStringLiteral("mainline"))
+        remembered.insert(m_scopeId, m_sessionId);
     m_workspace.data.insert("last_sessions", remembered);
 }
 
@@ -395,7 +421,8 @@ void StoryIntelligenceController::restoreSession()
             m_widget->appendChatMessage(message.value("role").toString(),
                                         message.value("content").toString(),
                                         message.value("speaker").toString(),
-                                        message.value("references").toArray(), message.value("id").toString());
+                                        message.value("references").toArray(),
+                                        message.value("id").toString());
             for (const auto &v : message.value("proposals").toArray()) {
                 const auto p = v.toObject();
                 m_widget->appendProposal(p.value("kind").toString(), p.value("record").toObject());
@@ -406,7 +433,9 @@ void StoryIntelligenceController::restoreSession()
     storeSession();
     if (!m_sessionId.isEmpty()) {
         auto remembered = m_workspace.data.value("last_sessions").toObject();
-        remembered.insert(m_scopeId, m_sessionId);
+        remembered.insert(rememberedSessionKey(m_activeBranch, m_scopeId), m_sessionId);
+        if (m_activeBranch == QStringLiteral("mainline"))
+            remembered.insert(m_scopeId, m_sessionId);
         m_workspace.data.insert("last_sessions", remembered);
     }
 }
@@ -419,11 +448,15 @@ void StoryIntelligenceController::newSession()
     m_sessionId = StoryWorkspace::newId();
     m_history = {};
     auto sessions = m_workspace.data.value("sessions").toArray();
-    sessions.append(QJsonObject{{"id", m_sessionId}, {"scope_id", m_scopeId},
-        {"scope_mode", m_scopeMode}, {"character_id", m_widget->activeCharacterId()},
-        {"agent_id", activeAgent().value("id")},
-        {"created", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)},
-        {"title", tr("New conversation %1").arg(sessions.size() + 1)}, {"messages", QJsonArray()}});
+    sessions.append(QJsonObject{{"id", m_sessionId},
+                                {"scope_id", m_scopeId},
+                                {"scope_mode", m_scopeMode},
+                                {"branch_id", m_activeBranch},
+                                {"character_id", m_widget->activeCharacterId()},
+                                {"agent_id", activeAgent().value("id")},
+                                {"created", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)},
+                                {"title", tr("New conversation %1").arg(sessions.size() + 1)},
+                                {"messages", QJsonArray()}});
     m_workspace.data.insert("sessions", sessions);
     restoreSession();
     refreshWorkspace();
@@ -442,10 +475,14 @@ void StoryIntelligenceController::deleteSession(const QString &sessionId)
     }
     if (target.isEmpty())
         return;
-    if (QMessageBox::question(m_widget, tr("Delete conversation?"),
-            tr("Delete “%1” and its saved chat history? Its un-applied manuscript marks will also be removed. Applied manuscript edits and approved memories are kept.")
-                .arg(target.value("title").toString()),
-            QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes)
+    if (QMessageBox::question(m_widget,
+                              tr("Delete conversation?"),
+                              tr("Delete “%1” and its saved chat history? Its un-applied manuscript marks will also be removed. Applied manuscript edits and "
+                                 "approved memories are kept.")
+                                  .arg(target.value("title").toString()),
+                              QMessageBox::Yes | QMessageBox::Cancel,
+                              QMessageBox::Cancel)
+        != QMessageBox::Yes)
         return;
     const auto previousData = m_workspace.data;
     const auto previousHistory = m_history;
@@ -497,6 +534,8 @@ void StoryIntelligenceController::deleteSession(const QString &sessionId)
 
 bool StoryIntelligenceController::sessionAvailable(const QJsonObject &session) const
 {
+    if (sessionBranchId(session) != m_activeBranch)
+        return false;
     const auto scopeId = session.value("scope_id").toString();
     const auto scope = m_workspace.scope(scopeId);
     const auto characterId = session.value("character_id").toString();
@@ -506,11 +545,9 @@ bool StoryIntelligenceController::sessionAvailable(const QJsonObject &session) c
         return false;
     const auto agent = m_workspace.agent(agentId);
     if (!characterId.isEmpty())
-        return agentId == characterId && !agent.isEmpty() && !agent.value("archived").toBool()
-            && settings.value("cast").toArray().contains(characterId);
+        return agentId == characterId && !agent.isEmpty() && !agent.value("archived").toBool() && settings.value("cast").toArray().contains(characterId);
     const auto writer = m_workspace.agent(settings.value("co_writer").toString());
-    const auto writerId = writer.isEmpty() || writer.value("archived").toBool()
-        ? QStringLiteral("default-co-writer") : writer.value("id").toString();
+    const auto writerId = writer.isEmpty() || writer.value("archived").toBool() ? QStringLiteral("default-co-writer") : writer.value("id").toString();
     return agentId == writerId;
 }
 
@@ -524,7 +561,8 @@ void StoryIntelligenceController::selectSession(const QString &sessionId)
             session = value.toObject();
     if (!sessionAvailable(session)) {
         refreshWorkspace();
-        m_widget->setStatusMessage(tr("This conversation's heading or agent is no longer assigned. Restore its assignment in Workspace; its saved history is still there."));
+        m_widget->setStatusMessage(
+            tr("This conversation's heading or agent is no longer assigned. Restore its assignment in Workspace; its saved history is still there."));
         return;
     }
     const auto scopeId = session.value("scope_id").toString();
@@ -571,17 +609,23 @@ void StoryIntelligenceController::handleMessageAction(const QString &messageId, 
     const auto sessionId = m_sessionId;
     QString replacement;
     if (action == "delete") {
-        if (QMessageBox::question(m_widget, tr("Delete message?"),
-                tr("Delete this message from the saved conversation and remove its manuscript marks? Applied manuscript edits and approved memories are not undone."),
-                QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
+        if (QMessageBox::question(m_widget,
+                                  tr("Delete message?"),
+                                  tr("Delete this message from the saved conversation and remove its manuscript marks? Applied manuscript edits and approved "
+                                     "memories are not undone."),
+                                  QMessageBox::Yes | QMessageBox::No,
+                                  QMessageBox::No)
+            != QMessageBox::Yes)
             return;
     } else if (action == "edit") {
         const bool user = m_history[index].toObject().value("role") == "user";
         bool accepted = false;
-        replacement = QInputDialog::getMultiLineText(m_widget, user ? tr("Edit and resend") : tr("Edit response"),
-            user ? tr("A new conversation branch will send this edited prompt. The original conversation is kept.")
-                 : tr("Save an edited response in a new branch. Later messages remain in the original conversation."),
-            m_history[index].toObject().value("content").toString(), &accepted);
+        replacement = QInputDialog::getMultiLineText(m_widget,
+                                                     user ? tr("Edit and resend") : tr("Edit response"),
+                                                     user ? tr("A new conversation branch will send this edited prompt. The original conversation is kept.")
+                                                          : tr("Save an edited response in a new branch. Later messages remain in the original conversation."),
+                                                     m_history[index].toObject().value("content").toString(),
+                                                     &accepted);
         if (!accepted || replacement.trimmed().isEmpty())
             return;
     }
@@ -593,8 +637,7 @@ void StoryIntelligenceController::handleMessageAction(const QString &messageId, 
 
 bool StoryIntelligenceController::reviseChatHistory(int index, const QString &action, const QString &replacement)
 {
-    if (index < 0 || index >= m_history.size() || !m_pendingChat.prompt.isEmpty()
-        || !m_chatRequestId.isEmpty() || m_workspaceDocument != currentDocumentPath()
+    if (index < 0 || index >= m_history.size() || !m_pendingChat.prompt.isEmpty() || !m_chatRequestId.isEmpty() || m_workspaceDocument != currentDocumentPath()
         || (action != "edit" && action != "retry" && action != "delete"))
         return false;
     const auto originalMessage = m_history[index].toObject();
@@ -654,10 +697,13 @@ bool StoryIntelligenceController::reviseChatHistory(int index, const QString &ac
         }
         m_sessionId = StoryWorkspace::newId();
         branch.insert("id", m_sessionId);
+        branch.insert("branch_id", m_activeBranch);
         branch.insert("forked_from", previousSession);
         branch.insert("created", QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
-        branch.insert("title", tr("%1 (%2 %3)").arg(branch.value("title").toString().left(60), action == "retry" ? tr("retry") : tr("edited"))
-            .arg(before.value("sessions").toArray().size() + 1));
+        branch.insert("title",
+                      tr("%1 (%2 %3)")
+                          .arg(branch.value("title").toString().left(60), action == "retry" ? tr("retry") : tr("edited"))
+                          .arg(before.value("sessions").toArray().size() + 1));
         branch.insert("messages", m_history);
         auto sessions = before.value("sessions").toArray();
         sessions.append(branch);
@@ -793,6 +839,8 @@ QJsonArray StoryIntelligenceController::allowedManifest() const
                     {"risk", "R0"},
                     {"description", "Find up to 20 exact occurrences of a phrase in the current manuscript."},
                     {"arguments", "query: string"}}};
+    for (const auto &value : storyEngineReadManifest())
+        result.append(value);
     if (!m_harness)
         return result;
     const bool edits = activeAgent().value("tools").toString() == "edit";
@@ -805,6 +853,280 @@ QJsonArray StoryIntelligenceController::allowedManifest() const
         result.append(tool);
     }
     return result;
+}
+
+QJsonArray StoryIntelligenceController::storyEngineReadManifest() const
+{
+    if (m_projectRoot.isEmpty() || !m_engine->isReady() || !m_engine->supportsOperation(QStringLiteral("story_tool")))
+        return {};
+
+    QJsonArray result{QJsonObject{{"id", "query_project_story_context"},
+                                  {"risk", "R0"},
+                                  {"description", "Compile fresh project evidence and typed story state through the active epistemic boundary."},
+                                  {"arguments", "prompt: string, maximum_chars?: integer"}}};
+
+    // Raw Story Engine state is intentionally an author-only capability. In
+    // Character/Reader/Cold Reader/etc. modes, exposing these queries would let
+    // the model route around the Context Compiler and recover hidden knowledge.
+    if (m_epistemicMode != QStringLiteral("author_omniscient"))
+        return result;
+
+    result.append(QJsonObject{{"id", "resolve_entity"},
+                              {"risk", "R0"},
+                              {"description", "Resolve a project entity by exact name or alias."},
+                              {"arguments", "name: string"}});
+    result.append(QJsonObject{{"id", "get_entity"},
+                              {"risk", "R0"},
+                              {"description", "Read one normalized entity with grounded claims and mentions."},
+                              {"arguments", "entity_id: string"}});
+    result.append(QJsonObject{{"id", "find_story_evidence"},
+                              {"risk", "R0"},
+                              {"description", "Search bounded project evidence."},
+                              {"arguments", "query: string, limit?: integer"}});
+    result.append(QJsonObject{{"id", "query_claims"},
+                              {"risk", "R0"},
+                              {"description", "Read bounded provenance-backed story claims."},
+                              {"arguments", "entity?: string, predicate?: string, limit?: integer"}});
+    result.append(
+        QJsonObject{{"id", "get_story_unit"}, {"risk", "R0"}, {"description", "Read one stable project story unit."}, {"arguments", "story_unit_id: string"}});
+    result.append(QJsonObject{{"id", "list_story_units"},
+                              {"risk", "R0"},
+                              {"description", "List bounded stable project story units."},
+                              {"arguments", "source_id?: string, limit?: integer"}});
+    result.append(QJsonObject{{"id", "get_character_knowledge"},
+                              {"risk", "R0"},
+                              {"description", "Read tracked character knowledge and belief state."},
+                              {"arguments", "character: string, limit?: integer"}});
+    result.append(QJsonObject{{"id", "get_character_beliefs"},
+                              {"risk", "R0"},
+                              {"description", "Read tracked beliefs, suspicions and disbelief state."},
+                              {"arguments", "character: string, limit?: integer"}});
+    result.append(QJsonObject{{"id", "get_reader_state"},
+                              {"risk", "R0"},
+                              {"description", "Read tracked reader information state."},
+                              {"arguments", "through_story_unit?: string, limit?: integer"}});
+    result.append(QJsonObject{{"id", "query_timeline"}, {"risk", "R0"}, {"description", "Read normalized timeline events."}, {"arguments", "limit?: integer"}});
+    result.append(QJsonObject{{"id", "get_world_state"},
+                              {"risk", "R0"},
+                              {"description", "Read typed world state for an entity."},
+                              {"arguments", "entity: string, state_type?: string, limit?: integer"}});
+    result.append(QJsonObject{{"id", "where_is_entity"},
+                              {"risk", "R0"},
+                              {"description", "Read tracked location state for an entity."},
+                              {"arguments", "entity: string, limit?: integer"}});
+    result.append(QJsonObject{{"id", "who_has_object"},
+                              {"risk", "R0"},
+                              {"description", "Read tracked possession state for an object."},
+                              {"arguments", "object: string, limit?: integer"}});
+    result.append(QJsonObject{{"id", "list_threads"},
+                              {"risk", "R0"},
+                              {"description", "Read bounded narrative threads with provenance."},
+                              {"arguments", "limit?: integer"}});
+    result.append(QJsonObject{{"id", "list_reader_questions"},
+                              {"risk", "R0"},
+                              {"description", "Read bounded tracked reader questions with provenance."},
+                              {"arguments", "limit?: integer"}});
+    result.append(QJsonObject{{"id", "list_dramatic_promises"},
+                              {"risk", "R0"},
+                              {"description", "Read bounded dramatic promises with provenance."},
+                              {"arguments", "limit?: integer"}});
+    result.append(QJsonObject{{"id", "trace_causality"},
+                              {"risk", "R0"},
+                              {"description", "Trace bounded causal dependencies around one normalized story record."},
+                              {"arguments", "record_kind: string, record_id: string, direction?: upstream|downstream|both, maximum_depth?: integer"}});
+    result.append(QJsonObject{{"id", "get_decision_history"},
+                              {"risk", "R0"},
+                              {"description", "Read bounded consequential character decisions."},
+                              {"arguments", "character?: string, limit?: integer"}});
+    result.append(QJsonObject{{"id", "get_opposition_state"},
+                              {"risk", "R0"},
+                              {"description", "Read bounded opposition attached to story objectives."},
+                              {"arguments", "objective_id?: string, limit?: integer"}});
+    result.append(QJsonObject{{"id", "get_scene_contract"},
+                              {"risk", "R0"},
+                              {"description", "Read the reviewed scene contract for one stable story unit."},
+                              {"arguments", "story_unit_id: string"}});
+    result.append(QJsonObject{{"id", "get_author_decisions"},
+                              {"risk", "R0"},
+                              {"description", "Read writer-owned structural decisions and rationale."},
+                              {"arguments", "story_unit_id?: string, limit?: integer"}});
+    result.append(QJsonObject{{"id", "audit_scene"},
+                              {"risk", "R0"},
+                              {"description", "Compose a deterministic scene audit from tracked narrative state."},
+                              {"arguments", "story_unit_id: string"}});
+    result.append(QJsonObject{{"id", "audit_chapter"},
+                              {"risk", "R0"},
+                              {"description", "Compose a deterministic chapter audit from tracked narrative state."},
+                              {"arguments", "story_unit_id: string"}});
+    result.append(QJsonObject{{"id", "list_branches"},
+                              {"risk", "R0"},
+                              {"description", "List alternate branches and stale-base state."},
+                              {"arguments", "limit?: integer"}});
+    result.append(QJsonObject{{"id", "compare_branch"},
+                              {"risk", "R0"},
+                              {"description", "Read one branch diff, merge history, and freshness."},
+                              {"arguments", "branch_id: string"}});
+    result.append(QJsonObject{{"id", "get_retcon_impact"},
+                              {"risk", "R0"},
+                              {"description", "Trace registered downstream dependencies for a potential retcon."},
+                              {"arguments", "source_kind: string, source_id: string, maximum_nodes?: integer"}});
+    result.append(QJsonObject{{"id", "cold_reader_at"},
+                              {"risk", "R0"},
+                              {"description", "Read only tracked reader-visible evidence at a selected story cutoff."},
+                              {"arguments", "story_unit_id: string, prompt?: string, maximum_chars?: integer"}});
+    result.append(QJsonObject{{"id", "audit_reveal_fairness"},
+                              {"risk", "R0"},
+                              {"description", "Audit tracked setup evidence before a reveal without declaring prose fair or unfair."},
+                              {"arguments", "story_unit_id: string, claim_id?: string, limit?: integer"}});
+    result.append(QJsonObject{{"id", "get_reader_expectations"},
+                              {"risk", "R0"},
+                              {"description", "Read tracked open reader questions and dramatic promises at a story cutoff."},
+                              {"arguments", "story_unit_id: string, limit?: integer"}});
+    result.append(QJsonObject{{"id", "get_dramatic_irony"},
+                              {"risk", "R0"},
+                              {"description", "Compare tracked reader access with one character's tracked knowledge."},
+                              {"arguments", "story_unit_id: string, character: string, limit?: integer"}});
+    result.append(QJsonObject{{"id", "get_writer_model"},
+                              {"risk", "R0"},
+                              {"description", "Read confirmed and provisional writer preferences with behavioral evidence."},
+                              {"arguments", "scope_kind?: string, scope_id?: string, include_ignored?: boolean, limit?: integer"}});
+    result.append(QJsonObject{{"id", "explain_writer_preference"},
+                              {"risk", "R0"},
+                              {"description", "Explain one Writer Model preference from its bounded evidence."},
+                              {"arguments", "preference_id: string"}});
+    result.append(QJsonObject{{"id", "run_editorial_council"},
+                              {"risk", "R0"},
+                              {"description", "Run seven independent read-only reviewers over one immutable Story State snapshot."},
+                              {"arguments", "story_unit_id: string"}});
+    result.append(QJsonObject{{"id", "list_story_lenses"},
+                              {"risk", "R0"},
+                              {"description", "List writer-defined reusable Story Lenses."},
+                              {"arguments", "include_archived?: boolean"}});
+    result.append(QJsonObject{{"id", "get_story_lens"},
+                              {"risk", "R0"},
+                              {"description", "Read one Story Lens and its current exact-source evidence findings."},
+                              {"arguments", "lens_id: string"}});
+    result.append(QJsonObject{{"id", "run_story_lens"},
+                              {"risk", "R0"},
+                              {"description", "Run deterministic evidence retrieval for one Story Lens."},
+                              {"arguments", "lens_id: string, maximum_findings?: integer"}});
+    result.append(QJsonObject{{"id", "get_reader_experience"},
+                              {"risk", "R0"},
+                              {"description", "Read qualitative reader-experience cues for one story unit."},
+                              {"arguments", "story_unit_id: string"}});
+    result.append(QJsonObject{{"id", "get_reader_experience_timeline"},
+                              {"risk", "R0"},
+                              {"description", "Build a qualitative reader-experience timeline in writer-owned manuscript order."},
+                              {"arguments", "source_id?: string, maximum_units?: integer"}});
+    result.append(QJsonObject{{"id", "explore_story"},
+                              {"risk", "R0"},
+                              {"description", "Explore bounded cross-state Story Model nodes, evidence, and dependency edges."},
+                              {"arguments", "query: string, limit?: integer"}});
+    result.append(QJsonObject{{"id", "get_scene_semantics"},
+                              {"risk", "R0"},
+                              {"description", "Read exact scene presence plus explicitly tracked scene/world state."},
+                              {"arguments", "story_unit_id: string"}});
+    result.append(QJsonObject{{"id", "audit_continuity"},
+                              {"risk", "R0"},
+                              {"description", "Audit tracked continuity conflicts and knowledge-access review candidates."},
+                              {"arguments", "story_unit_id: string, character?: string"}});
+    result.append(QJsonObject{{"id", "get_character_arc"},
+                              {"risk", "R0"},
+                              {"description", "Read tracked decisions, knowledge changes, and relationship changes for one character."},
+                              {"arguments", "character: string"}});
+    result.append(QJsonObject{{"id", "get_relationship_arc"},
+                              {"risk", "R0"},
+                              {"description", "Read explicit relationship-state transitions between two entities."},
+                              {"arguments", "entity_a: string, entity_b: string"}});
+    result.append(QJsonObject{{"id", "audit_ending_integrity"},
+                              {"risk", "R0"},
+                              {"description", "Audit tracked open obligations and causal prerequisites at a selected ending."},
+                              {"arguments", "story_unit_id: string"}});
+    result.append(QJsonObject{{"id", "get_project_health"},
+                              {"risk", "R0"},
+                              {"description", "Read engineering and coverage metrics without producing a story-quality score."}});
+    result.append(QJsonObject{{"id", "get_index_status"},
+                              {"risk", "R0"},
+                              {"description", "Read Story Engine index integrity, FTS, stale evidence, and foreign-key status."}});
+    result.append(QJsonObject{{"id", "run_wow_acceptance"},
+                              {"risk", "R0"},
+                              {"description", "Run the ten-step Story Engine acceptance harness against the active project."},
+                              {"arguments", "story_unit_id?: string, character?: string"}});
+    result.append(QJsonObject{{"id", "get_migration_status"},
+                              {"risk", "R0"},
+                              {"description", "Read additive legacy Story Workspace bindings and stable Story Unit links."}});
+    result.append(QJsonObject{{"id", "get_indexing_status"},
+                              {"risk", "R0"},
+                              {"description", "Read resumable background-index checkpoint progress without starting indexing."}});
+    result.append(
+        QJsonObject{{"id", "get_performance_report"}, {"risk", "R0"}, {"description", "Inspect normalized Story Model query plans and local query health."}});
+    result.append(
+        QJsonObject{{"id", "get_security_audit"}, {"risk", "R0"}, {"description", "Inspect fail-closed filesystem and adapter security boundaries."}});
+    result.append(
+        QJsonObject{{"id", "get_model_fingerprint"}, {"risk", "R0"}, {"description", "Read a path/ID-independent normalized Story Model fingerprint."}});
+    result.append(
+        QJsonObject{{"id", "get_acceptance_metrics"}, {"risk", "R0"}, {"description", "Read engineering acceptance metrics without a story-quality score."}});
+    result.append(QJsonObject{{"id", "get_retrieval_capabilities"},
+                              {"risk", "R0"},
+                              {"description", "Inspect lexical/default and optional semantic retrieval guarantees."}});
+    result.append(QJsonObject{{"id", "explain_story_record"},
+                              {"risk", "R0"},
+                              {"description", "Explain why one tracked Story Model record exists using provenance and dependencies."},
+                              {"arguments", "record_kind: string, record_id: string"}});
+    result.append(QJsonObject{{"id", "run_operational_acceptance"},
+                              {"risk", "R0"},
+                              {"description", "Run the read-only ten-step operational acceptance harness for Story Engine phases 26–35."},
+                              {"arguments", "prompt?: string"}});
+    result.append(QJsonObject{{"id", "get_release_validation"},
+                              {"risk", "R0"},
+                              {"description", "Read release-grade hard-gate validation for the normalized Story Project."}});
+    result.append(
+        QJsonObject{{"id", "get_recovery_status"}, {"risk", "R0"}, {"description", "Inspect crash-recovery journal state without modifying Story State."}});
+    result.append(QJsonObject{{"id", "get_observability_report"},
+                              {"risk", "R0"},
+                              {"description", "Inspect local content-free Story Engine operational counters and timings."}});
+    result.append(
+        QJsonObject{{"id", "get_resource_policy"}, {"risk", "R0"}, {"description", "Inspect bounded record/character/time/cancellation resource policy."}});
+    result.append(
+        QJsonObject{{"id", "get_path_resilience"}, {"risk", "R0"}, {"description", "Inspect Unicode and cross-platform project-relative path portability."}});
+    result.append(QJsonObject{{"id", "get_offline_readiness"},
+                              {"risk", "R0"},
+                              {"description", "Inspect deterministic offline guarantees and fail-closed privacy readiness."}});
+    result.append(QJsonObject{{"id", "get_compatibility_status"},
+                              {"risk", "R0"},
+                              {"description", "Inspect schema compatibility and local Story State rollback availability."}});
+    result.append(QJsonObject{{"id", "run_release_candidate_acceptance"},
+                              {"risk", "R0"},
+                              {"description", "Run the read-only engine release-candidate harness for Story Engine phases 36–45."}});
+    result.append(QJsonObject{{"id", "run_soak_replay"},
+                              {"risk", "R0"},
+                              {"description", "Replay deterministic Story Engine reads and verify semantic/durable-state stability."},
+                              {"arguments", "cycles?: integer"}});
+    result.append(QJsonObject{{"id", "get_support_bundle"},
+                              {"risk", "R0"},
+                              {"description", "Read content-free support diagnostics with no manuscript text, prompts, source paths, or credentials."}});
+    result.append(QJsonObject{{"id", "get_interface_fingerprint"},
+                              {"risk", "R0"},
+                              {"description", "Fingerprint protocol, persisted schemas, and the read-only Story Tool contract."}});
+    result.append(QJsonObject{{"id", "get_performance_budget"},
+                              {"risk", "R0"},
+                              {"description", "Evaluate indexed query and reference-machine lookup budgets."},
+                              {"arguments", "source_lookup_100_budget_ms?: number"}});
+    result.append(QJsonObject{{"id", "get_relocation_readiness"},
+                              {"risk", "R0"},
+                              {"description", "Verify portable Story metadata contains no manuscript bytes or machine-specific paths."}});
+    result.append(QJsonObject{{"id", "get_release_readiness"},
+                              {"risk", "R0"},
+                              {"description", "Report internal release-hardening gates and explicitly list missing external platform evidence."}});
+    return result;
+}
+
+bool StoryIntelligenceController::isStoryEngineReadTool(const QString &toolId) const
+{
+    for (const auto &value : storyEngineReadManifest())
+        if (value.toObject().value(QStringLiteral("id")).toString() == toolId)
+            return true;
+    return false;
 }
 
 QJsonObject StoryIntelligenceController::workspaceTool(const QString &toolId, const QJsonObject &arguments) const

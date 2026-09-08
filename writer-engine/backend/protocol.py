@@ -16,7 +16,7 @@ from backend import config
 from backend.validation import reject_json_constant as _reject_json_constant_impl
 
 PROTOCOL_MAJOR = 1
-PROTOCOL_MINOR = 2
+PROTOCOL_MINOR = 9
 
 MAX_HEADER_COUNT = 16
 MAX_HEADER_BYTES = 16_384
@@ -25,27 +25,69 @@ MAX_HEADER_BYTES = 16_384
 MAX_REQUEST_ID_LENGTH = 128
 _REQUEST_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}")
 PROCESS_OPERATIONS = {
-    "analyze_document", "query_findings", "query_overlay_spans",
-    "dispose_analysis", "analyze_manuscript", "rewrite", "compare",
+    "analyze_document",
+    "query_findings",
+    "query_overlay_spans",
+    "dispose_analysis",
+    "analyze_manuscript",
+    "rewrite",
+    "compare",
 }
 _INTERNAL_OPERATIONS = {"dispose_document_snapshots"}
 _STORE_ONLY_OPERATIONS = {"dispose_analysis", "query_findings", "query_overlay_spans"}
 OPERATIONS = (
-    "initialize", "capabilities", "list_profiles", "get_profile", "save_profile",
-    "import_profile", "export_profile", "open_document", "patch_document",
-    "dispose_document", "analyze_region", "analyze_document", "query_findings",
-    "query_overlay_spans", "dispose_analysis", "analyze_manuscript", "rewrite",
-    "compare", "cancel", "shutdown", "quality_timeline", "lens_baselines",
+    "initialize",
+    "capabilities",
+    "list_profiles",
+    "get_profile",
+    "save_profile",
+    "import_profile",
+    "export_profile",
+    "open_document",
+    "patch_document",
+    "dispose_document",
+    "analyze_region",
+    "analyze_document",
+    "query_findings",
+    "query_overlay_spans",
+    "dispose_analysis",
+    "analyze_manuscript",
+    "rewrite",
+    "compare",
+    "cancel",
+    "shutdown",
+    "quality_timeline",
+    "lens_baselines",
     "provider_access",
+    "story_project_understanding",
+    "story_project_sources",
+    "story_set_source_override",
+    "story_set_manuscript_order",
+    "story_tool",
+    "story_branch_create",
+    "story_branch_add_overlay",
+    "story_branch_rebase",
+    "story_branch_prepare_merge",
+    "story_branch_apply_merge",
+    "story_writer_mutation",
+    "story_writer_model_observe",
+    "story_model_route",
+    "story_index_rebuild",
+    "story_index_batch",
+    "story_legacy_bind",
+    "story_project_export",
+    "story_project_import",
+    "story_proposal_submit",
+    "story_proposal_review",
+    "story_recover",
+    "story_state_backup",
+    "story_state_restore",
 )
-
 
 
 def request_id(value: Any, name: str = "request_id") -> str:
     if not isinstance(value, str) or not _REQUEST_ID.fullmatch(value):
-        raise ProtocolError(
-            f"{name} must be 1-{MAX_REQUEST_ID_LENGTH} ASCII identifier characters"
-        )
+        raise ProtocolError(f"{name} must be 1-{MAX_REQUEST_ID_LENGTH} ASCII identifier characters")
     return value
 
 

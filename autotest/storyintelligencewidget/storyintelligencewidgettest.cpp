@@ -5,11 +5,9 @@
  */
 
 #include <QApplication>
-#include <QComboBox>
 #include <QClipboard>
-#include <QToolButton>
-#include <algorithm>
 #include <QColor>
+#include <QComboBox>
 #include <QFont>
 #include <QFontDatabase>
 #include <QImage>
@@ -17,20 +15,22 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QMainWindow>
-#include <QPlainTextEdit>
 #include <QPixmap>
+#include <QPlainTextEdit>
 #include <QPushButton>
-#include <QSignalSpy>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QSignalSpy>
 #include <QSplitter>
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QToolButton>
 #include <QWidget>
+#include <algorithm>
 
-#include "../../src/prose/proseawarenesswidget.h"
 #include "../../src/appactions.h"
+#include "../../src/prose/proseawarenesswidget.h"
 #include "../../src/story/storyintelligencewidget.h"
 #include "../../src/story/storyresponse.h"
 #include "../../src/story/storytoolharness.h"
@@ -72,6 +72,7 @@ private slots:
     void chatDoesNotInheritManuscriptFont();
     void storyShortcutHasNoCompetingAppAction();
     void characterCardsRetainMouseAndKeyboardActivation();
+    void projectUnderstandingAndContextInspectorAreInspectable();
 };
 
 void StoryIntelligenceWidgetTest::scopeAndSessionControlsStayExplicit()
@@ -110,7 +111,7 @@ void StoryIntelligenceWidgetTest::scopeAndSessionControlsStayExplicit()
     QVERIFY(!context->text().contains("Scene: CHAPTER"));
     QCOMPARE(scopeSpy.count(), 0);
     const QJsonArray choices{QJsonObject{{"id", "a"}, {"label", "First draft · Chapter one · Co-Writer"}},
-        QJsonObject{{"id", "b"}, {"label", "Alternative · Chapter one · Co-Writer"}}};
+                             QJsonObject{{"id", "b"}, {"label", "Alternative · Chapter one · Co-Writer"}}};
     widget.setSessions(choices, "a");
     QCOMPARE(sessions->count(), 2);
     QCOMPARE(sessions->currentData().toString(), QString("a"));
@@ -166,7 +167,8 @@ void StoryIntelligenceWidgetTest::characterCardsRetainMouseAndKeyboardActivation
     StoryIntelligenceWidget widget;
     widget.findChild<QTabWidget *>("storyIntelligenceContextTabs")->setCurrentIndex(2);
     widget.setCharacters({QJsonObject{{QStringLiteral("id"), QStringLiteral("mara")},
-        {QStringLiteral("name"), QStringLiteral("Mara")}, {QStringLiteral("role"), QStringLiteral("The traveller")}}});
+                                      {QStringLiteral("name"), QStringLiteral("Mara")},
+                                      {QStringLiteral("role"), QStringLiteral("The traveller")}}});
     widget.resize(320, 900);
     widget.show();
     QTest::qWait(20);
@@ -187,6 +189,74 @@ void StoryIntelligenceWidgetTest::characterCardsRetainMouseAndKeyboardActivation
     QTest::keyClick(card, Qt::Key_Space);
     QVERIFY(widget.activeCharacterId().isEmpty());
     QCOMPARE(activated.count(), 2);
+}
+
+void StoryIntelligenceWidgetTest::projectUnderstandingAndContextInspectorAreInspectable()
+{
+    StoryIntelligenceWidget widget;
+    auto *tabs = widget.findChild<QTabWidget *>(QStringLiteral("storyIntelligenceContextTabs"));
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 5);
+    QCOMPARE(tabs->tabText(3), QStringLiteral("Project"));
+    QCOMPARE(tabs->tabText(4), QStringLiteral("AI Context"));
+
+    widget.setProjectUnderstanding(QJsonObject{
+        {QStringLiteral("source_count"), 42},
+        {QStringLiteral("entity_count"), 17},
+        {QStringLiteral("open_conflict_count"), 2},
+        {QStringLiteral("role_counts"), QJsonObject{{QStringLiteral("manuscript"), 5}, {QStringLiteral("world_reference"), 12}}},
+    });
+    auto *summary = widget.findChild<QLabel *>(QStringLiteral("storyProjectUnderstandingSummary"));
+    QVERIFY(summary);
+    QVERIFY(summary->text().contains(QStringLiteral("42 sources")));
+    QVERIFY(summary->text().contains(QStringLiteral("17 entities")));
+    QPushButton *orderButton = nullptr;
+    for (auto *button : widget.findChildren<QPushButton *>()) {
+        if (button->text() == QStringLiteral("Manuscript order…")) {
+            orderButton = button;
+            break;
+        }
+    }
+    QVERIFY(orderButton);
+    QVERIFY(orderButton->isEnabled());
+    QSignalSpy orderSpy(&widget, &StoryIntelligenceWidget::manuscriptOrderRequested);
+    orderButton->click();
+    QCOMPARE(orderSpy.count(), 1);
+
+    widget.setContextInspector(QJsonObject{
+        {QStringLiteral("mode"), QStringLiteral("cold_reader")},
+        {QStringLiteral("budget"), QJsonObject{{QStringLiteral("used_chars"), 1200}, {QStringLiteral("maximum_chars"), 40000}}},
+        {QStringLiteral("epistemic_boundary"),
+         QJsonObject{{QStringLiteral("position_bounded"), true}, {QStringLiteral("cross_file_order"), QStringLiteral("unresolved")}}},
+        {QStringLiteral("current_document_masked"), true},
+        {QStringLiteral("included"),
+         QJsonArray{QJsonObject{{QStringLiteral("path"), QStringLiteral("chapter.md")},
+                                {QStringLiteral("authority"), QStringLiteral("MANUSCRIPT_OBSERVED")},
+                                {QStringLiteral("reason"), QStringLiteral("task relevance")}}}},
+        {QStringLiteral("excluded"),
+         QJsonArray{QJsonObject{{QStringLiteral("path"), QStringLiteral("future.md")},
+                                {QStringLiteral("reason"), QStringLiteral("cross-file manuscript order unresolved; excluded to prevent future leakage")}}}},
+    });
+    auto *context = widget.findChild<QLabel *>(QStringLiteral("storyContextInspectorSummary"));
+    QVERIFY(context);
+    QVERIFY(context->text().contains(QStringLiteral("cold reader")));
+    QVERIFY(context->text().contains(QStringLiteral("1 sources included")));
+    QVERIFY(context->text().contains(QStringLiteral("withheld until Manuscript Order is set")));
+    QVERIFY(context->text().contains(QStringLiteral("later current-document text withheld")));
+    bool exclusionVisible = false;
+    for (auto *label : widget.findChildren<QLabel *>()) {
+        if (label->text().contains(QStringLiteral("future.md")) && label->text().contains(QStringLiteral("future leakage"))) {
+            exclusionVisible = true;
+            break;
+        }
+    }
+    QVERIFY(exclusionVisible);
+
+    auto *mode = widget.findChild<QComboBox *>(QStringLiteral("storyEpistemicModeCombo"));
+    QVERIFY(mode);
+    QSignalSpy spy(&widget, &StoryIntelligenceWidget::epistemicModeChanged);
+    mode->setCurrentIndex(mode->findData(QStringLiteral("manuscript_only")));
+    QCOMPARE(spy.last().at(0).toString(), QStringLiteral("manuscript_only"));
 }
 
 void StoryIntelligenceWidgetTest::storyResponseErrorsTakePriorityOverTextAndTools()
@@ -224,15 +294,18 @@ void StoryIntelligenceWidgetTest::chatFailuresAreVisibleAndReleaseBusyState()
     bool errorSeen = false;
     bool failedStatus = false;
     for (auto *label : widget.findChildren<QLabel *>()) {
-        if (label->text() == QStringLiteral("OpenRouter requires an API key.")) errorSeen = true;
-        if (label->text().startsWith(QStringLiteral("Response failed"))) failedStatus = true;
+        if (label->text() == QStringLiteral("OpenRouter requires an API key."))
+            errorSeen = true;
+        if (label->text().startsWith(QStringLiteral("Response failed")))
+            failedStatus = true;
         QVERIFY(label->text() != QStringLiteral("Response complete"));
     }
     QVERIFY(errorSeen);
     QVERIFY(failedStatus);
     QPushButton *send = nullptr;
     for (auto *button : widget.findChildren<QPushButton *>()) {
-        if (button->property("storySend").toBool()) send = button;
+        if (button->property("storySend").toBool())
+            send = button;
     }
     QVERIFY(send);
     QVERIFY(send->isEnabled());
@@ -373,10 +446,7 @@ void StoryIntelligenceWidgetTest::activityCardEmitsOperationSpecificUndo()
     StoryIntelligenceWidget widget;
     QSignalSpy spy(&widget, &StoryIntelligenceWidget::undoAgentTransactionRequested);
 
-    widget.appendActivityCard(
-        QStringLiteral("Apply objective grammar fixes"),
-        QStringLiteral("Applied 3 verified changes"),
-        QStringLiteral("operation-123"));
+    widget.appendActivityCard(QStringLiteral("Apply objective grammar fixes"), QStringLiteral("Applied 3 verified changes"), QStringLiteral("operation-123"));
 
     QPushButton *undo = buttonWithText(widget, QStringLiteral("Undo AI edit"));
     QVERIFY(undo);
@@ -389,9 +459,7 @@ void StoryIntelligenceWidgetTest::activityCardEmitsOperationSpecificUndo()
 void StoryIntelligenceWidgetTest::activityCardWithoutOperationHasNoUndoButton()
 {
     StoryIntelligenceWidget widget;
-    widget.appendActivityCard(
-        QStringLiteral("Prose scan completed"),
-        QStringLiteral("Fresh findings are available"));
+    widget.appendActivityCard(QStringLiteral("Prose scan completed"), QStringLiteral("Fresh findings are available"));
 
     QVERIFY(!buttonWithText(widget, QStringLiteral("Undo AI edit")));
 }
@@ -409,26 +477,15 @@ void StoryIntelligenceWidgetTest::staleModelRevisionRejectsMutation()
 
 void StoryIntelligenceWidgetTest::currentModelDocumentContextAllowsTools()
 {
-    QVERIFY(StoryToolHarness::modelDocumentContextCurrent(
-        12, 12,
-        QStringLiteral("/project/chapter.md"),
-        QStringLiteral("/project/chapter.md")));
-    QVERIFY(StoryToolHarness::modelDocumentContextCurrent(
-        0, 0, QString(), QString()));
+    QVERIFY(StoryToolHarness::modelDocumentContextCurrent(12, 12, QStringLiteral("/project/chapter.md"), QStringLiteral("/project/chapter.md")));
+    QVERIFY(StoryToolHarness::modelDocumentContextCurrent(0, 0, QString(), QString()));
 }
 
 void StoryIntelligenceWidgetTest::staleModelDocumentContextRejectsTools()
 {
-    QVERIFY(!StoryToolHarness::modelDocumentContextCurrent(
-        12, 13,
-        QStringLiteral("/project/chapter.md"),
-        QStringLiteral("/project/chapter.md")));
-    QVERIFY(!StoryToolHarness::modelDocumentContextCurrent(
-        12, 12,
-        QStringLiteral("/project/chapter-one.md"),
-        QStringLiteral("/project/chapter-two.md")));
-    QVERIFY(!StoryToolHarness::modelDocumentContextCurrent(
-        -1, 0, QString(), QString()));
+    QVERIFY(!StoryToolHarness::modelDocumentContextCurrent(12, 13, QStringLiteral("/project/chapter.md"), QStringLiteral("/project/chapter.md")));
+    QVERIFY(!StoryToolHarness::modelDocumentContextCurrent(12, 12, QStringLiteral("/project/chapter-one.md"), QStringLiteral("/project/chapter-two.md")));
+    QVERIFY(!StoryToolHarness::modelDocumentContextCurrent(-1, 0, QString(), QString()));
 }
 
 void StoryIntelligenceWidgetTest::storyRailCarriesNoLocalStylesheet()
@@ -469,17 +526,21 @@ void StoryIntelligenceWidgetTest::conversationUsesAvailableHeightAndPreservesFul
     StoryIntelligenceWidget widget;
     widget.setProviderSummary("OpenCode Zen", "nemotron-3-ultra-free", true, "opencode_zen");
     widget.appendChatMessage("user", "Can you help me strengthen the dialogue in this chapter?", {}, {}, "user-1");
-    const QString paragraph = "The dialogue gives each character a clear aim. Let the disagreement build through their choices, and keep the final exchange brief enough to leave room for the reader.\n\n";
+    const QString paragraph =
+        "The dialogue gives each character a clear aim. Let the disagreement build through their choices, and keep the final exchange brief enough to leave "
+        "room for the reader.\n\n";
     widget.appendChatMessage("assistant", paragraph.repeated(5), {}, {}, "answer-1");
     auto *scroll = widget.findChild<QScrollArea *>("storyIntelligenceChatScroll");
     auto *sections = widget.findChild<QSplitter *>("storyIntelligenceSections");
     QVERIFY(scroll && sections);
     auto *tabs = widget.findChild<QTabWidget *>("storyIntelligenceContextTabs");
     QVERIFY(tabs);
-    QCOMPARE(tabs->count(), 3);
+    QCOMPARE(tabs->count(), 5);
     QCOMPARE(tabs->tabText(0), QString("Model"));
     QCOMPARE(tabs->tabText(1), QString("Scene Context"));
     QCOMPARE(tabs->tabText(2), QString("Characters"));
+    QCOMPARE(tabs->tabText(3), QString("Project"));
+    QCOMPARE(tabs->tabText(4), QString("AI Context"));
     for (int width : {340, 560, 280, 340}) {
         widget.resize(width, 1000);
         widget.show();
@@ -495,10 +556,12 @@ void StoryIntelligenceWidgetTest::conversationUsesAvailableHeightAndPreservesFul
         QVERIFY(scroll->verticalScrollBar()->maximum() > 0);
         scroll->verticalScrollBar()->setValue(0);
         QVERIFY(scroll->viewport()->rect().contains(messages.first()->mapTo(scroll->viewport(), QPoint(0, 0))));
-        if (width == 340) QVERIFY(widget.grab().save("chat-layout-narrow.png"));
-        if (width == 560) QVERIFY(widget.grab().save("chat-layout-wide.png"));
+        if (width == 340)
+            QVERIFY(widget.grab().save("chat-layout-narrow.png"));
+        if (width == 560)
+            QVERIFY(widget.grab().save("chat-layout-wide.png"));
     }
-    for (int index : {1, 2, 0}) {
+    for (int index : {1, 2, 3, 4, 0}) {
         tabs->setCurrentIndex(index);
         QTest::qWait(30);
         QVERIFY(tabs->currentWidget()->isVisible());
@@ -748,8 +811,7 @@ void StoryIntelligenceWidgetTest::nativePaletteFollowsThemeSwitches()
         QApplication::processEvents();
         QCOMPARE(nativeSurface.palette().color(QPalette::Window), chrome.color(ChromeColors::Background));
         QCOMPARE(nativeSurface.palette().color(QPalette::Text), chrome.color(ChromeColors::Text));
-        QCOMPARE(nativeSurface.palette().color(QPalette::Disabled, QPalette::Text),
-                 chrome.color(ChromeColors::Text, ChromeColors::DisabledState));
+        QCOMPARE(nativeSurface.palette().color(QPalette::Disabled, QPalette::Text), chrome.color(ChromeColors::Text, ChromeColors::DisabledState));
     }
     qApp->setPalette(original);
 }
@@ -760,8 +822,7 @@ void StoryIntelligenceWidgetTest::chatDoesNotInheritManuscriptFont()
     QTemporaryDir iconDir;
     SvgIconTheme icons(iconDir.path());
     const QFont manuscriptFont(QStringLiteral("Courier New"), 28);
-    StyleSheetBuilder builder(theme.lightChromeColors(), &icons, true,
-                              manuscriptFont, manuscriptFont, manuscriptFont);
+    StyleSheetBuilder builder(theme.lightChromeColors(), &icons, true, manuscriptFont, manuscriptFont, manuscriptFont);
     qApp->setStyleSheet(builder.widgetStyleSheet());
     QMainWindow window;
     auto *story = new StoryIntelligenceWidget(&window);

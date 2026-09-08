@@ -107,6 +107,35 @@ if [[ -n "${APPLE_NOTARY_PROFILE:-}" ]]; then
     xcrun stapler staple "$dmg"
     spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
 fi
+signing_evidence="$output/signing-$variant.json"
+python3 - "$signing_evidence" "$dmg" "$variant" "$identity" "${PUBLIC_RELEASE:-0}" "${APPLE_NOTARY_PROFILE:-}" <<'PY'
+from __future__ import annotations
+
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+output = Path(sys.argv[1])
+dmg = Path(sys.argv[2])
+variant = sys.argv[3]
+identity = sys.argv[4]
+public_release = sys.argv[5] == "1"
+notary_profile = sys.argv[6]
+receipt = {
+    "schema_version": 1,
+    "variant": variant,
+    "artifact": dmg.name,
+    "artifact_sha256": hashlib.sha256(dmg.read_bytes()).hexdigest(),
+    "public_release": public_release,
+    "developer_id_valid": public_release and identity != "-",
+    "notarization_accepted": public_release and bool(notary_profile),
+    "staple_valid": public_release and bool(notary_profile),
+    "spctl_accepted": public_release and bool(notary_profile),
+    "signing_subject": identity if identity != "-" else "",
+}
+output.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+PY
 shasum -a 256 "$dmg" "$sbom" \
     > "$output/SHA256SUMS-$variant-macOS.txt"
 commit="$(git -C "$repo" rev-parse HEAD)"

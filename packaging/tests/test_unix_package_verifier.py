@@ -3,16 +3,15 @@
 
 from __future__ import annotations
 
-import importlib.util
 import contextlib
+import importlib.util
 import io
 import json
-import sys
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
-
 
 SCRIPT = Path(__file__).with_name("verify_unix_package.py")
 ROOT = Path(__file__).resolve().parents[2]

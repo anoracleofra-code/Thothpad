@@ -8,9 +8,11 @@ from typing import Any
 
 from backend.llm_clients import complete_chat, scrub_provider
 from backend.models import RunRequest
+from backend.story.model_routing import enforce_story_privacy
 from backend.story_intelligence import (
+    POSITION_BOUNDED_EPISTEMIC_MODES,
     build_story_messages,
-    retrieve_project_context,
+    compile_project_context,
     validate_story_response,
 )
 
@@ -137,8 +139,60 @@ def run_story_intelligence(
 ) -> dict[str, Any]:
     """Execute one Story Intelligence model turn through the guarded boundary."""
 
-    retrieved = retrieve_project_context(payload)
-    messages = build_guarded_story_messages(payload, retrieved)
+    retrieved, context_inspector, story_state = compile_project_context(payload)
+    routing = payload.get("model_routing", {})
+    if not isinstance(routing, dict):
+        routing = {}
+    privacy = str(routing.get("privacy", "prefer_local"))
+    try:
+        routing_guard = enforce_story_privacy(request.provider, privacy)
+    except (PermissionError, ValueError) as exc:
+        return {
+            "mode": "story_chat",
+            "profile": request.profile,
+            "output_text": "",
+            "llm_errors": [str(exc)],
+            "story_intelligence": {
+                "message": "",
+                "tool_calls": [],
+                "annotations": [],
+                "scene_context_proposal": {},
+                "character_proposals": [],
+                "structured": False,
+            },
+            "provider": scrub_provider(request.provider),
+            "retrieved_project_files": [item["path"] for item in retrieved],
+            "story_context_inspector": context_inspector,
+            "model_routing": {"privacy": privacy, "blocked": True},
+            "persisted": False,
+        }
+    model_payload = deepcopy(payload)
+    model_payload["story_state"] = story_state
+    mode = str(payload.get("epistemic_mode") or "")
+    if mode in POSITION_BOUNDED_EPISTEMIC_MODES:
+        scope = payload.get("scope", {})
+        scope_is_manuscript = isinstance(scope, dict) and str(scope.get("id") or "") == "manuscript"
+        visible_end = context_inspector.get("current_document_visible_end")
+        if isinstance(visible_end, int) and not isinstance(visible_end, bool):
+            document = str(payload.get("document") or "")
+            safe_end = max(0, min(visible_end, len(document)))
+            model_payload["document"] = document[:safe_end]
+            model_payload["document_epistemically_bounded"] = safe_end < len(document)
+            model_payload["document_boundary"] = {
+                "mode": mode,
+                "visible_end": safe_end,
+                "active_story_unit": context_inspector.get("active_story_unit"),
+            }
+        elif not scope_is_manuscript:
+            # A restricted chapter/scene mode without a resolvable native
+            # boundary must never degrade into sending the full document.
+            model_payload["document"] = ""
+            model_payload["document_epistemically_bounded"] = True
+            model_payload["document_boundary"] = {
+                "mode": mode,
+                "unresolved": True,
+            }
+    messages = build_guarded_story_messages(model_payload, retrieved)
     response = complete_chat(messages, request.provider)
     if response.error:
         story = {
@@ -164,5 +218,13 @@ def run_story_intelligence(
         "story_intelligence": story,
         "provider": scrub_provider(request.provider),
         "retrieved_project_files": [item["path"] for item in retrieved],
+        "story_context_inspector": context_inspector,
+        "model_routing": {
+            "privacy": privacy,
+            "task": str(routing.get("task", "chat")),
+            "quality": str(routing.get("quality", "balanced")),
+            "selected_is_remote": routing_guard["selected_is_remote"],
+            "provider_agnostic": True,
+        },
         "persisted": False,
     }

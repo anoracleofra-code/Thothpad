@@ -12,7 +12,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 COMMIT = re.compile(r"^[0-9a-f]{40}$")
 MSVC_TOOLSET = re.compile(r"^v14\d$")

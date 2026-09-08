@@ -249,6 +249,718 @@ def test_desktop_profile_exchange_rejects_paths(tmp_path):
         dispatch(request("export_profile", name="creative-default", path=str(tmp_path / "profile.json")))
 
 
+def test_story_sidecar_exposes_project_understanding_and_safe_story_tool(tmp_path):
+    root = tmp_path / "story"
+    root.mkdir()
+    (root / "chapter.md").write_text(
+        '# Chapter One\nAlice entered the room and said, "No."\n',
+        encoding="utf-8",
+    )
+    understanding = dispatch(request("story_project_understanding", project_root=str(root)))
+    assert understanding["source_count"] == 1
+    result = dispatch(
+        request(
+            "story_tool",
+            project_root=str(root),
+            tool_id="get_project_understanding",
+            arguments={},
+        )
+    )
+    assert result["project_id"] == understanding["project_id"]
+
+
+def test_story_sidecar_source_override_is_relative_and_immediate(tmp_path):
+    root = tmp_path / "story"
+    root.mkdir()
+    source = root / "notes.txt"
+    source.write_text("Loose unresolved notes.", encoding="utf-8")
+    dispatch(request("story_project_understanding", project_root=str(root)))
+
+    with pytest.raises(ValueError, match="project-relative"):
+        dispatch(
+            request(
+                "story_set_source_override",
+                project_root=str(root),
+                path="../outside.txt",
+                roles=["world_reference"],
+            )
+        )
+
+    result = dispatch(
+        request(
+            "story_set_source_override",
+            project_root=str(root),
+            path="notes.txt",
+            roles=["world_reference"],
+            authority="CONFIRMED_CANON",
+        )
+    )
+    assert result["authority"] == "CONFIRMED_CANON"
+    assert result["roles"][0]["role"] == "world_reference"
+
+
+def test_story_branch_desktop_mutations_require_explicit_writer_confirmation_and_stay_out_of_mcp(tmp_path):
+    from backend.mcp_server import TOOLS
+
+    root = tmp_path / "story"
+    root.mkdir()
+    (root / "chapter.md").write_text("# Chapter One\nAlice waits.\n", encoding="utf-8")
+    dispatch(request("story_project_understanding", project_root=str(root)))
+
+    with pytest.raises(PermissionError, match="writer confirmation"):
+        dispatch(
+            request(
+                "story_branch_create",
+                project_root=str(root),
+                assumptions=["Alice leaves instead"],
+            )
+        )
+
+    created = dispatch(
+        request(
+            "story_branch_create",
+            project_root=str(root),
+            assumptions=["Alice leaves instead"],
+            branch_id="ALT-DESKTOP",
+            writer_confirmed=True,
+        )
+    )
+    assert created["branch"]["branch_id"] == "ALT-DESKTOP"
+
+    denied_overlay = request(
+        "story_branch_add_overlay",
+        project_root=str(root),
+        branch_id="ALT-DESKTOP",
+        record_kind="claim",
+        record_id="alice-leaves",
+        payload={"predicate": "leaves", "value": True},
+    )
+    denied_overlay["params"]["operation"] = "ADD"
+    with pytest.raises(PermissionError, match="writer confirmation"):
+        dispatch(denied_overlay)
+
+    approved_overlay = request(
+        "story_branch_add_overlay",
+        project_root=str(root),
+        branch_id="ALT-DESKTOP",
+        record_kind="claim",
+        record_id="alice-leaves",
+        payload={"predicate": "leaves", "value": True},
+        writer_confirmed=True,
+    )
+    approved_overlay["params"]["operation"] = "ADD"
+    changed = dispatch(approved_overlay)
+    assert changed["created_overlay_id"]
+    listed = dispatch(
+        request(
+            "story_tool",
+            project_root=str(root),
+            tool_id="list_branches",
+            arguments={},
+        )
+    )
+    assert listed["branches"][0]["branch_id"] == "ALT-DESKTOP"
+
+    mcp_names = {tool["name"] for tool in TOOLS}
+    for operation in {
+        "story_branch_create",
+        "story_branch_add_overlay",
+        "story_branch_rebase",
+        "story_branch_prepare_merge",
+        "story_branch_apply_merge",
+        "story_writer_model_observe",
+        "story_model_route",
+    }:
+        assert operation not in mcp_names
+
+
+def test_story_branch_desktop_boolean_confirmation_is_strict(tmp_path):
+    root = tmp_path / "story"
+    root.mkdir()
+    (root / "chapter.md").write_text("# Chapter One\nAlice waits.\n", encoding="utf-8")
+    dispatch(request("story_project_understanding", project_root=str(root)))
+    with pytest.raises(ValueError, match="JSON boolean"):
+        dispatch(
+            request(
+                "story_branch_create",
+                project_root=str(root),
+                writer_confirmed="true",
+            )
+        )
+
+
+def test_story_recovery_and_restore_require_writer_confirmation_and_stay_out_of_mcp(tmp_path):
+    from backend.mcp_server import TOOLS
+
+    root = tmp_path / "story-recovery"
+    root.mkdir()
+    (root / "chapter.md").write_text("# Chapter One\nAlice waits.\n", encoding="utf-8")
+    dispatch(request("story_project_understanding", project_root=str(root)))
+    backup = dispatch(request("story_state_backup", project_root=str(root)))
+    assert backup["backup_name"].startswith("story-state-")
+
+    with pytest.raises(PermissionError, match="writer confirmation"):
+        dispatch(request("story_recover", project_root=str(root)))
+    with pytest.raises(PermissionError, match="writer confirmation"):
+        dispatch(
+            request(
+                "story_state_restore",
+                project_root=str(root),
+                backup_name=backup["backup_name"],
+            )
+        )
+    with pytest.raises(ValueError, match="JSON boolean"):
+        dispatch(
+            request(
+                "story_state_restore",
+                project_root=str(root),
+                backup_name=backup["backup_name"],
+                writer_confirmed="true",
+            )
+        )
+    with pytest.raises(ValueError, match="invalid Story State backup name"):
+        dispatch(
+            request(
+                "story_state_restore",
+                project_root=str(root),
+                backup_name="../story-state-deadbeefdeadbeef.json",
+                writer_confirmed=True,
+            )
+        )
+
+    names = {tool["name"] for tool in TOOLS}
+    assert "story_recover" not in names
+    assert "story_state_backup" not in names
+    assert "story_state_restore" not in names
+
+
+def test_story_branch_apply_merge_is_atomic_durable_and_writer_confirmed(tmp_path):
+    from backend.story.project import StoryProject
+
+    root = tmp_path / "story"
+    root.mkdir()
+    (root / "chapter.md").write_text("# Chapter One\nAlice waits.\n", encoding="utf-8")
+    dispatch(request("story_project_understanding", project_root=str(root)))
+    dispatch(
+        request(
+            "story_branch_create",
+            project_root=str(root),
+            branch_id="ALT-APPLY",
+            assumptions=["Alice leaves instead"],
+            writer_confirmed=True,
+        )
+    )
+    overlay_request = request(
+        "story_branch_add_overlay",
+        project_root=str(root),
+        branch_id="ALT-APPLY",
+        record_kind="claim",
+        record_id="alice-leaves",
+        payload={"predicate": "alice_leaves", "literal_value": True},
+        writer_confirmed=True,
+    )
+    overlay_request["params"]["operation"] = "ADD"
+    overlay_id = dispatch(overlay_request)["created_overlay_id"]
+    prepared = dispatch(
+        request(
+            "story_branch_prepare_merge",
+            project_root=str(root),
+            branch_id="ALT-APPLY",
+            overlay_ids=[overlay_id],
+        )
+    )
+
+    with pytest.raises(PermissionError, match="writer confirmation"):
+        dispatch(
+            request(
+                "story_branch_apply_merge",
+                project_root=str(root),
+                branch_id="ALT-APPLY",
+                overlay_ids=[overlay_id],
+                expected_parent_revision=prepared["expected_parent_revision"],
+            )
+        )
+
+    merged = dispatch(
+        request(
+            "story_branch_apply_merge",
+            project_root=str(root),
+            branch_id="ALT-APPLY",
+            overlay_ids=[overlay_id],
+            expected_parent_revision=prepared["expected_parent_revision"],
+            writer_confirmed=True,
+        )
+    )
+    assert merged["branch_status"] == "MERGED"
+    target_claim_id = merged["applied"][0]["target_record_id"]
+    claims = dispatch(
+        request(
+            "story_tool",
+            project_root=str(root),
+            tool_id="query_claims",
+            arguments={"predicate": "alice_leaves"},
+        )
+    )
+    assert claims["claims"][0]["claim_id"] == target_claim_id
+    assert claims["claims"][0]["created_by"] == "writer"
+
+    project = StoryProject.open(root)
+    project.cache_path.unlink()
+    dispatch(request("story_project_understanding", project_root=str(root)))
+    rebuilt = dispatch(
+        request(
+            "story_tool",
+            project_root=str(root),
+            tool_id="query_claims",
+            arguments={"predicate": "alice_leaves"},
+        )
+    )
+    assert rebuilt["claims"][0]["claim_id"] == target_claim_id
+
+
+def test_story_branch_apply_merge_rolls_back_every_overlay_on_unsupported_kind(tmp_path):
+    root = tmp_path / "story"
+    root.mkdir()
+    (root / "chapter.md").write_text("# Chapter One\nAlice waits.\n", encoding="utf-8")
+    dispatch(request("story_project_understanding", project_root=str(root)))
+    dispatch(
+        request(
+            "story_branch_create",
+            project_root=str(root),
+            branch_id="ALT-ROLLBACK",
+            writer_confirmed=True,
+        )
+    )
+
+    ids = []
+    for record_kind, record_id, payload in (
+        ("claim", "alice-leaves", {"predicate": "alice_leaves", "literal_value": True}),
+        ("interpretation", "symbolic-reading", {"reading": "the bell means memory"}),
+    ):
+        overlay = request(
+            "story_branch_add_overlay",
+            project_root=str(root),
+            branch_id="ALT-ROLLBACK",
+            record_kind=record_kind,
+            record_id=record_id,
+            payload=payload,
+            writer_confirmed=True,
+        )
+        overlay["params"]["operation"] = "ADD"
+        ids.append(dispatch(overlay)["created_overlay_id"])
+    prepared = dispatch(
+        request(
+            "story_branch_prepare_merge",
+            project_root=str(root),
+            branch_id="ALT-ROLLBACK",
+            overlay_ids=ids,
+        )
+    )
+
+    with pytest.raises(ValueError, match="not yet safely applicable"):
+        dispatch(
+            request(
+                "story_branch_apply_merge",
+                project_root=str(root),
+                branch_id="ALT-ROLLBACK",
+                overlay_ids=ids,
+                expected_parent_revision=prepared["expected_parent_revision"],
+                writer_confirmed=True,
+            )
+        )
+    claims = dispatch(
+        request(
+            "story_tool",
+            project_root=str(root),
+            tool_id="query_claims",
+            arguments={"predicate": "alice_leaves"},
+        )
+    )
+    assert claims["claims"] == []
+    comparison = dispatch(
+        request(
+            "story_tool",
+            project_root=str(root),
+            tool_id="compare_branch",
+            arguments={"branch_id": "ALT-ROLLBACK"},
+        )
+    )
+    assert comparison["comparison"]["merged_overlay_ids"] == []
+
+
+def test_story_branch_apply_merge_rejects_stale_review_after_mainline_change(tmp_path):
+    root = tmp_path / "story"
+    root.mkdir()
+    (root / "chapter.md").write_text("# Chapter One\nAlice waits.\n", encoding="utf-8")
+    dispatch(request("story_project_understanding", project_root=str(root)))
+    dispatch(
+        request(
+            "story_branch_create",
+            project_root=str(root),
+            branch_id="ALT-STALE-APPLY",
+            writer_confirmed=True,
+        )
+    )
+    overlay = request(
+        "story_branch_add_overlay",
+        project_root=str(root),
+        branch_id="ALT-STALE-APPLY",
+        record_kind="claim",
+        record_id="alice-leaves",
+        payload={"predicate": "alice_leaves", "literal_value": True},
+        writer_confirmed=True,
+    )
+    overlay["params"]["operation"] = "ADD"
+    overlay_id = dispatch(overlay)["created_overlay_id"]
+    prepared = dispatch(
+        request(
+            "story_branch_prepare_merge",
+            project_root=str(root),
+            branch_id="ALT-STALE-APPLY",
+            overlay_ids=[overlay_id],
+        )
+    )
+
+    dispatch(
+        request(
+            "story_writer_mutation",
+            project_root=str(root),
+            mutation="claim",
+            payload={"predicate": "new_mainline_fact", "literal_value": True},
+            writer_confirmed=True,
+        )
+    )
+    with pytest.raises(ValueError, match="stale|prepare the merge again"):
+        dispatch(
+            request(
+                "story_branch_apply_merge",
+                project_root=str(root),
+                branch_id="ALT-STALE-APPLY",
+                overlay_ids=[overlay_id],
+                expected_parent_revision=prepared["expected_parent_revision"],
+                writer_confirmed=True,
+            )
+        )
+    claims = dispatch(
+        request(
+            "story_tool",
+            project_root=str(root),
+            tool_id="query_claims",
+            arguments={"predicate": "alice_leaves"},
+        )
+    )
+    assert claims["claims"] == []
+
+
+def test_story_branch_prepare_merge_reports_durable_retcon_impact(tmp_path):
+    from backend.story.project import StoryProject
+
+    root = tmp_path / "story"
+    root.mkdir()
+    (root / "chapter.md").write_text("# Chapter One\nMara knows the bell is cracked.\n", encoding="utf-8")
+    dispatch(request("story_project_understanding", project_root=str(root)))
+    entity = dispatch(
+        request(
+            "story_writer_mutation",
+            project_root=str(root),
+            mutation="entity",
+            payload={"canonical_name": "Mara", "entity_type": "character"},
+            writer_confirmed=True,
+        )
+    )["record_id"]
+    claim = dispatch(
+        request(
+            "story_writer_mutation",
+            project_root=str(root),
+            mutation="claim",
+            payload={
+                "subject_entity_id": entity,
+                "predicate": "bell_condition",
+                "literal_value": "cracked",
+            },
+            writer_confirmed=True,
+        )
+    )["record_id"]
+    dispatch(
+        request(
+            "story_writer_mutation",
+            project_root=str(root),
+            mutation="character_knowledge",
+            payload={"character_id": entity, "claim_id": claim, "state": "KNOWS"},
+            writer_confirmed=True,
+        )
+    )
+
+    # Prove the semantic dependency is not just an in-memory/cache artifact.
+    project = StoryProject.open(root)
+    project.cache_path.unlink()
+    dispatch(request("story_project_understanding", project_root=str(root)))
+
+    dispatch(
+        request(
+            "story_branch_create",
+            project_root=str(root),
+            branch_id="ALT-RETCON",
+            writer_confirmed=True,
+        )
+    )
+    overlay = request(
+        "story_branch_add_overlay",
+        project_root=str(root),
+        branch_id="ALT-RETCON",
+        record_kind="claim",
+        record_id=claim,
+        payload={"literal_value": "whole"},
+        writer_confirmed=True,
+    )
+    overlay["params"]["operation"] = "REPLACE"
+    overlay_id = dispatch(overlay)["created_overlay_id"]
+    prepared = dispatch(
+        request(
+            "story_branch_prepare_merge",
+            project_root=str(root),
+            branch_id="ALT-RETCON",
+            overlay_ids=[overlay_id],
+        )
+    )
+    impact = prepared["operations"][0]["retcon_impact"]
+    assert impact["root"]["label"].startswith("Mara · bell_condition")
+    assert impact["counts"]["knowledge_state"] == 1
+    assert impact["affected"][0]["label"].startswith("Mara · KNOWS · bell_condition")
+
+
+def test_story_writer_mutation_is_desktop_only_confirmed_and_persistent(tmp_path):
+    from backend.mcp_server import TOOLS
+
+    root = tmp_path / "story"
+    root.mkdir()
+    (root / "chapter.md").write_text("# Chapter One\nMara finds the bell.\n", encoding="utf-8")
+    dispatch(request("story_project_understanding", project_root=str(root)))
+
+    with pytest.raises(PermissionError, match="writer confirmation"):
+        dispatch(
+            request(
+                "story_writer_mutation",
+                project_root=str(root),
+                mutation="entity",
+                payload={"canonical_name": "Mara", "entity_type": "character"},
+            )
+        )
+
+    entity = dispatch(
+        request(
+            "story_writer_mutation",
+            project_root=str(root),
+            mutation="entity",
+            payload={
+                "canonical_name": "Mara",
+                "entity_type": "character",
+                "aliases": ["Captain Mara"],
+            },
+            writer_confirmed=True,
+        )
+    )
+    assert entity["writer_owned"] is True
+    mara_id = entity["record_id"]
+
+    claim = dispatch(
+        request(
+            "story_writer_mutation",
+            project_root=str(root),
+            mutation="claim",
+            payload={
+                "subject_entity_id": mara_id,
+                "predicate": "bell_is_cursed",
+                "literal_value": True,
+                "status": "CONFIRMED_CANON",
+            },
+            writer_confirmed=True,
+        )
+    )
+    claim_id = claim["record_id"]
+    dispatch(
+        request(
+            "story_writer_mutation",
+            project_root=str(root),
+            mutation="character_knowledge",
+            payload={
+                "character_id": mara_id,
+                "claim_id": claim_id,
+                "state": "SUSPECTS",
+            },
+            writer_confirmed=True,
+        )
+    )
+
+    resolved = dispatch(
+        request(
+            "story_tool",
+            project_root=str(root),
+            tool_id="resolve_entity",
+            arguments={"name": "Captain Mara"},
+        )
+    )
+    assert resolved["matches"][0]["entity_id"] == mara_id
+    knowledge = dispatch(
+        request(
+            "story_tool",
+            project_root=str(root),
+            tool_id="get_character_beliefs",
+            arguments={"character": "Mara"},
+        )
+    )
+    assert knowledge["beliefs"][0]["claim_id"] == claim_id
+
+    assert "story_writer_mutation" not in {tool["name"] for tool in TOOLS}
+    with pytest.raises(KeyError, match="unknown Story Engine tool"):
+        dispatch(
+            request(
+                "story_tool",
+                project_root=str(root),
+                tool_id="put_writer_claim",
+                arguments={"predicate": "bypass"},
+            )
+        )
+
+
+def test_story_writer_mutation_fails_closed_on_kind_boolean_and_reference_errors(tmp_path):
+    root = tmp_path / "story"
+    root.mkdir()
+    (root / "chapter.md").write_text("# Chapter One\nMara waits.\n", encoding="utf-8")
+    dispatch(request("story_project_understanding", project_root=str(root)))
+
+    with pytest.raises(ValueError, match="JSON boolean"):
+        dispatch(
+            request(
+                "story_writer_mutation",
+                project_root=str(root),
+                mutation="entity",
+                payload={"canonical_name": "Mara", "entity_type": "character"},
+                writer_confirmed="true",
+            )
+        )
+    with pytest.raises(ValueError, match="unsupported writer mutation"):
+        dispatch(
+            request(
+                "story_writer_mutation",
+                project_root=str(root),
+                mutation="arbitrary_sql",
+                payload={},
+                writer_confirmed=True,
+            )
+        )
+    with pytest.raises(KeyError, match="entity not found"):
+        dispatch(
+            request(
+                "story_writer_mutation",
+                project_root=str(root),
+                mutation="world_state",
+                payload={"entity_id": "not-real", "state_type": "location", "value": "Tower"},
+                writer_confirmed=True,
+            )
+        )
+
+
+def test_story_sidecar_persists_explicit_manuscript_order(tmp_path):
+    root = tmp_path / "story"
+    root.mkdir()
+    (root / "later.md").write_text("# Chapter Two\nLater scene.\n", encoding="utf-8")
+    (root / "earlier.md").write_text("# Chapter One\nEarlier scene.\n", encoding="utf-8")
+    dispatch(request("story_project_understanding", project_root=str(root)))
+
+    result = dispatch(
+        request(
+            "story_set_manuscript_order",
+            project_root=str(root),
+            paths=["earlier.md", "later.md"],
+        )
+    )
+    assert result["active_manuscripts"] == ["earlier.md", "later.md"]
+    understanding = dispatch(request("story_project_understanding", project_root=str(root)))
+    assert understanding["active_manuscripts"] == ["earlier.md", "later.md"]
+
+    with pytest.raises(ValueError, match="array of strings"):
+        dispatch(request("story_set_manuscript_order", project_root=str(root), paths="earlier.md"))
+
+
+def test_story_phase26_35_desktop_operations_preserve_writer_authority(tmp_path):
+    root = tmp_path / "story-phase-26-35"
+    root.mkdir()
+    (root / "chapter.md").write_text("# Chapter One\nMara guards the bell.\n", encoding="utf-8")
+    dispatch(request("story_project_understanding", project_root=str(root)))
+
+    legacy = root / ".thothpad" / "chapter.md.story.json"
+    legacy.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "id": "legacy",
+                "agents": [],
+                "sessions": [],
+                "memories": [],
+                "markers": [],
+                "scopes": [{"id": "manuscript", "title": "Whole manuscript", "level": 0, "start": 0}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(PermissionError, match="writer confirmation"):
+        dispatch(
+            request(
+                "story_legacy_bind",
+                project_root=str(root),
+                workspace_path=str(legacy),
+                manuscript_path="chapter.md",
+            )
+        )
+
+    proposal = dispatch(
+        request(
+            "story_proposal_submit",
+            project_root=str(root),
+            proposal_kind="canon_fact",
+            target_mutation="claim",
+            payload={"predicate": "bell_is_cursed", "literal_value": True},
+        )
+    )
+    before = dispatch(
+        request(
+            "story_tool",
+            project_root=str(root),
+            tool_id="query_claims",
+            arguments={"predicate": "bell_is_cursed"},
+        )
+    )
+    assert before["claims"] == []
+    with pytest.raises(PermissionError, match="writer confirmation"):
+        dispatch(
+            request(
+                "story_proposal_review",
+                project_root=str(root),
+                proposal_id=proposal["proposal_id"],
+                decision="ACCEPTED",
+            )
+        )
+    with pytest.raises(ValueError, match="maximum_documents must be an integer"):
+        dispatch(
+            request(
+                "story_index_batch",
+                project_root=str(root),
+                maximum_documents=True,
+            )
+        )
+    with pytest.raises(ValueError, match="not writer-reviewable"):
+        dispatch(
+            request(
+                "story_proposal_submit",
+                project_root=str(root),
+                proposal_kind="bad",
+                target_mutation="arbitrary_sql",
+                payload={},
+            )
+        )
+
+
 def test_calibration_profile_cannot_escape_user_calibration_directory():
     result = CalibrationAnalyzer().analyze("Draft", {"calibration_profile": "../../outside.json"})
     assert result.metrics["active"] is False

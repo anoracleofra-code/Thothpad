@@ -9,7 +9,6 @@ import json
 import os
 from pathlib import Path
 
-
 SIGNATURE_PATH_PARTS = {"_CodeSignature", "CodeResources"}
 
 
@@ -55,7 +54,7 @@ def file_sha256(path: Path) -> str:
 
 
 def manifest(root: Path) -> dict[str, dict[str, int | str]]:
-    result = {}
+    result: dict[str, dict[str, int | str]] = {}
     for path in sorted(item for item in root.rglob("*") if item.is_file()):
         relative = path.relative_to(root)
         if any(part in SIGNATURE_PATH_PARTS for part in relative.parts):

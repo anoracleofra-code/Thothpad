@@ -200,6 +200,7 @@ def _reference_envelope(
             results = run_live_analyzers(text, profile)
         grammar_allowed = bool(grammar and (grammar.get("provider") != "harper" or lexical_rules_enabled))
         if grammar_allowed:
+            assert grammar is not None
             from backend.grammar import analyze_grammar
 
             results.append(analyze_grammar(text, grammar))

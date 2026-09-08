@@ -32,19 +32,24 @@ public:
     void setCollapseIcon(const QIcon &icon);
     void setProviderSummary(const QString &provider, const QString &model, bool credentialConfigured, const QString &authKind = QString());
     void setProjectFolder(const QString &path);
+    void setProjectUnderstanding(const QJsonObject &understanding);
+    void setBranches(const QJsonArray &branches, const QString &activeBranch);
+    void setContextInspector(const QJsonObject &inspector);
     void setSceneContext(const QJsonObject &context);
     void setCharacters(const QJsonArray &characters);
     void setActiveCharacter(const QString &characterId);
     void setAnnotations(const QJsonArray &annotations);
-    void appendChatMessage(const QString &role, const QString &text, const QString &speaker = QString(), const QJsonArray &references = {}, const QString &messageId = QString());
+    void appendChatMessage(const QString &role,
+                           const QString &text,
+                           const QString &speaker = QString(),
+                           const QJsonArray &references = {},
+                           const QString &messageId = QString());
     void appendProposal(const QString &kind, const QJsonObject &proposal);
-    void setWorkspaceContext(const QString &mode, const QString &title, const QString &agentName, const QString &sessionTitle, const QString &scopeKind = QString());
+    void
+    setWorkspaceContext(const QString &mode, const QString &title, const QString &agentName, const QString &sessionTitle, const QString &scopeKind = QString());
     void setSessions(const QJsonArray &sessions, const QString &activeSessionId);
     void showChatError(const QString &message);
-    void appendActivityCard(
-        const QString &title,
-        const QString &detail,
-        const QString &operationId = QString());
+    void appendActivityCard(const QString &title, const QString &detail, const QString &operationId = QString());
     void clearChat();
     void setBusy(bool busy);
     void setStatusMessage(const QString &message);
@@ -62,6 +67,14 @@ signals:
     void proposalReviewRequested(const QString &kind, const QJsonObject &proposal);
     void modelSettingsRequested();
     void projectFolderRequested();
+    void projectUnderstandingReviewRequested();
+    void manuscriptOrderRequested();
+    void storyLabRequested();
+    void routingSettingsRequested();
+    void branchChanged(const QString &branchId);
+    void createBranchRequested();
+    void branchDetailsRequested();
+    void epistemicModeChanged(const QString &mode);
     void editSceneRequested();
     void addCharacterRequested();
     void editCharactersRequested();
@@ -94,10 +107,22 @@ private:
     QToolButton *m_newSessionButton = nullptr;
     QToolButton *m_deleteSessionButton = nullptr;
     QPushButton *m_modelSettingsButton;
+    QPushButton *m_routingSettingsButton = nullptr;
     QLabel *m_providerLabel;
     QLabel *m_modelLabel;
     QLabel *m_keyStateLabel;
     QLabel *m_projectPathLabel;
+    QLabel *m_projectUnderstandingLabel = nullptr;
+    QLabel *m_projectRolesLabel = nullptr;
+    QLabel *m_contextInspectorLabel = nullptr;
+    QLabel *m_contextSourcesLabel = nullptr;
+    QComboBox *m_epistemicCombo = nullptr;
+    QPushButton *m_projectReviewButton = nullptr;
+    QPushButton *m_manuscriptOrderButton = nullptr;
+    QPushButton *m_storyLabButton = nullptr;
+    QComboBox *m_branchCombo = nullptr;
+    QPushButton *m_branchCreateButton = nullptr;
+    QPushButton *m_branchDetailsButton = nullptr;
     QLabel *m_settingLabel;
     QLabel *m_goalLabel;
     QLabel *m_contextDetailLabel;
