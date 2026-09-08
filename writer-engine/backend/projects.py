@@ -148,5 +148,12 @@ def agent_setup() -> dict[str, Any]:
             "story_get_project_health",
             "story_get_index_status",
             "story_run_wow_acceptance",
+            "story_get_performance_report",
+            "story_get_security_audit",
+            "story_get_model_fingerprint",
+            "story_get_acceptance_metrics",
+            "story_get_retrieval_capabilities",
+            "story_explain_record",
+            "story_run_operational_acceptance",
         ],
     }

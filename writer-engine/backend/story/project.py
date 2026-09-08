@@ -111,6 +111,7 @@ class StoryProject:
                 "scene_contracts": [],
                 "author_decisions": [],
                 "writer_preferences": [],
+                "story_proposals": [],
             }
             atomic_write_text(state_path, json.dumps(state, indent=2, ensure_ascii=False))
         for key in (
@@ -134,6 +135,7 @@ class StoryProject:
             "scene_contracts",
             "author_decisions",
             "writer_preferences",
+            "story_proposals",
         ):
             if not isinstance(state.get(key), list):
                 state[key] = []

@@ -100,6 +100,30 @@ private slots:
         QCOMPARE(causalArgs.value(QStringLiteral("direction")).toString(), QStringLiteral("both"));
         QCOMPARE(causalArgs.value(QStringLiteral("maximum_depth")).toInt(), 32);
         QVERIFY(!causalArgs.contains(QStringLiteral("branch_id")));
+
+        const QString oversizedKind(400, QLatin1Char('k'));
+        const QString oversizedId(600, QLatin1Char('i'));
+        const QJsonObject whyArgs = controller.boundedStoryEngineArguments(QStringLiteral("explain_story_record"),
+                                                                           QJsonObject{{QStringLiteral("record_kind"), oversizedKind},
+                                                                                       {QStringLiteral("record_id"), oversizedId},
+                                                                                       {QStringLiteral("branch_id"), QStringLiteral("ALT-ATTACK")}});
+        QCOMPARE(whyArgs.value(QStringLiteral("record_kind")).toString().size(), 120);
+        QCOMPARE(whyArgs.value(QStringLiteral("record_id")).toString().size(), 240);
+        QVERIFY(!whyArgs.contains(QStringLiteral("branch_id")));
+
+        const QJsonObject acceptanceArgs = controller.boundedStoryEngineArguments(
+            QStringLiteral("run_operational_acceptance"),
+            QJsonObject{{QStringLiteral("prompt"), QString(6000, QLatin1Char('p'))}, {QStringLiteral("branch_id"), QStringLiteral("ALT-ATTACK")}});
+        QCOMPARE(acceptanceArgs.value(QStringLiteral("prompt")).toString().size(), 4000);
+        QVERIFY(!acceptanceArgs.contains(QStringLiteral("branch_id")));
+
+        controller.m_activeBranch = QStringLiteral("ALT-TRUSTED");
+        const QJsonObject diagnosticArgs = controller.boundedStoryEngineArguments(
+            QStringLiteral("get_security_audit"),
+            QJsonObject{{QStringLiteral("branch_id"), QStringLiteral("ALT-ATTACK")}, {QStringLiteral("unexpected"), QStringLiteral("ignored")}});
+        QCOMPARE(diagnosticArgs.value(QStringLiteral("branch_id")).toString(), QStringLiteral("ALT-TRUSTED"));
+        QVERIFY(!diagnosticArgs.contains(QStringLiteral("unexpected")));
+        controller.m_activeBranch = QStringLiteral("mainline");
         controller.m_epistemicMode = QStringLiteral("cold_reader");
 
         controller.m_pendingChat.storyEngineTool = StoryIntelligenceController::PendingStoryEngineTool{

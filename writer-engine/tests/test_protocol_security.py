@@ -838,6 +838,84 @@ def test_story_sidecar_persists_explicit_manuscript_order(tmp_path):
         dispatch(request("story_set_manuscript_order", project_root=str(root), paths="earlier.md"))
 
 
+def test_story_phase26_35_desktop_operations_preserve_writer_authority(tmp_path):
+    root = tmp_path / "story-phase-26-35"
+    root.mkdir()
+    (root / "chapter.md").write_text("# Chapter One\nMara guards the bell.\n", encoding="utf-8")
+    dispatch(request("story_project_understanding", project_root=str(root)))
+
+    legacy = root / ".thothpad" / "chapter.md.story.json"
+    legacy.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "id": "legacy",
+                "agents": [],
+                "sessions": [],
+                "memories": [],
+                "markers": [],
+                "scopes": [{"id": "manuscript", "title": "Whole manuscript", "level": 0, "start": 0}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(PermissionError, match="writer confirmation"):
+        dispatch(
+            request(
+                "story_legacy_bind",
+                project_root=str(root),
+                workspace_path=str(legacy),
+                manuscript_path="chapter.md",
+            )
+        )
+
+    proposal = dispatch(
+        request(
+            "story_proposal_submit",
+            project_root=str(root),
+            proposal_kind="canon_fact",
+            target_mutation="claim",
+            payload={"predicate": "bell_is_cursed", "literal_value": True},
+        )
+    )
+    before = dispatch(
+        request(
+            "story_tool",
+            project_root=str(root),
+            tool_id="query_claims",
+            arguments={"predicate": "bell_is_cursed"},
+        )
+    )
+    assert before["claims"] == []
+    with pytest.raises(PermissionError, match="writer confirmation"):
+        dispatch(
+            request(
+                "story_proposal_review",
+                project_root=str(root),
+                proposal_id=proposal["proposal_id"],
+                decision="ACCEPTED",
+            )
+        )
+    with pytest.raises(ValueError, match="maximum_documents must be an integer"):
+        dispatch(
+            request(
+                "story_index_batch",
+                project_root=str(root),
+                maximum_documents=True,
+            )
+        )
+    with pytest.raises(ValueError, match="not writer-reviewable"):
+        dispatch(
+            request(
+                "story_proposal_submit",
+                project_root=str(root),
+                proposal_kind="bad",
+                target_mutation="arbitrary_sql",
+                payload={},
+            )
+        )
+
+
 def test_calibration_profile_cannot_escape_user_calibration_directory():
     result = CalibrationAnalyzer().analyze("Draft", {"calibration_profile": "../../outside.json"})
     assert result.metrics["active"] is False

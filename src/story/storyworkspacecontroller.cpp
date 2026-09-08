@@ -1052,6 +1052,31 @@ QJsonArray StoryIntelligenceController::storyEngineReadManifest() const
                               {"risk", "R0"},
                               {"description", "Run the ten-step Story Engine acceptance harness against the active project."},
                               {"arguments", "story_unit_id?: string, character?: string"}});
+    result.append(QJsonObject{{"id", "get_migration_status"},
+                              {"risk", "R0"},
+                              {"description", "Read additive legacy Story Workspace bindings and stable Story Unit links."}});
+    result.append(QJsonObject{{"id", "get_indexing_status"},
+                              {"risk", "R0"},
+                              {"description", "Read resumable background-index checkpoint progress without starting indexing."}});
+    result.append(
+        QJsonObject{{"id", "get_performance_report"}, {"risk", "R0"}, {"description", "Inspect normalized Story Model query plans and local query health."}});
+    result.append(
+        QJsonObject{{"id", "get_security_audit"}, {"risk", "R0"}, {"description", "Inspect fail-closed filesystem and adapter security boundaries."}});
+    result.append(
+        QJsonObject{{"id", "get_model_fingerprint"}, {"risk", "R0"}, {"description", "Read a path/ID-independent normalized Story Model fingerprint."}});
+    result.append(
+        QJsonObject{{"id", "get_acceptance_metrics"}, {"risk", "R0"}, {"description", "Read engineering acceptance metrics without a story-quality score."}});
+    result.append(QJsonObject{{"id", "get_retrieval_capabilities"},
+                              {"risk", "R0"},
+                              {"description", "Inspect lexical/default and optional semantic retrieval guarantees."}});
+    result.append(QJsonObject{{"id", "explain_story_record"},
+                              {"risk", "R0"},
+                              {"description", "Explain why one tracked Story Model record exists using provenance and dependencies."},
+                              {"arguments", "record_kind: string, record_id: string"}});
+    result.append(QJsonObject{{"id", "run_operational_acceptance"},
+                              {"risk", "R0"},
+                              {"description", "Run the read-only ten-step operational acceptance harness for Story Engine phases 26–35."},
+                              {"arguments", "prompt?: string"}});
     return result;
 }
 

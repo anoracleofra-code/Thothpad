@@ -1825,7 +1825,18 @@ QJsonObject StoryIntelligenceController::boundedStoryEngineArguments(const QStri
             safe.insert(QStringLiteral("story_unit_id"), storyUnit);
         if (!character.isEmpty())
             safe.insert(QStringLiteral("character"), character);
-    } else if (toolId == QStringLiteral("get_project_health") || toolId == QStringLiteral("get_index_status")) {
+    } else if (toolId == QStringLiteral("explain_story_record")) {
+        safe.insert(QStringLiteral("record_kind"), boundedString(arguments.value(QStringLiteral("record_kind")), 120));
+        safe.insert(QStringLiteral("record_id"), boundedString(arguments.value(QStringLiteral("record_id")), 240));
+    } else if (toolId == QStringLiteral("run_operational_acceptance")) {
+        const QString prompt = boundedString(arguments.value(QStringLiteral("prompt")), 4000);
+        if (!prompt.isEmpty())
+            safe.insert(QStringLiteral("prompt"), prompt);
+    } else if (toolId == QStringLiteral("get_project_health") || toolId == QStringLiteral("get_index_status")
+               || toolId == QStringLiteral("get_migration_status") || toolId == QStringLiteral("get_indexing_status")
+               || toolId == QStringLiteral("get_performance_report") || toolId == QStringLiteral("get_security_audit")
+               || toolId == QStringLiteral("get_model_fingerprint") || toolId == QStringLiteral("get_acceptance_metrics")
+               || toolId == QStringLiteral("get_retrieval_capabilities")) {
         // These diagnostics take no model-controlled arguments beyond the
         // branch inserted below.
     }
@@ -2615,6 +2626,46 @@ void StoryIntelligenceController::finishChatTurn(const QJsonObject &story, const
         proposal.insert("_proposal_id", StoryWorkspace::newId());
         proposals.append(QJsonObject{{"kind", kind}, {"record", proposal}});
         m_widget->appendProposal(kind, proposal);
+
+        // Mirror mainline scene/character proposals into the Universal Story
+        // Engine's durable proposal queue. This is deliberately non-canon:
+        // `story_proposal_submit` cannot apply Story State, and the writer must
+        // later accept/reject it through the explicit review operation.
+        if (m_activeBranch == QStringLiteral("mainline") && !m_projectRoot.isEmpty() && m_engine->isReady()
+            && m_engine->supportsOperation(QStringLiteral("story_proposal_submit"))) {
+            QJsonObject payload;
+            QString targetMutation;
+            QString proposalKind;
+            if (kind == QStringLiteral("scene") && !m_pendingChat.activeStoryUnit.isEmpty()) {
+                targetMutation = QStringLiteral("scene_contract");
+                proposalKind = QStringLiteral("scene_context");
+                QJsonObject contract = proposal;
+                for (const QString &key : {QStringLiteral("_scope_id"), QStringLiteral("_agent_id"), QStringLiteral("_proposal_id")})
+                    contract.remove(key);
+                payload.insert(QStringLiteral("story_unit_id"), m_pendingChat.activeStoryUnit);
+                payload.insert(QStringLiteral("contract"), contract);
+            } else if (kind == QStringLiteral("character")) {
+                const QString name = proposal.value(QStringLiteral("name")).toString().trimmed();
+                if (!name.isEmpty()) {
+                    targetMutation = QStringLiteral("entity");
+                    proposalKind = QStringLiteral("character");
+                    payload.insert(QStringLiteral("canonical_name"), name);
+                    payload.insert(QStringLiteral("entity_type"), QStringLiteral("character"));
+                    payload.insert(QStringLiteral("description"), proposal.value(QStringLiteral("summary")).toString());
+                }
+            }
+            if (!targetMutation.isEmpty()) {
+                QJsonObject request{{QStringLiteral("project_root"), m_projectRoot},
+                                    {QStringLiteral("proposal_kind"), proposalKind},
+                                    {QStringLiteral("target_mutation"), targetMutation},
+                                    {QStringLiteral("payload"), payload},
+                                    {QStringLiteral("branch_id"), QStringLiteral("mainline")},
+                                    {QStringLiteral("created_by"), QStringLiteral("story_intelligence")}};
+                if (!m_pendingChat.activeStoryUnit.isEmpty())
+                    request.insert(QStringLiteral("story_unit_id"), m_pendingChat.activeStoryUnit);
+                m_engine->send(QStringLiteral("story_proposal_submit"), request);
+            }
+        }
     };
     if (m_pendingChat.revision == m_revision && m_pendingChat.storyContextHash == currentStoryContextHash()) {
         offer("scene", story.value("scene_context_proposal").toObject());

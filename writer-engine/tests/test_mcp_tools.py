@@ -49,7 +49,7 @@ def test_documented_tool_lists_match_mcp_tools():
     from backend.projects import agent_setup
 
     tool_names = [tool["name"] for tool in TOOLS]
-    assert len(tool_names) == 57
+    assert len(tool_names) == 64
 
     readme = Path(__file__).resolve().parents[1] / "README.md"
     documented = [

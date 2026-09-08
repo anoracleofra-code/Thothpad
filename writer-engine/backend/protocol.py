@@ -16,7 +16,7 @@ from backend import config
 from backend.validation import reject_json_constant as _reject_json_constant_impl
 
 PROTOCOL_MAJOR = 1
-PROTOCOL_MINOR = 7
+PROTOCOL_MINOR = 8
 
 MAX_HEADER_COUNT = 16
 MAX_HEADER_BYTES = 16_384
@@ -73,8 +73,12 @@ OPERATIONS = (
     "story_writer_model_observe",
     "story_model_route",
     "story_index_rebuild",
+    "story_index_batch",
+    "story_legacy_bind",
     "story_project_export",
     "story_project_import",
+    "story_proposal_submit",
+    "story_proposal_review",
 )
 
 

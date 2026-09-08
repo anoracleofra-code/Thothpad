@@ -54,14 +54,18 @@ from backend.story.service import (
     add_story_branch_overlay,
     apply_story_branch_merge,
     apply_story_writer_mutation,
+    bind_legacy_story_workspace,
     call_story_tool,
     create_story_branch,
     export_story_project,
     import_story_project,
+    index_story_project_batch,
     observe_story_writer_model,
     prepare_story_branch_merge,
     rebase_story_branch,
     rebuild_story_project_index,
+    review_story_project_proposal,
+    submit_story_project_proposal,
 )
 from backend.story.service import (
     project_sources as story_project_sources,
@@ -725,6 +729,34 @@ def dispatch(
             root,
             writer_confirmed=_bool(params, "writer_confirmed", False),
         )
+    if operation == "story_index_batch":
+        root = params.get("project_root")
+        maximum_documents = params.get("maximum_documents", 100)
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if isinstance(maximum_documents, bool) or not isinstance(maximum_documents, int):
+            raise ValueError("maximum_documents must be an integer")
+        return index_story_project_batch(
+            root,
+            maximum_documents=maximum_documents,
+            reset=_bool(params, "reset", False),
+        )
+    if operation == "story_legacy_bind":
+        root = params.get("project_root")
+        workspace_path = params.get("workspace_path")
+        manuscript_path = params.get("manuscript_path")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(workspace_path, str) or not workspace_path.strip():
+            raise ValueError("workspace_path must be a non-empty string")
+        if not isinstance(manuscript_path, str) or not manuscript_path.strip():
+            raise ValueError("manuscript_path must be a non-empty string")
+        return bind_legacy_story_workspace(
+            root,
+            workspace_path=workspace_path,
+            manuscript_path=manuscript_path,
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
     if operation == "story_project_export":
         root = params.get("project_root")
         if not isinstance(root, str) or not root.strip():
@@ -740,6 +772,53 @@ def dispatch(
         return import_story_project(
             root,
             bundle,
+            writer_confirmed=_bool(params, "writer_confirmed", False),
+        )
+    if operation == "story_proposal_submit":
+        root = params.get("project_root")
+        proposal_kind = params.get("proposal_kind")
+        target_mutation = params.get("target_mutation")
+        payload = params.get("payload")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(proposal_kind, str) or not proposal_kind.strip():
+            raise ValueError("proposal_kind must be a non-empty string")
+        if not isinstance(target_mutation, str) or not target_mutation.strip():
+            raise ValueError("target_mutation must be a non-empty string")
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+        evidence = params.get("evidence", [])
+        if not isinstance(evidence, list) or not all(isinstance(item, dict) for item in evidence):
+            raise ValueError("evidence must be an array of objects")
+        return submit_story_project_proposal(
+            root,
+            proposal_kind=proposal_kind,
+            target_mutation=target_mutation,
+            payload=payload,
+            branch_id=str(params.get("branch_id", "mainline")),
+            story_unit_id=str(params.get("story_unit_id")) if params.get("story_unit_id") else None,
+            evidence=evidence,
+            created_by=str(params.get("created_by", "model")),
+        )
+    if operation == "story_proposal_review":
+        root = params.get("project_root")
+        proposal_id = params.get("proposal_id")
+        decision = params.get("decision")
+        payload_override = params.get("payload_override")
+        if not isinstance(root, str) or not root.strip():
+            raise ValueError("project_root must be a non-empty string")
+        if not isinstance(proposal_id, str) or not proposal_id.strip():
+            raise ValueError("proposal_id must be a non-empty string")
+        if not isinstance(decision, str) or not decision.strip():
+            raise ValueError("decision must be a non-empty string")
+        if payload_override is not None and not isinstance(payload_override, dict):
+            raise ValueError("payload_override must be an object")
+        return review_story_project_proposal(
+            root,
+            proposal_id=proposal_id,
+            decision=decision,
+            payload_override=payload_override,
+            note=str(params.get("note", "")),
             writer_confirmed=_bool(params, "writer_confirmed", False),
         )
     if operation == "story_tool":

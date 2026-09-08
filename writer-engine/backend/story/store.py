@@ -499,6 +499,38 @@ class StoryStore:
             self.connection.execute("PRAGMA user_version=2")
             self.connection.commit()
 
+        # Performance-only indexes are additive and do not change the logical
+        # schema. Keep them available to old caches without forcing a rebuild.
+        self.connection.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_sources_project_path
+            ON sources(project_id, relative_path COLLATE NOCASE);
+            CREATE INDEX IF NOT EXISTS idx_sources_project_live
+            ON sources(project_id, tombstoned, relative_path COLLATE NOCASE);
+            CREATE INDEX IF NOT EXISTS idx_mentions_source_span
+            ON entity_mentions(source_id, start_offset, end_offset);
+            CREATE INDEX IF NOT EXISTS idx_units_branch_source_span
+            ON story_units(branch_id, source_id, start_offset, end_offset);
+            CREATE INDEX IF NOT EXISTS idx_world_entity_branch_type
+            ON world_state(entity_id, branch_id, state_type, valid_from);
+            CREATE INDEX IF NOT EXISTS idx_reader_branch_unit
+            ON reader_state(branch_id, story_unit_id);
+            CREATE INDEX IF NOT EXISTS idx_relationship_pair_branch
+            ON relationships(entity_a, entity_b, branch_id, relationship_type, valid_from);
+            CREATE INDEX IF NOT EXISTS idx_threads_branch_state
+            ON threads(branch_id, state);
+            CREATE INDEX IF NOT EXISTS idx_promises_branch_state
+            ON promise_items(branch_id, state);
+            CREATE INDEX IF NOT EXISTS idx_decisions_branch_unit
+            ON decisions(branch_id, story_unit_id);
+            CREATE INDEX IF NOT EXISTS idx_causal_cause
+            ON causal_edges(branch_id, cause_kind, cause_id);
+            CREATE INDEX IF NOT EXISTS idx_causal_effect
+            ON causal_edges(branch_id, effect_kind, effect_id);
+            """
+        )
+        self.connection.commit()
+
     def transaction(self) -> sqlite3.Connection:
         return self.connection
 

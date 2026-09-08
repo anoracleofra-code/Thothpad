@@ -33,6 +33,7 @@ _STATE_KEYS = (
     "author_decisions",
     "writer_preferences",
     "story_lenses",
+    "story_proposals",
 )
 
 

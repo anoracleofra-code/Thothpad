@@ -171,7 +171,12 @@ class ProjectIngestor:
             result.append(SourceRoleHint(normalized, 1.0, "writer override"))
         return result or inferred
 
-    def ingest(self) -> ProjectUnderstanding:
+    def ingest(
+        self,
+        *,
+        selected_paths: set[str] | None = None,
+        finalize: bool = True,
+    ) -> ProjectUnderstanding:
         present_paths: set[str] = set()
         role_counter: Counter[str] = Counter()
         summary = ProjectUnderstanding(
@@ -184,6 +189,8 @@ class ProjectIngestor:
             present_paths.add(candidate.relative_path)
             adapter = self._adapter(candidate)
             if adapter is None:
+                continue
+            if selected_paths is not None and candidate.relative_path not in selected_paths:
                 continue
             existing = self.store.source_by_path(candidate.relative_path)
             rule_override = self.project.source_rule_override(candidate.relative_path)
@@ -317,18 +324,19 @@ class ProjectIngestor:
                 if role_hint.confidence >= 0.5:
                     role_counter[role_hint.role.value] += 1
 
-        missing = self.store.mark_missing_sources(self.project.project_id, present_paths)
-        summary.removed_documents = len(missing)
-        self.store.supersede_ungrounded_compiler_claims(self.project.project_id)
-        reconcile_explicit_story_state(self.store)
-        hydrate_writer_state(self.project, self.store)
+        if finalize:
+            missing = self.store.mark_missing_sources(self.project.project_id, present_paths)
+            summary.removed_documents = len(missing)
+            self.store.supersede_ungrounded_compiler_claims(self.project.project_id)
+            reconcile_explicit_story_state(self.store)
+            hydrate_writer_state(self.project, self.store)
+            detect_claim_conflicts(self.store)
+            manuscripts = self.store.sources_for_role(SourceRole.MANUSCRIPT.value, minimum_confidence=0.55)
+            summary.likely_manuscripts = [
+                {"source_id": row["source_id"], "path": row["relative_path"], "confidence": row["confidence"]}
+                for row in manuscripts[:10]
+            ]
         summary.role_counts = dict(sorted(role_counter.items()))
-        detect_claim_conflicts(self.store)
-        manuscripts = self.store.sources_for_role(SourceRole.MANUSCRIPT.value, minimum_confidence=0.55)
-        summary.likely_manuscripts = [
-            {"source_id": row["source_id"], "path": row["relative_path"], "confidence": row["confidence"]}
-            for row in manuscripts[:10]
-        ]
         self.store.commit()
         return summary
 

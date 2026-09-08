@@ -100,9 +100,16 @@ StoryLabDialog::StoryLabDialog(WriterEngineClient *engine, QWidget *parent)
     , m_advancedOtherEntity(new QLineEdit(this))
     , m_advancedRun(new QPushButton(tr("Run analysis"), this))
     , m_indexRebuild(new QPushButton(tr("Rebuild index…"), this))
+    , m_indexContinue(new QPushButton(tr("Continue indexing"), this))
+    , m_legacyBind(new QPushButton(tr("Bind legacy workspace…"), this))
     , m_projectExport(new QPushButton(tr("Export Story metadata…"), this))
     , m_projectImport(new QPushButton(tr("Import Story metadata…"), this))
     , m_advancedOutput(resultBox(this))
+    , m_proposalTable(new QTableWidget(this))
+    , m_proposalRefresh(new QPushButton(tr("Refresh"), this))
+    , m_proposalAccept(new QPushButton(tr("Accept selected"), this))
+    , m_proposalReject(new QPushButton(tr("Reject selected"), this))
+    , m_proposalOutput(resultBox(this))
     , m_writerTable(new QTableWidget(this))
     , m_writerRefresh(new QPushButton(tr("Refresh"), this))
     , m_writerConfirm(new QPushButton(tr("Confirm selected"), this))
@@ -244,8 +251,19 @@ StoryLabDialog::StoryLabDialog(WriterEngineClient *engine, QWidget *parent)
     m_advancedAction->addItem(tr("Project health"), QStringLiteral("get_project_health"));
     m_advancedAction->addItem(tr("Index status"), QStringLiteral("get_index_status"));
     m_advancedAction->addItem(tr("10-step Wow acceptance"), QStringLiteral("run_wow_acceptance"));
-    m_advancedQuery->setPlaceholderText(tr("Explorer query, e.g. Mara bell tower"));
-    m_advancedCharacter->setPlaceholderText(tr("Character/entity A"));
+    m_advancedAction->insertSeparator(m_advancedAction->count());
+    m_advancedAction->addItem(tr("Migration / legacy-binding status"), QStringLiteral("get_migration_status"));
+    m_advancedAction->addItem(tr("Background-indexing status"), QStringLiteral("get_indexing_status"));
+    m_advancedAction->addItem(tr("Performance / query-plan report"), QStringLiteral("get_performance_report"));
+    m_advancedAction->addItem(tr("Filesystem / adapter security audit"), QStringLiteral("get_security_audit"));
+    m_advancedAction->addItem(tr("Remote egress preview"), QStringLiteral("get_egress_preview"));
+    m_advancedAction->addItem(tr("Project-agnostic model fingerprint"), QStringLiteral("get_model_fingerprint"));
+    m_advancedAction->addItem(tr("Engineering acceptance metrics"), QStringLiteral("get_acceptance_metrics"));
+    m_advancedAction->addItem(tr("Retrieval capabilities"), QStringLiteral("get_retrieval_capabilities"));
+    m_advancedAction->addItem(tr("Ask ThothPad Why"), QStringLiteral("explain_story_record"));
+    m_advancedAction->addItem(tr("Phases 26–35 operational acceptance"), QStringLiteral("run_operational_acceptance"));
+    m_advancedQuery->setPlaceholderText(tr("Explorer/egress prompt, or record kind for Why"));
+    m_advancedCharacter->setPlaceholderText(tr("Character/entity A, or record ID for Why"));
     m_advancedOtherEntity->setPlaceholderText(tr("Entity B for relationship arc"));
     advancedForm->addRow(tr("Analysis"), m_advancedAction);
     advancedForm->addRow(tr("Query"), m_advancedQuery);
@@ -254,13 +272,44 @@ StoryLabDialog::StoryLabDialog(WriterEngineClient *engine, QWidget *parent)
     advancedLayout->addLayout(advancedForm);
     advancedLayout->addWidget(m_advancedRun, 0, Qt::AlignLeft);
     auto *maintenanceRow = new QHBoxLayout;
+    maintenanceRow->addWidget(m_indexContinue);
     maintenanceRow->addWidget(m_indexRebuild);
+    maintenanceRow->addWidget(m_legacyBind);
     maintenanceRow->addWidget(m_projectExport);
     maintenanceRow->addWidget(m_projectImport);
     maintenanceRow->addStretch(1);
     advancedLayout->addLayout(maintenanceRow);
     advancedLayout->addWidget(m_advancedOutput, 1);
     tabs->addTab(advancedPage, tr("Advanced"));
+
+    auto *proposalPage = new QWidget(tabs);
+    auto *proposalLayout = new QVBoxLayout(proposalPage);
+    auto *proposalHint = new QLabel(tr("Story proposals are durable but non-canon. Accepting one routes it through the normal writer-owned mutation boundary; "
+                                       "rejecting one changes no Story State."),
+                                    proposalPage);
+    proposalHint->setWordWrap(true);
+    proposalLayout->addWidget(proposalHint);
+    m_proposalTable->setColumnCount(5);
+    m_proposalTable->setHorizontalHeaderLabels({tr("Status"), tr("Kind"), tr("Target"), tr("Branch"), tr("Proposal")});
+    m_proposalTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_proposalTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_proposalTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_proposalTable->verticalHeader()->setVisible(false);
+    m_proposalTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    m_proposalTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    m_proposalTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    m_proposalTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    m_proposalTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
+    proposalLayout->addWidget(m_proposalTable, 1);
+    auto *proposalActions = new QHBoxLayout;
+    proposalActions->addWidget(m_proposalRefresh);
+    proposalActions->addWidget(m_proposalAccept);
+    proposalActions->addWidget(m_proposalReject);
+    proposalActions->addStretch(1);
+    proposalLayout->addLayout(proposalActions);
+    m_proposalOutput->setMaximumHeight(120);
+    proposalLayout->addWidget(m_proposalOutput);
+    tabs->addTab(proposalPage, tr("Proposals"));
 
     auto *writerPage = new QWidget(tabs);
     auto *writerLayout = new QVBoxLayout(writerPage);
@@ -332,11 +381,33 @@ StoryLabDialog::StoryLabDialog(WriterEngineClient *engine, QWidget *parent)
     connect(m_indexRebuild, &QPushButton::clicked, this, [this]() {
         rebuildIndex();
     });
+    connect(m_indexContinue, &QPushButton::clicked, this, [this]() {
+        continueIndexing();
+    });
+    connect(m_legacyBind, &QPushButton::clicked, this, [this]() {
+        bindLegacyWorkspace();
+    });
     connect(m_projectExport, &QPushButton::clicked, this, [this]() {
         exportProjectMetadata();
     });
     connect(m_projectImport, &QPushButton::clicked, this, [this]() {
         importProjectMetadata();
+    });
+    connect(m_proposalRefresh, &QPushButton::clicked, this, [this]() {
+        refreshProposals();
+    });
+    connect(m_proposalAccept, &QPushButton::clicked, this, [this]() {
+        reviewSelectedProposal(QStringLiteral("ACCEPTED"));
+    });
+    connect(m_proposalReject, &QPushButton::clicked, this, [this]() {
+        reviewSelectedProposal(QStringLiteral("REJECTED"));
+    });
+    connect(m_proposalTable, &QTableWidget::itemSelectionChanged, this, [this]() {
+        const int row = m_proposalTable->currentRow();
+        const bool reviewable =
+            row >= 0 && m_proposalTable->item(row, 4) && m_proposalTable->item(row, 4)->data(Qt::UserRole + 1).toString() == QStringLiteral("PROPOSED");
+        m_proposalAccept->setEnabled(reviewable);
+        m_proposalReject->setEnabled(reviewable);
     });
     connect(m_writerRefresh, &QPushButton::clicked, this, [this]() {
         refreshWriterModel();
@@ -358,6 +429,8 @@ StoryLabDialog::StoryLabDialog(WriterEngineClient *engine, QWidget *parent)
 
     m_writerConfirm->setEnabled(false);
     m_writerIgnore->setEnabled(false);
+    m_proposalAccept->setEnabled(false);
+    m_proposalReject->setEnabled(false);
     m_entityAlias->setEnabled(false);
     connect(m_entityTable, &QTableWidget::itemSelectionChanged, this, [this]() {
         m_entityAlias->setEnabled(m_entityTable->currentRow() >= 0);
@@ -539,6 +612,23 @@ void StoryLabDialog::handleResponse(const QString &requestId, const QJsonObject 
         setReady(tr("Story Engine index rebuilt from source + durable writer state."));
         return;
     }
+    if (kind == QStringLiteral("__index_batch")) {
+        m_advancedOutput->setPlainText(formatJson(result));
+        const bool complete = result.value(QStringLiteral("complete")).toBool();
+        setReady(complete ? tr("Background indexing is complete.") : tr("Background indexing checkpoint saved; continue when convenient."));
+        return;
+    }
+    if (kind == QStringLiteral("__legacy_bind")) {
+        m_advancedOutput->setPlainText(formatJson(result));
+        setReady(tr("Legacy Story Workspace bound without rewriting it."));
+        return;
+    }
+    if (kind == QStringLiteral("__proposal_review")) {
+        m_proposalOutput->setPlainText(formatJson(result));
+        setReady(tr("Proposal review saved."));
+        refreshProposals();
+        return;
+    }
     if (kind == QStringLiteral("__project_export")) {
         if (m_pendingExportPath.isEmpty()) {
             setReady(tr("Export destination was lost; metadata was not written."));
@@ -572,6 +662,9 @@ void StoryLabDialog::handleResponse(const QString &requestId, const QJsonObject 
         populateEntities(result.value(QStringLiteral("entities")).toArray());
     } else if (kind == QStringLiteral("query_claims") || kind == QStringLiteral("list_conflicts")) {
         m_groundingOutput->setPlainText(formatResult(kind, result));
+    } else if (kind == QStringLiteral("list_story_proposals")) {
+        populateProposals(result.value(QStringLiteral("proposals")).toArray());
+        m_proposalOutput->setPlainText(formatJson(result));
     } else if (kind == QStringLiteral("list_story_lenses")) {
         populateLenses(result.value(QStringLiteral("story_lenses")).toArray());
         m_lensOutput->setPlainText(formatResult(kind, result));
@@ -589,7 +682,12 @@ void StoryLabDialog::handleResponse(const QString &requestId, const QJsonObject 
     } else if (kind == QStringLiteral("explore_story") || kind == QStringLiteral("get_scene_semantics") || kind == QStringLiteral("audit_continuity")
                || kind == QStringLiteral("get_character_arc") || kind == QStringLiteral("get_relationship_arc")
                || kind == QStringLiteral("audit_ending_integrity") || kind == QStringLiteral("get_project_health") || kind == QStringLiteral("get_index_status")
-               || kind == QStringLiteral("run_wow_acceptance")) {
+               || kind == QStringLiteral("run_wow_acceptance") || kind == QStringLiteral("get_migration_status")
+               || kind == QStringLiteral("get_indexing_status") || kind == QStringLiteral("get_performance_report")
+               || kind == QStringLiteral("get_security_audit") || kind == QStringLiteral("get_egress_preview")
+               || kind == QStringLiteral("get_model_fingerprint") || kind == QStringLiteral("get_acceptance_metrics")
+               || kind == QStringLiteral("get_retrieval_capabilities") || kind == QStringLiteral("explain_story_record")
+               || kind == QStringLiteral("run_operational_acceptance")) {
         m_advancedOutput->setPlainText(formatJson(result));
     }
     setReady();
@@ -740,6 +838,39 @@ void StoryLabDialog::runAdvancedTool()
         }
         arguments.insert(QStringLiteral("entity_a"), entityA);
         arguments.insert(QStringLiteral("entity_b"), entityB);
+    } else if (tool == QStringLiteral("get_egress_preview")) {
+        QString prompt = m_advancedQuery->text().trimmed();
+        if (prompt.isEmpty()) {
+            prompt = tr("current story context");
+        }
+        arguments.insert(QStringLiteral("prompt"), prompt);
+        arguments.insert(QStringLiteral("selected_is_remote"), true);
+        arguments.insert(QStringLiteral("include_text_preview"), false);
+        if (!m_activeStoryUnit.isEmpty()) {
+            arguments.insert(QStringLiteral("active_story_unit"), m_activeStoryUnit);
+        }
+        if (!m_sourcePath.isEmpty()) {
+            arguments.insert(QStringLiteral("active_source_path"), m_sourcePath);
+        }
+        if (!m_activeCharacter.isEmpty()) {
+            arguments.insert(QStringLiteral("active_character"), m_activeCharacter);
+        }
+    } else if (tool == QStringLiteral("explain_story_record")) {
+        const QString recordKind = m_advancedQuery->text().trimmed();
+        const QString recordId = m_advancedCharacter->text().trimmed();
+        if (recordKind.isEmpty() || recordId.isEmpty()) {
+            QMessageBox::information(this,
+                                     tr("Record required"),
+                                     tr("For Ask ThothPad Why, enter the record kind in Query and the stable record ID in Character / A."));
+            return;
+        }
+        arguments.insert(QStringLiteral("record_kind"), recordKind);
+        arguments.insert(QStringLiteral("record_id"), recordId);
+    } else if (tool == QStringLiteral("run_operational_acceptance")) {
+        const QString prompt = m_advancedQuery->text().trimmed();
+        if (!prompt.isEmpty()) {
+            arguments.insert(QStringLiteral("prompt"), prompt);
+        }
     }
     requestTool(tool, arguments);
 }
@@ -766,6 +897,55 @@ void StoryLabDialog::rebuildIndex()
         setReady(tr("Could not start Story Engine index rebuild."));
     } else {
         setBusy(tr("Rebuilding Story Engine index…"));
+    }
+}
+
+void StoryLabDialog::continueIndexing()
+{
+    if (m_projectRoot.isEmpty() || !m_engine->isReady() || !m_engine->supportsOperation(QStringLiteral("story_index_batch"))) {
+        setReady(tr("Resumable indexing is not available in this engine build."));
+        return;
+    }
+    QJsonObject payload{{QStringLiteral("project_root"), m_projectRoot}, {QStringLiteral("maximum_documents"), 100}, {QStringLiteral("reset"), false}};
+    m_requestKind = QStringLiteral("__index_batch");
+    m_requestId = m_engine->send(QStringLiteral("story_index_batch"), payload);
+    if (m_requestId.isEmpty()) {
+        setReady(tr("Could not start the next background-index batch."));
+    } else {
+        setBusy(tr("Indexing the next bounded source batch…"));
+    }
+}
+
+void StoryLabDialog::bindLegacyWorkspace()
+{
+    if (m_projectRoot.isEmpty() || m_sourcePath.isEmpty() || !m_engine->isReady() || !m_engine->supportsOperation(QStringLiteral("story_legacy_bind"))) {
+        setReady(tr("Open an indexed manuscript inside the Story Project before binding a legacy workspace."));
+        return;
+    }
+    const QString path =
+        QFileDialog::getOpenFileName(this, tr("Bind Legacy Story Workspace"), m_projectRoot, tr("Story workspace JSON (*.story.json *.json);;All files (*)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    if (QMessageBox::question(this,
+                              tr("Bind legacy workspace?"),
+                              tr("ThothPad will read this schema-2 workspace, preserve it byte-for-byte, and add stable Story Unit links to the current "
+                                 "manuscript. The legacy file will not be rewritten."),
+                              QMessageBox::Yes | QMessageBox::Cancel,
+                              QMessageBox::Cancel)
+        != QMessageBox::Yes) {
+        return;
+    }
+    QJsonObject payload{{QStringLiteral("project_root"), m_projectRoot},
+                        {QStringLiteral("workspace_path"), path},
+                        {QStringLiteral("manuscript_path"), m_sourcePath},
+                        {QStringLiteral("writer_confirmed"), true}};
+    m_requestKind = QStringLiteral("__legacy_bind");
+    m_requestId = m_engine->send(QStringLiteral("story_legacy_bind"), payload);
+    if (m_requestId.isEmpty()) {
+        setReady(tr("Could not start legacy Story Workspace binding."));
+    } else {
+        setBusy(tr("Binding legacy Story Workspace without rewriting it…"));
     }
 }
 
@@ -832,6 +1012,45 @@ void StoryLabDialog::importProjectMetadata()
         setReady(tr("Could not start Story Project metadata import."));
     } else {
         setBusy(tr("Importing and rebinding writer-owned Story State…"));
+    }
+}
+
+void StoryLabDialog::refreshProposals()
+{
+    requestTool(QStringLiteral("list_story_proposals"), QJsonObject{{QStringLiteral("limit"), 500}});
+}
+
+void StoryLabDialog::reviewSelectedProposal(const QString &decision)
+{
+    const int row = m_proposalTable->currentRow();
+    if (row < 0 || !m_proposalTable->item(row, 4)) {
+        return;
+    }
+    const QJsonObject proposal = QJsonObject::fromVariantMap(m_proposalTable->item(row, 4)->data(Qt::UserRole).toMap());
+    if (proposal.isEmpty() || proposal.value(QStringLiteral("status")).toString() != QStringLiteral("PROPOSED")) {
+        return;
+    }
+    const bool accepting = decision == QStringLiteral("ACCEPTED");
+    const QString verb = accepting ? tr("Accept") : tr("Reject");
+    const QString target = proposal.value(QStringLiteral("target_mutation")).toString();
+    if (QMessageBox::question(this,
+                              tr("Review Story proposal"),
+                              tr("%1 this proposal?\n\nTarget Story State: %2\n\n%3").arg(verb, target, formatJson(proposal.value(QStringLiteral("payload")))),
+                              QMessageBox::Yes | QMessageBox::Cancel,
+                              QMessageBox::Cancel)
+        != QMessageBox::Yes) {
+        return;
+    }
+    QJsonObject payload{{QStringLiteral("project_root"), m_projectRoot},
+                        {QStringLiteral("proposal_id"), proposal.value(QStringLiteral("proposal_id")).toString()},
+                        {QStringLiteral("decision"), decision},
+                        {QStringLiteral("writer_confirmed"), true}};
+    m_requestKind = QStringLiteral("__proposal_review");
+    m_requestId = m_engine->send(QStringLiteral("story_proposal_review"), payload);
+    if (m_requestId.isEmpty()) {
+        setReady(tr("Could not start proposal review."));
+    } else {
+        setBusy(accepting ? tr("Applying accepted proposal through writer-owned Story State…") : tr("Recording rejected proposal…"));
     }
 }
 
@@ -907,6 +1126,29 @@ void StoryLabDialog::populateEntities(const QJsonArray &entities)
         m_entityTable->setItem(row, 3, new QTableWidgetItem(aliases.join(QStringLiteral(", "))));
     }
     m_entityAlias->setEnabled(false);
+}
+
+void StoryLabDialog::populateProposals(const QJsonArray &proposals)
+{
+    m_proposalTable->setRowCount(proposals.size());
+    for (int row = 0; row < proposals.size(); ++row) {
+        const QJsonObject proposal = proposals.at(row).toObject();
+        const QString status = proposal.value(QStringLiteral("status")).toString();
+        m_proposalTable->setItem(row, 0, new QTableWidgetItem(status));
+        m_proposalTable->setItem(row, 1, new QTableWidgetItem(proposal.value(QStringLiteral("proposal_kind")).toString()));
+        m_proposalTable->setItem(row, 2, new QTableWidgetItem(proposal.value(QStringLiteral("target_mutation")).toString()));
+        m_proposalTable->setItem(row, 3, new QTableWidgetItem(proposal.value(QStringLiteral("branch_id")).toString()));
+        auto *summary =
+            new QTableWidgetItem(QString::fromUtf8(QJsonDocument(proposal.value(QStringLiteral("payload")).toObject()).toJson(QJsonDocument::Compact)));
+        summary->setData(Qt::UserRole, proposal.toVariantMap());
+        summary->setData(Qt::UserRole + 1, status);
+        m_proposalTable->setItem(row, 4, summary);
+    }
+    m_proposalAccept->setEnabled(false);
+    m_proposalReject->setEnabled(false);
+    if (!proposals.isEmpty()) {
+        m_proposalTable->selectRow(0);
+    }
 }
 
 void StoryLabDialog::populateWriterModel(const QJsonObject &model)

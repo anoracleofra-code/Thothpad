@@ -10,6 +10,7 @@ from backend.story.authority import AuthorityStatus, SourceRole, is_authoritativ
 from backend.story.branches import branch_freshness, effective_branch_overlays
 from backend.story.project import StoryProject
 from backend.story.query import StoryQueryEngine
+from backend.story.retrieval import RetrievalSignal, bounded_signal_score
 from backend.story.store import StoryStore
 
 _WORD = re.compile(r"[\w'-]{3,}", re.UNICODE)
@@ -93,6 +94,7 @@ class CompiledContext:
     epistemic_boundary: dict[str, Any] = field(default_factory=dict)
     used_chars: int = 0
     maximum_chars: int = 40_000
+    retrieval_signal_names: list[str] = field(default_factory=list)
 
     def retrieved(self) -> list[dict[str, Any]]:
         return [item.to_retrieved() for item in self.items]
@@ -127,13 +129,21 @@ class CompiledContext:
             "reader_state_count": len(self.reader_state),
             "branch_overlay_count": len(self.branch_overlays),
             "epistemic_boundary": dict(self.epistemic_boundary),
+            "retrieval_signals": list(self.retrieval_signal_names),
         }
 
 
 class ContextCompiler:
-    def __init__(self, project: StoryProject, store: StoryStore) -> None:
+    def __init__(
+        self,
+        project: StoryProject,
+        store: StoryStore,
+        *,
+        retrieval_signals: list[RetrievalSignal] | None = None,
+    ) -> None:
         self.project = project
         self.store = store
+        self.retrieval_signals = list(retrieval_signals or [])[:8]
 
     @staticmethod
     def terms(prompt: str, extra: list[str] | None = None) -> list[str]:
@@ -280,6 +290,7 @@ class ContextCompiler:
             mode=normalized_mode,
             branch_id=normalized_branch,
             maximum_chars=maximum_chars,
+            retrieval_signal_names=[str(signal.name)[:80] for signal in self.retrieval_signals],
         )
         extra = [active_character] if active_character else []
         terms = self.terms(prompt, extra)
@@ -382,6 +393,8 @@ class ContextCompiler:
             score += 2.0 if is_authoritative(authority) else 0.0
             score += 1.0 if SourceRole.MANUSCRIPT in set(roles) else 0.0
             score += max(0.0, min(4.0, -float(row["rank"]))) if row["rank"] is not None else 0.0
+            for signal in self.retrieval_signals:
+                score += bounded_signal_score(signal.score(terms=terms, candidate=row))
             scored.append((score, row, roles, pinned, allowed_chars))
 
         scored.sort(key=lambda item: (-item[0], item[1]["relative_path"].casefold(), item[1]["ordinal"]))

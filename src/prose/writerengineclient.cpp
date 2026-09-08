@@ -28,7 +28,7 @@ namespace ghostwriter
 namespace
 {
 constexpr int ProtocolMajor = 1;
-constexpr int ProtocolMinor = 7;
+constexpr int ProtocolMinor = 8;
 constexpr qsizetype MaxRequestFrameBytes = 64 * 1024 * 1024;
 constexpr qsizetype MaxResponseFrameBytes = 64 * 1024 * 1024;
 constexpr qsizetype MaxHeaderBytes = 16 * 1024;

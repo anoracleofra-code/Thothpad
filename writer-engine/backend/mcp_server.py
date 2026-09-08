@@ -746,6 +746,76 @@ TOOLS = [
             "required": ["project_root"],
         },
     },
+    {
+        "name": "story_get_performance_report",
+        "description": "Read indexed Story Model query plans and local latency observations.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"project_root": {"type": "string"}},
+            "required": ["project_root"],
+        },
+    },
+    {
+        "name": "story_get_security_audit",
+        "description": "Inspect Story Project filesystem/adaptor safety boundaries without changing files.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"project_root": {"type": "string"}},
+            "required": ["project_root"],
+        },
+    },
+    {
+        "name": "story_get_model_fingerprint",
+        "description": "Read a path/ID-independent normalized Story Model fingerprint.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"project_root": {"type": "string"}},
+            "required": ["project_root"],
+        },
+    },
+    {
+        "name": "story_get_acceptance_metrics",
+        "description": "Read engineering acceptance metrics without producing a story-quality score.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"project_root": {"type": "string"}},
+            "required": ["project_root"],
+        },
+    },
+    {
+        "name": "story_get_retrieval_capabilities",
+        "description": "Inspect lexical/default and optional semantic retrieval-signal guarantees.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"project_root": {"type": "string"}},
+            "required": ["project_root"],
+        },
+    },
+    {
+        "name": "story_explain_record",
+        "description": "Explain one Story Model record through tracked provenance and dependency edges.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_root": {"type": "string"},
+                "record_kind": {"type": "string"},
+                "record_id": {"type": "string"},
+            },
+            "required": ["project_root", "record_kind", "record_id"],
+        },
+    },
+    {
+        "name": "story_run_operational_acceptance",
+        "description": "Run the read-only ten-step Story Engine acceptance harness for phases 26-35.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_root": {"type": "string"},
+                "prompt": {"type": "string"},
+            },
+            "required": ["project_root"],
+        },
+    },
 ]
 
 
@@ -802,6 +872,13 @@ def tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
             "story_get_project_health": "get_project_health",
             "story_get_index_status": "get_index_status",
             "story_run_wow_acceptance": "run_wow_acceptance",
+            "story_get_performance_report": "get_performance_report",
+            "story_get_security_audit": "get_security_audit",
+            "story_get_model_fingerprint": "get_model_fingerprint",
+            "story_get_acceptance_metrics": "get_acceptance_metrics",
+            "story_get_retrieval_capabilities": "get_retrieval_capabilities",
+            "story_explain_record": "explain_story_record",
+            "story_run_operational_acceptance": "run_operational_acceptance",
         }
         tool_id = mapping.get(name)
         if tool_id is None:

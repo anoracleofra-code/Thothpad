@@ -9,6 +9,9 @@ from backend.story.sources import ExtractedStructure
 
 _W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _HEADING_STYLE = re.compile(r"heading\s*([1-6])", re.IGNORECASE)
+MAX_DOCX_ENTRIES = 5_000
+MAX_DOCUMENT_XML_BYTES = 32 * 1024 * 1024
+MAX_COMPRESSION_RATIO = 200
 
 
 class DocxAdapter(SourceAdapter):
@@ -20,6 +23,15 @@ class DocxAdapter(SourceAdapter):
     def extract(self, candidate: SourceCandidate) -> ExtractedDocument:
         try:
             with zipfile.ZipFile(candidate.path) as archive:
+                infos = archive.infolist()
+                if len(infos) > MAX_DOCX_ENTRIES:
+                    raise ValueError("DOCX archive contains too many entries")
+                info = archive.getinfo("word/document.xml")
+                if info.file_size > MAX_DOCUMENT_XML_BYTES:
+                    raise ValueError("DOCX document XML exceeds the safe extraction limit")
+                compressed = max(1, int(info.compress_size))
+                if info.file_size / compressed > MAX_COMPRESSION_RATIO:
+                    raise ValueError("DOCX document XML compression ratio exceeds the safe limit")
                 xml = archive.read("word/document.xml")
         except (KeyError, OSError, zipfile.BadZipFile) as exc:
             raise ValueError("malformed DOCX source") from exc

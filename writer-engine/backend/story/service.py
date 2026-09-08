@@ -10,12 +10,15 @@ from backend.story.branches import record_completed_branch_merge
 from backend.story.claims import create_claim
 from backend.story.context import ContextCompiler
 from backend.story.exchange import export_story_bundle, import_story_bundle
+from backend.story.indexing import run_index_batch
 from backend.story.ingest import ProjectIngestor
 from backend.story.lenses import put_story_lens
 from backend.story.maintenance import rebuild_story_index
+from backend.story.migrations import bind_legacy_workspace
 from backend.story.persistence import persist_writer_state
 from backend.story.project import StoryProject
 from backend.story.promises import upsert_promise_item
+from backend.story.proposals import mark_proposal_reviewed, proposal, submit_story_proposal
 from backend.story.query import StoryQueryEngine
 from backend.story.store import StoryStore
 from backend.story.threads import upsert_thread
@@ -164,6 +167,118 @@ def rebuild_story_project_index(
     if not StoryProject.is_initialized(root):
         raise PermissionError("Story Project has not been initialized by ThothPad")
     return rebuild_story_index(root, writer_confirmed=writer_confirmed)
+
+
+def bind_legacy_story_workspace(
+    root: str | Path,
+    *,
+    workspace_path: str | Path,
+    manuscript_path: str,
+    writer_confirmed: bool = False,
+) -> dict[str, Any]:
+    if not StoryProject.is_initialized(root):
+        raise PermissionError("Story Project has not been initialized by ThothPad")
+    with story_runtime(root, initialize=False) as (project, store):
+        return bind_legacy_workspace(
+            project,
+            store,
+            workspace_path=workspace_path,
+            manuscript_path=manuscript_path,
+            writer_confirmed=writer_confirmed,
+        )
+
+
+def index_story_project_batch(
+    root: str | Path,
+    *,
+    maximum_documents: int = 100,
+    reset: bool = False,
+) -> dict[str, Any]:
+    if not StoryProject.is_initialized(root):
+        raise PermissionError("Story Project has not been initialized by ThothPad")
+    return run_index_batch(root, maximum_documents=maximum_documents, reset=reset)
+
+
+def submit_story_project_proposal(
+    root: str | Path,
+    *,
+    proposal_kind: str,
+    target_mutation: str,
+    payload: dict[str, Any],
+    branch_id: str = "mainline",
+    story_unit_id: str | None = None,
+    evidence: list[dict[str, Any]] | None = None,
+    created_by: str = "model",
+) -> dict[str, Any]:
+    if not StoryProject.is_initialized(root):
+        raise PermissionError("Story Project has not been initialized by ThothPad")
+    mutation = target_mutation.strip().casefold()
+    if mutation not in WRITER_MUTATION_KINDS:
+        raise ValueError("proposal target mutation is not writer-reviewable")
+    safe_payload = _bounded_writer_value(payload)
+    assert isinstance(safe_payload, dict)
+    project = StoryProject.open(root)
+    return submit_story_proposal(
+        project,
+        proposal_kind=proposal_kind,
+        target_mutation=mutation,
+        payload=safe_payload,
+        branch_id=branch_id,
+        story_unit_id=story_unit_id,
+        evidence=[dict(item) for item in (evidence or [])[:100] if isinstance(item, dict)],
+        created_by=created_by,
+    )
+
+
+def review_story_project_proposal(
+    root: str | Path,
+    *,
+    proposal_id: str,
+    decision: str,
+    payload_override: dict[str, Any] | None = None,
+    note: str = "",
+    writer_confirmed: bool = False,
+) -> dict[str, Any]:
+    if not writer_confirmed:
+        raise PermissionError("reviewing a Story Engine proposal requires explicit writer confirmation")
+    if not StoryProject.is_initialized(root):
+        raise PermissionError("Story Project has not been initialized by ThothPad")
+    normalized = decision.strip().upper()
+    project = StoryProject.open(root)
+    existing = proposal(project, proposal_id)
+    if existing is None:
+        raise KeyError("proposal not found")
+    if existing.get("status") != "PROPOSED":
+        raise ValueError("proposal has already been reviewed")
+
+    applied_record_id = ""
+    applied: dict[str, Any] | None = None
+    if normalized == "ACCEPTED":
+        if str(existing.get("branch_id") or "mainline") != "mainline":
+            raise ValueError("alternate-branch proposals must be applied through the branch workflow")
+        mutation = str(existing.get("target_mutation") or "").casefold()
+        payload = payload_override if payload_override is not None else existing.get("payload", {})
+        if not isinstance(payload, dict):
+            raise ValueError("proposal payload must be an object")
+        applied = apply_story_writer_mutation(
+            root,
+            mutation,
+            payload,
+            writer_confirmed=True,
+        )
+        applied_record_id = str(applied.get("record_id") or "")
+    elif normalized != "REJECTED":
+        raise ValueError("proposal decision must be ACCEPTED or REJECTED")
+
+    reviewed_project = StoryProject.open(root)
+    reviewed = mark_proposal_reviewed(
+        reviewed_project,
+        proposal_id=proposal_id,
+        decision=normalized,
+        applied_record_id=applied_record_id,
+        note=note,
+    )
+    return {"reviewed": reviewed, "applied": applied}
 
 
 def project_understanding(root: str | Path, *, initialize: bool = True) -> dict[str, Any]:
@@ -542,7 +657,8 @@ def call_story_tool(
     *,
     initialize: bool = True,
 ) -> dict[str, Any]:
-    with story_runtime(root, initialize=initialize) as (project, store):
+    auto_ingest = tool_id not in {"get_indexing_status", "get_migration_status"}
+    with story_runtime(root, initialize=initialize, ingest=auto_ingest) as (project, store):
         return invoke_story_tool(
             tool_id,
             dict(arguments or {}),

@@ -2,8 +2,19 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.story.acceptance_metrics import AcceptanceMetrics
 from backend.story.context import ContextCompiler, EpistemicMode
+from backend.story.explain import StoryExplainer
+from backend.story.indexing import indexing_status
+from backend.story.migrations import migration_status
+from backend.story.operational_acceptance import OperationalAcceptance
+from backend.story.performance import StoryPerformanceProbe
+from backend.story.privacy import EgressInspector
+from backend.story.proposals import list_story_proposals
 from backend.story.query import StoryQueryEngine
+from backend.story.retrieval import retrieval_capabilities
+from backend.story.security import ProjectSecurityAudit
+from backend.story.validation_matrix import project_model_fingerprint
 
 
 def _bounded_limit(value: Any, default: int = 100, maximum: int = 200) -> int:
@@ -224,6 +235,63 @@ def story_tool_manifest() -> list[dict[str, Any]]:
             "id": "run_wow_acceptance",
             "risk": "R0",
             "description": "Run the ten-step Story Engine acceptance harness against the active project.",
+        },
+        {
+            "id": "get_migration_status",
+            "risk": "R0",
+            "description": "Read additive legacy Story Workspace bindings and stable Story Unit links.",
+        },
+        {
+            "id": "get_indexing_status",
+            "risk": "R0",
+            "description": "Read resumable background-index checkpoint progress without changing project files.",
+        },
+        {
+            "id": "get_performance_report",
+            "risk": "R0",
+            "description": "Inspect core Story Model query plans and local latency observations.",
+        },
+        {
+            "id": "get_security_audit",
+            "risk": "R0",
+            "description": "Inspect filesystem/adaptor safety boundaries and ignored risky input classes.",
+        },
+        {
+            "id": "get_egress_preview",
+            "risk": "R0",
+            "description": (
+                "Preview exactly which bounded Story context/state would leave the machine for a remote model."
+            ),
+        },
+        {
+            "id": "get_model_fingerprint",
+            "risk": "R0",
+            "description": "Read a path/ID-independent Story Model fingerprint for project-layout equivalence checks.",
+        },
+        {
+            "id": "get_acceptance_metrics",
+            "risk": "R0",
+            "description": "Read engineering acceptance metrics without producing a story-quality score.",
+        },
+        {
+            "id": "get_retrieval_capabilities",
+            "risk": "R0",
+            "description": "Inspect lexical/default and optional semantic retrieval-signal guarantees.",
+        },
+        {
+            "id": "list_story_proposals",
+            "risk": "R0",
+            "description": "List durable non-canon Story Engine proposals awaiting or recording writer review.",
+        },
+        {
+            "id": "explain_story_record",
+            "risk": "R0",
+            "description": "Explain why a tracked Story Model record exists using provenance and dependency edges.",
+        },
+        {
+            "id": "run_operational_acceptance",
+            "risk": "R0",
+            "description": "Run the read-only ten-step acceptance harness for Universal Story Engine phases 26-35.",
         },
         {
             "id": "get_story_context",
@@ -562,6 +630,64 @@ def invoke_story_tool(
                 story_unit_id=str(arguments.get("story_unit_id")) if arguments.get("story_unit_id") else None,
                 character=str(arguments.get("character", "")),
                 branch_id=str(arguments.get("branch_id", "mainline")),
+            )
+        }
+    if tool_id == "get_migration_status":
+        return {"migration_status": migration_status(query.project)}
+    if tool_id == "get_indexing_status":
+        return {"indexing_status": indexing_status(query.project)}
+    if tool_id == "get_performance_report":
+        return {"performance": StoryPerformanceProbe(query.project, query.store).report()}
+    if tool_id == "get_security_audit":
+        return {"security": ProjectSecurityAudit(query.project).report()}
+    if tool_id == "get_egress_preview":
+        mode_value = str(arguments.get("mode", EpistemicMode.AUTHOR_OMNISCIENT))
+        return {
+            "egress": EgressInspector(query.project, query.store).preview(
+                prompt=str(arguments.get("prompt", "")),
+                mode=EpistemicMode(mode_value),
+                branch_id=str(arguments.get("branch_id", "mainline")),
+                active_story_unit=(
+                    str(arguments.get("active_story_unit")) if arguments.get("active_story_unit") else None
+                ),
+                active_source_path=str(arguments.get("active_source_path", "")),
+                active_document_end=(
+                    int(arguments["active_document_end"])
+                    if isinstance(arguments.get("active_document_end"), int)
+                    and not isinstance(arguments.get("active_document_end"), bool)
+                    else None
+                ),
+                active_character=str(arguments.get("active_character", "")),
+                maximum_chars=_bounded_limit(arguments.get("maximum_chars"), 40_000, 100_000),
+                selected_is_remote=arguments.get("selected_is_remote") is True,
+                include_text_preview=arguments.get("include_text_preview") is True,
+            )
+        }
+    if tool_id == "get_model_fingerprint":
+        return {"model_fingerprint": project_model_fingerprint(query.project, query.store)}
+    if tool_id == "get_acceptance_metrics":
+        return {"acceptance_metrics": AcceptanceMetrics(query.project, query.store).report()}
+    if tool_id == "get_retrieval_capabilities":
+        return {"retrieval": retrieval_capabilities()}
+    if tool_id == "list_story_proposals":
+        return {
+            "proposals": list_story_proposals(
+                query.project,
+                status=str(arguments.get("status")) if arguments.get("status") else None,
+                limit=_bounded_limit(arguments.get("limit"), 200, 1_000),
+            )
+        }
+    if tool_id == "explain_story_record":
+        return {
+            "explanation": StoryExplainer(query.project, query.store).explain(
+                str(arguments.get("record_kind", "")),
+                str(arguments.get("record_id", "")),
+            )
+        }
+    if tool_id == "run_operational_acceptance":
+        return {
+            "acceptance": OperationalAcceptance(query.project, query.store).run(
+                prompt=str(arguments.get("prompt", "current story continuity"))[:4_000]
             )
         }
     if tool_id == "get_story_context":
